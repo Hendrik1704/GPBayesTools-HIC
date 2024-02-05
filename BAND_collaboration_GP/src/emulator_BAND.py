@@ -20,6 +20,7 @@ import numpy as np
 import pickle
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from surmise.emulation import emulator, prediction
 
 from . import cachedir, parse_model_parameter_file
 
@@ -61,11 +62,6 @@ class EmulatorBAND:
         self.nrestarts = nrestarts
         self.nev, self.nobs = self.model_data.shape
 
-        print(self.nev,self.nobs)
-
-        self.scaler = StandardScaler(copy=False)
-        self.pca = PCA(copy=False, whiten=True, svd_solver='full')
-
 
     def _zeta_over_s(self, T, muB, bulkMax0, bulkMax1, bulkMax2,
                      bulkTpeak0, bulkWhigh, bulkWlow):
@@ -79,7 +75,6 @@ class EmulatorBAND:
         zeta_s = self._zeta_over_s_base(T, bulkMax, bulkTpeak,
                                         bulkWhigh, bulkWlow)
         return zeta_s
-
 
     def _zeta_over_s_base(self, T, bulkMax, bulkTpeak, bulkWhigh, bulkWlow):
         Tdiff = T - bulkTpeak
@@ -153,22 +148,98 @@ class EmulatorBAND:
             self.design_points = self._transform_design(self.design_points)
         logging.info("All training data are loaded.")
 
-    def trainEmulator(self, eventMask):
+    def trainEmulator(self, event_mask):
         # Standardize observables and transform through PCA. Use the first
         # `npc` components but save the full PC transformation for later.
         logging.info('Performing PCA ...')
-        Z = self.pca.fit_transform(
-                self.scaler.fit_transform(self.model_data[eventMask, :])
-        )[:, :self.npc]
 
-        logging.info('{} PCs explain {:.5f} of variance'.format(
-            self.npc, self.pca.explained_variance_ratio_[:self.npc].sum()
-        ))
+        # Invert the event_mask to create the complement mask
+        #complement_mask = self.model_data.shape[0] - event_mask
 
-        nev, nobs = self.model_data[eventMask, :].shape
+        #nev, nobs = self.model_data[:complement_mask, :].shape
+        nev, nobs = self.model_data[event_mask, :].shape
         logging.info(
             'Train GP emulators with {} training points ...'.format(nev))
         
+        #print(self.design_points[:complement_mask, :].shape)
+        #print(self.model_data[:complement_mask, :].shape)
+
+        x = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
+
+        #self.emu = emulator(x=x, theta=self.design_points[:complement_mask, :],
+        #                    f=self.model_data[:complement_mask, :].T,
+        #                    method='PCGP',
+        #                    args={'warnings': True}
+        #                    )
+        self.emu = emulator(x=x,theta=self.design_points[event_mask, :],
+                            f=self.model_data[event_mask, :].T,
+                            method='PCGP',
+                            args={'warnings': True}
+                            )
+        
+    def predict(self,X):
+        """
+        Predict model output at `X`.
+        """
+        x = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
+        gp = self.emu.predict(x=x,theta=X)
+
+        fpredmean = gp.mean()
+        #fpredvar = gp.var()
+        fpredcov = gp.covx()
+
+        return (fpredmean, fpredcov)
+    
+    def testEmulatorErrors(self, number_test_points=1, number_iterations=1):
+        """
+        This function uses (nev - number_test_points) points to train the 
+        emulator and use number_test_points points to test the emulator in each 
+        iteration. In each iteration, the number_test_points data points are 
+        randomly chosen.
+        It returns the emulator predictions, their errors,
+        the actual values of observables and their errors as four arrays.
+        """
+        emulator_predictions = []
+        emulator_predictions_err = []
+        validation_data = []
+        validation_data_err = []
+
+        for iter_i in range(number_iterations):
+            logging.info(
+                "Validation GP emulators iter = {} ...".format(iter_i))
+            event_idx_list = range(self.nev - number_test_points)
+            train_event_mask = [True]*self.nev
+            for event_i in event_idx_list:
+                train_event_mask[event_i] = False
+            self.trainEmulator(train_event_mask)
+            validate_event_mask = [not i for i in train_event_mask]
+            pred_mean, pred_cov = self.predict(self.design_points[validate_event_mask, :])
+            print(pred_cov)
+            emulator_predictions.append(pred_mean)
+            predictions_err = np.zeros([number_test_points, self.nobs])
+            for obs_i in range(self.nobs):
+                predictions_err[:,obs_i] = np.sqrt(pred_cov[:, obs_i, obs_i])
+            emulator_predictions_err.append(predictions_err)
+            if self.log_flag_:
+                validation_data.append(
+                    np.exp(self.model_data[validate_event_mask, :])
+                )
+                validation_data_err.append(
+                    self.model_data_err[validate_event_mask, :]
+                    *np.exp(self.model_data[validate_event_mask, :])
+                )
+            else:
+                validation_data.append(self.model_data[validate_event_mask, :])
+                validation_data_err.append(
+                    self.model_data_err[validate_event_mask, :]
+                )
+            emulator_predictions = np.array(emulator_predictions).reshape(-1, self.nobs)
+            emulator_predictions_err = np.array(emulator_predictions_err).reshape(-1 , self.nobs)
+            validation_data = np.array(validation_data).reshape(-1, self.nobs)
+            validation_data_err = np.array(validation_data_err).reshape(-1, self.nobs)
+
+            return (emulator_predictions, emulator_predictions_err, 
+                    validation_data, validation_data_err)
 
 
 
