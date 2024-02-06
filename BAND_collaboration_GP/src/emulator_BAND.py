@@ -61,6 +61,7 @@ class EmulatorBAND:
         self.npc = npc
         self.nrestarts = nrestarts
         self.nev, self.nobs = self.model_data.shape
+        self.nparameters = self.design_points.shape[1]
 
 
     def _zeta_over_s(self, T, muB, bulkMax0, bulkMax1, bulkMax2,
@@ -149,40 +150,53 @@ class EmulatorBAND:
         logging.info("All training data are loaded.")
 
     def trainEmulator(self, event_mask):
-        # Standardize observables and transform through PCA. Use the first
-        # `npc` components but save the full PC transformation for later.
-        logging.info('Performing PCA ...')
+        logging.info('Performing emulator training ...')
 
-        # Invert the event_mask to create the complement mask
-        #complement_mask = self.model_data.shape[0] - event_mask
+        if isinstance(event_mask, int):
+            event_idx_list = range(self.nev - event_mask)
+            train_event_mask = [False]*self.nev
+            for event_i in event_idx_list:
+                train_event_mask[event_i] = True
 
-        #nev, nobs = self.model_data[:complement_mask, :].shape
-        nev, nobs = self.model_data[event_mask, :].shape
-        logging.info(
-            'Train GP emulators with {} training points ...'.format(nev))
+            nev, nobs = self.model_data[train_event_mask, :].shape
+            logging.info(
+                'Train GP emulators with {} training points ...'.format(nev))
+
+            self.x = np.full(shape=(nobs, self.nparameters), fill_value=1.0)
+
+            #print("x = ",self.x.shape)
+            #print("theta = ",self.design_points[train_event_mask, :].shape)
+            #print("f = ",self.model_data[train_event_mask, :].T.shape)
+
+            self.emu = emulator(x=self.x,theta=self.design_points[train_event_mask, :],
+                                f=self.model_data[train_event_mask, :].T,
+                                method='PCGP',
+                                args={'warnings': True}
+                                )
+        else:
+            nev, nobs = self.model_data[event_mask, :].shape
+            logging.info(
+                'Train GP emulators with {} training points ...'.format(nev))
+
+            self.x = np.full(shape=(nobs, self.nparameters), fill_value=1.0)
+
+            #print("x = ",self.x.shape)
+            #print("theta = ",self.design_points[event_mask, :].shape)
+            #print("f = ",self.model_data[event_mask, :].T.shape)
+
+            self.emu = emulator(x=self.x,theta=self.design_points[event_mask, :],
+                                f=self.model_data[event_mask, :].T,
+                                method='PCGP',
+                                args={'warnings': True}
+                                )
+
         
-        #print(self.design_points[:complement_mask, :].shape)
-        #print(self.model_data[:complement_mask, :].shape)
-
-        x = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
-
-        #self.emu = emulator(x=x, theta=self.design_points[:complement_mask, :],
-        #                    f=self.model_data[:complement_mask, :].T,
-        #                    method='PCGP',
-        #                    args={'warnings': True}
-        #                    )
-        self.emu = emulator(x=x,theta=self.design_points[event_mask, :],
-                            f=self.model_data[event_mask, :].T,
-                            method='PCGP',
-                            args={'warnings': True}
-                            )
         
-    def predict(self,X):
+    def predict(self,X,theta):
         """
         Predict model output at `X`.
         """
-        x = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
-        gp = self.emu.predict(x=x,theta=X)
+        gp = self.emu.predict(x=X,theta=theta)
 
         fpredmean = gp.mean()
         #fpredvar = gp.var()
@@ -207,20 +221,22 @@ class EmulatorBAND:
         for iter_i in range(number_iterations):
             logging.info(
                 "Validation GP emulators iter = {} ...".format(iter_i))
-            event_idx_list = range(self.nev - number_test_points)
+            event_idx_list = range(self.nev - number_test_points, self.nev)
             train_event_mask = [True]*self.nev
             for event_i in event_idx_list:
                 train_event_mask[event_i] = False
             self.trainEmulator(train_event_mask)
             validate_event_mask = [not i for i in train_event_mask]
-            pred_mean, pred_cov = self.predict(self.design_points[validate_event_mask, :])
-            print(pred_cov)
+            a = np.full(shape=(self.nobs, self.nparameters), fill_value=1.0)
+            pred_mean, pred_cov = self.predict(a,
+                self.design_points[validate_event_mask, :])
             emulator_predictions.append(pred_mean)
+            pred_cov = pred_cov.transpose((1, 0, 2))
             predictions_err = np.zeros([number_test_points, self.nobs])
             for obs_i in range(self.nobs):
                 predictions_err[:,obs_i] = np.sqrt(pred_cov[:, obs_i, obs_i])
             emulator_predictions_err.append(predictions_err)
-            if self.log_flag_:
+            if self.logFlag_:
                 validation_data.append(
                     np.exp(self.model_data[validate_event_mask, :])
                 )
@@ -233,12 +249,12 @@ class EmulatorBAND:
                 validation_data_err.append(
                     self.model_data_err[validate_event_mask, :]
                 )
-            emulator_predictions = np.array(emulator_predictions).reshape(-1, self.nobs)
-            emulator_predictions_err = np.array(emulator_predictions_err).reshape(-1 , self.nobs)
-            validation_data = np.array(validation_data).reshape(-1, self.nobs)
-            validation_data_err = np.array(validation_data_err).reshape(-1, self.nobs)
+        emulator_predictions = np.array(emulator_predictions).reshape(-1, self.nobs)
+        emulator_predictions_err = np.array(emulator_predictions_err).reshape(-1 , self.nobs)
+        validation_data = np.array(validation_data).reshape(-1, self.nobs)
+        validation_data_err = np.array(validation_data_err).reshape(-1, self.nobs)
 
-            return (emulator_predictions, emulator_predictions_err, 
+        return (emulator_predictions, emulator_predictions_err, 
                     validation_data, validation_data_err)
 
 
