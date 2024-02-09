@@ -149,11 +149,11 @@ class EmulatorBAND:
             logging.info(
                 'Train GP emulators with {} training points ...'.format(nev))
 
-            x = np.array(range(self.nobs))
+            x = np.arange(nobs).reshape(-1, 1)
 
-            #print("x = ",x.shape)
-            #print("theta = ",self.design_points[train_event_mask, :].shape)
-            #print("f = ",self.model_data[train_event_mask, :].T.shape)
+            print("x = ",x.shape)
+            print("theta = ",self.design_points[train_event_mask, :].shape)
+            print("f = ",self.model_data[train_event_mask, :].T.shape)
 
             self.emu = emulator(x=self.x,theta=self.design_points[train_event_mask, :],
                                 f=self.model_data[train_event_mask, :].T,
@@ -176,9 +176,7 @@ class EmulatorBAND:
                                 method='PCGP',
                                 args={'warnings': True}
                                 )
-            #self.emu.fit()
 
-        
         
     def predict(self,X,theta):
         """
