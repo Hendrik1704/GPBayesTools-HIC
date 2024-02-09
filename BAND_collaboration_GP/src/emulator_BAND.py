@@ -162,9 +162,9 @@ class EmulatorBAND:
             logging.info(
                 'Train GP emulators with {} training points ...'.format(nev))
 
-            self.x = np.full(shape=(nobs, self.nparameters), fill_value=1.0)
+            x = np.array(range(self.nobs))
 
-            #print("x = ",self.x.shape)
+            #print("x = ",x.shape)
             #print("theta = ",self.design_points[train_event_mask, :].shape)
             #print("f = ",self.model_data[train_event_mask, :].T.shape)
 
@@ -178,17 +178,18 @@ class EmulatorBAND:
             logging.info(
                 'Train GP emulators with {} training points ...'.format(nev))
 
-            self.x = np.full(shape=(nobs, self.nparameters), fill_value=1.0)
+            x = np.arange(nobs).reshape(-1, 1)
 
-            #print("x = ",self.x.shape)
-            #print("theta = ",self.design_points[event_mask, :].shape)
-            #print("f = ",self.model_data[event_mask, :].T.shape)
+            print("x = ",x.shape)
+            print("theta = ",self.design_points[event_mask, :].shape)
+            print("f = ",self.model_data[event_mask, :].T.shape)
 
-            self.emu = emulator(x=self.x,theta=self.design_points[event_mask, :],
+            self.emu = emulator(x=x,theta=self.design_points[event_mask, :],
                                 f=self.model_data[event_mask, :].T,
                                 method='PCGP',
                                 args={'warnings': True}
                                 )
+            #self.emu.fit()
 
         
         
@@ -197,10 +198,14 @@ class EmulatorBAND:
         Predict model output at `X`.
         """
         gp = self.emu.predict(x=X,theta=theta)
+        #print(gp._info)
 
         fpredmean = gp.mean()
         #fpredvar = gp.var()
-        fpredcov = gp.covx()
+        fpredcov = gp.covx().transpose((1, 0, 2))
+
+        print(fpredmean.shape)
+        print(fpredcov.shape)
 
         return (fpredmean, fpredcov)
     
@@ -227,15 +232,13 @@ class EmulatorBAND:
                 train_event_mask[event_i] = False
             self.trainEmulator(train_event_mask)
             validate_event_mask = [not i for i in train_event_mask]
-            a = np.full(shape=(self.nobs, self.nparameters), fill_value=1.0)
-            pred_mean, pred_cov = self.predict(a,
+
+            x = np.arange(self.nobs).reshape(-1, 1)
+            pred_mean, pred_cov = self.predict(x,
                 self.design_points[validate_event_mask, :])
             emulator_predictions.append(pred_mean)
-            pred_cov = pred_cov.transpose((1, 0, 2))
-            predictions_err = np.zeros([number_test_points, self.nobs])
-            for obs_i in range(self.nobs):
-                predictions_err[:,obs_i] = np.sqrt(pred_cov[:, obs_i, obs_i])
-            emulator_predictions_err.append(predictions_err)
+            emulator_predictions_err.append(pred_cov)
+            
             if self.logFlag_:
                 validation_data.append(
                     np.exp(self.model_data[validate_event_mask, :])
@@ -250,9 +253,12 @@ class EmulatorBAND:
                     self.model_data_err[validate_event_mask, :]
                 )
         emulator_predictions = np.array(emulator_predictions).reshape(-1, self.nobs)
-        emulator_predictions_err = np.array(emulator_predictions_err).reshape(-1 , self.nobs)
+        emulator_predictions_err = np.array(emulator_predictions_err).reshape(-1 , self.nobs, self.nobs)
         validation_data = np.array(validation_data).reshape(-1, self.nobs)
         validation_data_err = np.array(validation_data_err).reshape(-1, self.nobs)
+
+        print(emulator_predictions.shape)
+        print(emulator_predictions_err.shape)
 
         return (emulator_predictions, emulator_predictions_err, 
                     validation_data, validation_data_err)
