@@ -6,10 +6,7 @@ principal components, and other options (however it is not necessary to do this
 explicitly --- the emulators will be trained automatically when needed).  Run
 ``python -m src.emulator --help`` for usage information.
 
-Uses the `scikit-learn <http://scikit-learn.org>`_ implementations of
-`principal component analysis (PCA)
-<http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html>`_
-and `Gaussian process regression
+Uses the `Gaussian process regression
 <https://surmise.readthedocs.io/en/latest/index.html>`_ implemented by the BAND 
 collaboration.
 """
@@ -18,26 +15,17 @@ import logging
 
 import numpy as np
 import pickle
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
-from surmise.emulation import emulator, prediction
+from surmise.emulation import emulator
 
 from . import cachedir, parse_model_parameter_file
 
 class EmulatorBAND:
     """
-    Multidimensional Gaussian process emulator using principal component
-    analysis.
-
-    The model training data are standardized (subtract mean and scale to unit
-    variance), then transformed through PCA.  The first `npc` principal
-    components (PCs) are emulated by independent Gaussian processes (GPs).  The
-    remaining components are neglected, which is equivalent to assuming they
-    are standard zero-mean unit-variance GPs.
+    Multidimensional Gaussian Process emulator.
     """
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
-                 npc=10, nrestarts=0, retrain=False, transformDesign=False,
+                 nrestarts=0, retrain=False, transformDesign=False,
                  logFlag=False):
         self._vec_zeta_s = np.vectorize(self._zeta_over_s)
         self.transformDesign_ = transformDesign
@@ -58,7 +46,6 @@ class EmulatorBAND:
             self.design_min = np.array(self.design_min)
             self.design_max = np.array(self.design_max)
 
-        self.npc = npc
         self.nrestarts = nrestarts
         self.nev, self.nobs = self.model_data.shape
         self.nparameters = self.design_points.shape[1]
