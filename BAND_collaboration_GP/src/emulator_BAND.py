@@ -24,82 +24,25 @@ class EmulatorBAND:
     Multidimensional Gaussian Process emulator.
     """
 
-    def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
-                 nrestarts=0, retrain=False, transformDesign=False,
-                 logFlag=False):
-        self._vec_zeta_s = np.vectorize(self._zeta_over_s)
-        self.transformDesign_ = transformDesign
+    def __init__(self, training_set_path=".", parameter_file="ABCD.txt", 
+                 method='PCGP',logFlag=False):
         self.logFlag_ = logFlag
+        self.method_ = method
 
         self._load_training_data_pickle(training_set_path)
 
-        if self.transformDesign_:
-            self.design_min = np.min(self.design_points, axis=0)
-            self.design_max = np.max(self.design_points, axis=0)
-        else:
-            self.pardict = parse_model_parameter_file(parameter_file)
-            self.design_min = []
-            self.design_max = []
-            for par, val in self.pardict.items():
-                self.design_min.append(val[1])
-                self.design_max.append(val[2])
-            self.design_min = np.array(self.design_min)
-            self.design_max = np.array(self.design_max)
+        
+        self.pardict = parse_model_parameter_file(parameter_file)
+        self.design_min = []
+        self.design_max = []
+        for par, val in self.pardict.items():
+            self.design_min.append(val[1])
+            self.design_max.append(val[2])
+        self.design_min = np.array(self.design_min)
+        self.design_max = np.array(self.design_max)
 
-        self.nrestarts = nrestarts
         self.nev, self.nobs = self.model_data.shape
         self.nparameters = self.design_points.shape[1]
-
-
-    def _zeta_over_s(self, T, muB, bulkMax0, bulkMax1, bulkMax2,
-                     bulkTpeak0, bulkWhigh, bulkWlow):
-        if muB < 0.2:
-            bulkMax = bulkMax0 + (bulkMax1 - bulkMax0)/0.2*muB
-        elif muB < 0.4:
-            bulkMax = bulkMax1 + (bulkMax2 - bulkMax1)/0.2*(muB - 0.2)
-        else:
-            bulkMax = bulkMax2
-        bulkTpeak = bulkTpeak0 - 0.15*muB*muB
-        zeta_s = self._zeta_over_s_base(T, bulkMax, bulkTpeak,
-                                        bulkWhigh, bulkWlow)
-        return zeta_s
-
-    def _zeta_over_s_base(self, T, bulkMax, bulkTpeak, bulkWhigh, bulkWlow):
-        Tdiff = T - bulkTpeak
-        if Tdiff > 0:
-            Tdiff /= bulkWhigh
-        else:
-            Tdiff /= bulkWlow
-        zeta_s = bulkMax*np.exp(-Tdiff*Tdiff)
-        return zeta_s
-
-    def _transform_design(self, X):
-        """This function transform the parameters of bulk viscosity
-        to another representation for better emulation performance.
-        """
-        # pop out the bulk viscous parameters
-        indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-                   12, 13, 14, 16, 17,
-                   21]
-        new_design_X = X[:, indices]
-
-        #now append the values of eta/s and zeta/s at various temperatures
-        num_T = 10
-        Temperature_grid = np.linspace(0.12, 0.35, num_T)
-        #num_muB = 3
-        #muB_grid = np.linspace(0.0, 0.4, num_muB)
-        zeta_vals = []
-        for T_i in Temperature_grid:
-            #for muB_i in muB_grid:
-            zeta_vals.append(
-                self._vec_zeta_s(T_i, 0.0, X[:, 15], X[:, 15], X[:, 15],
-                                 X[:, 18], X[:, 19], X[:, 20])
-            )
-
-        zeta_vals = np.array(zeta_vals).T
-
-        new_design_X = np.concatenate( (new_design_X, zeta_vals), axis=1)
-        return new_design_X
 
     def _load_training_data_pickle(self, dataFile):
         """This function reads in training data sets at every sample point"""
@@ -128,69 +71,49 @@ class EmulatorBAND:
                 self.model_data_err.append(temp_data[:, 1])
         logging.info("Training dataset size: {}".format(len(self.model_data)))
         self.design_points = np.array(self.design_points)
-        self.design_points_org_ = np.copy(self.design_points)
         self.model_data = np.array(self.model_data)
-        self.model_data_err = np.nan_to_num(
-                np.abs(np.array(self.model_data_err)))
-        if self.transformDesign_:
-            self.design_points = self._transform_design(self.design_points)
+        self.model_data_err = np.nan_to_num(np.abs(np.array(self.model_data_err)))
         logging.info("All training data are loaded.")
 
     def trainEmulator(self, event_mask):
         logging.info('Performing emulator training ...')
+        nev, nobs = self.model_data[event_mask, :].shape
+        logging.info(
+            'Train GP emulators with {} training points ...'.format(nev))
 
-        if isinstance(event_mask, int):
-            event_idx_list = range(self.nev - event_mask)
-            train_event_mask = [False]*self.nev
-            for event_i in event_idx_list:
-                train_event_mask[event_i] = True
+        X = np.arange(nobs).reshape(-1, 1)
 
-            nev, nobs = self.model_data[train_event_mask, :].shape
-            logging.info(
-                'Train GP emulators with {} training points ...'.format(nev))
+        #print("x = ",X.shape)
+        #print("theta = ",self.design_points[event_mask, :].shape)
+        #print("f = ",self.model_data[event_mask, :].T.shape)
 
-            x = np.arange(nobs).reshape(-1, 1)
+        if self.method_ == 'PCGP':
+            self.emu = emulator(x=X,theta=self.design_points[event_mask, :],
+                            f=self.model_data[event_mask, :].T,
+                            method='PCGP',
+                            args={'warnings': True}
+                            )
+        elif self.method_ == 'PCSK':
+            simsd = 1e-3 * np.ones_like(self.model_data[event_mask, :].T)
 
-            print("x = ",x.shape)
-            print("theta = ",self.design_points[train_event_mask, :].shape)
-            print("f = ",self.model_data[train_event_mask, :].T.shape)
-
-            self.emu = emulator(x=self.x,theta=self.design_points[train_event_mask, :],
-                                f=self.model_data[train_event_mask, :].T,
-                                method='PCGP',
-                                args={'warnings': True}
+            self.emu = emulator(x=X,theta=self.design_points[event_mask, :],
+                                f=self.model_data[event_mask, :].T,
+                                method='PCSK',
+                                args={'warnings': True, 'simsd': simsd}
                                 )
         else:
-            nev, nobs = self.model_data[event_mask, :].shape
-            logging.info(
-                'Train GP emulators with {} training points ...'.format(nev))
-
-            x = np.arange(nobs).reshape(-1, 1)
-
-            print("x = ",x.shape)
-            print("theta = ",self.design_points[event_mask, :].shape)
-            print("f = ",self.model_data[event_mask, :].T.shape)
-
-            self.emu = emulator(x=x,theta=self.design_points[event_mask, :],
-                                f=self.model_data[event_mask, :].T,
-                                method='PCGP',
-                                args={'warnings': True}
-                                )
+            ValueError("Requested method not implemented!")
 
         
     def predict(self,X,theta):
         """
-        Predict model output at `X`.
+        Predict model output.
         """
         gp = self.emu.predict(x=X,theta=theta)
         #print(gp._info)
 
         fpredmean = gp.mean()
-        #fpredvar = gp.var()
         fpredcov = gp.covx().transpose((1, 0, 2))
-
-        print(fpredmean.shape)
-        print(fpredcov.shape)
 
         return (fpredmean, fpredcov)
     
@@ -203,6 +126,7 @@ class EmulatorBAND:
         It returns the emulator predictions, their errors,
         the actual values of observables and their errors as four arrays.
         """
+        rng = np.random.default_rng()
         emulator_predictions = []
         emulator_predictions_err = []
         validation_data = []
@@ -212,6 +136,7 @@ class EmulatorBAND:
             logging.info(
                 "Validation GP emulators iter = {} ...".format(iter_i))
             event_idx_list = range(self.nev - number_test_points, self.nev)
+            #event_idx_list = rng.choice(self.nev, number_test_points, replace=False)
             train_event_mask = [True]*self.nev
             for event_i in event_idx_list:
                 train_event_mask[event_i] = False
@@ -221,7 +146,7 @@ class EmulatorBAND:
             x = np.arange(self.nobs).reshape(-1, 1)
             pred_mean, pred_cov = self.predict(x,
                 self.design_points[validate_event_mask, :])
-            emulator_predictions.append(pred_mean)
+            emulator_predictions.append(pred_mean.T)
             emulator_predictions_err.append(pred_cov)
             
             if self.logFlag_:
@@ -242,12 +167,8 @@ class EmulatorBAND:
         validation_data = np.array(validation_data).reshape(-1, self.nobs)
         validation_data_err = np.array(validation_data_err).reshape(-1, self.nobs)
 
-        print(emulator_predictions.shape)
-        print(emulator_predictions_err.shape)
-
         return (emulator_predictions, emulator_predictions_err, 
                     validation_data, validation_data_err)
-
 
 
 if __name__ == '__main__':
