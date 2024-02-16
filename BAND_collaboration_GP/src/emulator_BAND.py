@@ -25,13 +25,10 @@ class EmulatorBAND:
     """
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt", 
-                 method='PCGP',logFlag=False):
-        self.logFlag_ = logFlag
+                 method='PCGP'):
         self.method_ = method
-
         self._load_training_data_pickle(training_set_path)
 
-        
         self.pardict = parse_model_parameter_file(parameter_file)
         self.design_min = []
         self.design_max = []
@@ -61,14 +58,8 @@ class EmulatorBAND:
                                                     event_id, statErrMax))
                 continue
             self.design_points.append(dataDict[event_id]["parameter"])
-            if self.logFlag_:
-                self.model_data.append(np.log(np.abs(temp_data[:, 0]) + 1e-30))
-                self.model_data_err.append(
-                    np.abs(temp_data[:, 1]/(temp_data[:, 0] + 1e-30))
-                )
-            else:
-                self.model_data.append(temp_data[:, 0])
-                self.model_data_err.append(temp_data[:, 1])
+            self.model_data.append(temp_data[:, 0])
+            self.model_data_err.append(temp_data[:, 1])
         logging.info("Training dataset size: {}".format(len(self.model_data)))
         self.design_points = np.array(self.design_points)
         self.model_data = np.array(self.model_data)
@@ -101,6 +92,16 @@ class EmulatorBAND:
                                 method='PCSK',
                                 args={'warnings': True, 'simsd': simsd}
                                 )
+        elif self.method_ == 'PCGPwImpute':
+            self.emu = emulator(x=X,theta=self.design_points[event_mask, :],
+                                f=self.model_data[event_mask, :].T,
+                                method='PCGPwImpute',
+                                args={'warnings': True})
+        elif self.method_ == 'PCGPwM':
+            self.emu = emulator(x=X,theta=self.design_points[event_mask, :],
+                                f=self.model_data[event_mask, :].T,
+                                method='PCGPwImpute',
+                                args={'warnings': True})
         else:
             ValueError("Requested method not implemented!")
 
@@ -110,7 +111,6 @@ class EmulatorBAND:
         Predict model output.
         """
         gp = self.emu.predict(x=X,theta=theta)
-        #print(gp._info)
 
         fpredmean = gp.mean()
         fpredcov = gp.covx().transpose((1, 0, 2))
@@ -126,7 +126,6 @@ class EmulatorBAND:
         It returns the emulator predictions, their errors,
         the actual values of observables and their errors as four arrays.
         """
-        rng = np.random.default_rng()
         emulator_predictions = []
         emulator_predictions_err = []
         validation_data = []
@@ -136,7 +135,6 @@ class EmulatorBAND:
             logging.info(
                 "Validation GP emulators iter = {} ...".format(iter_i))
             event_idx_list = range(self.nev - number_test_points, self.nev)
-            #event_idx_list = rng.choice(self.nev, number_test_points, replace=False)
             train_event_mask = [True]*self.nev
             for event_i in event_idx_list:
                 train_event_mask[event_i] = False
@@ -148,22 +146,13 @@ class EmulatorBAND:
                 self.design_points[validate_event_mask, :])
             emulator_predictions.append(pred_mean.T)
             emulator_predictions_err.append(pred_cov)
+
+            validation_data.append(self.model_data[validate_event_mask, :])
+            validation_data_err.append(
+                self.model_data_err[validate_event_mask, :])
             
-            if self.logFlag_:
-                validation_data.append(
-                    np.exp(self.model_data[validate_event_mask, :])
-                )
-                validation_data_err.append(
-                    self.model_data_err[validate_event_mask, :]
-                    *np.exp(self.model_data[validate_event_mask, :])
-                )
-            else:
-                validation_data.append(self.model_data[validate_event_mask, :])
-                validation_data_err.append(
-                    self.model_data_err[validate_event_mask, :]
-                )
         emulator_predictions = np.array(emulator_predictions).reshape(-1, self.nobs)
-        emulator_predictions_err = np.array(emulator_predictions_err).reshape(-1 , self.nobs, self.nobs)
+        emulator_predictions_err = np.array(emulator_predictions_err).reshape(-1, self.nobs, self.nobs)
         validation_data = np.array(validation_data).reshape(-1, self.nobs)
         validation_data_err = np.array(validation_data_err).reshape(-1, self.nobs)
 
