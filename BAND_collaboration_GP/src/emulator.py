@@ -28,7 +28,11 @@ from sklearn.model_selection import learning_curve
 #from sklearn.externals import joblib
 import joblib
 
+<<<<<<< HEAD
 #from gp_extras.kernels import HeteroscedasticKernel
+=======
+from gp_extras.kernels import HeteroscedasticKernel
+>>>>>>> origin/Afrid
 from sklearn.cluster import KMeans
 
 from . import cachedir, parse_model_parameter_file
@@ -53,6 +57,7 @@ class Emulator:
 
     """
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
+<<<<<<< HEAD
                  npc=10, nrestarts=0):
         #self._load_training_data(training_set_path)
         self._load_training_data_pickle(training_set_path)
@@ -65,6 +70,28 @@ class Emulator:
             self.design_max.append(val[2])
         self.design_min = np.array(self.design_min)
         self.design_max = np.array(self.design_max)
+=======
+                 npc=10, nrestarts=0, retrain=False, transformDesign=False):
+        self._vec_zeta_s = np.vectorize(self._zeta_over_s)
+        self.transformDesign_ = transformDesign
+        
+
+        #self._load_training_data(training_set_path)
+        self._load_training_data_pickle(training_set_path)
+
+        if self.transformDesign_:
+            self.design_min = np.min(self.design_points, axis=0)
+            self.design_max = np.max(self.design_points, axis=0)
+        else:
+            self.pardict = parse_model_parameter_file(parameter_file)
+            self.design_min = []
+            self.design_max = []
+            for par, val in self.pardict.items():
+                self.design_min.append(val[1])
+                self.design_max.append(val[2])
+            self.design_min = np.array(self.design_min)
+            self.design_max = np.array(self.design_max)
+>>>>>>> origin/Afrid
 
         self.npc = npc
         self.nrestarts = nrestarts
@@ -196,6 +223,12 @@ class Emulator:
         return Y
 
 
+<<<<<<< HEAD
+=======
+  
+
+
+>>>>>>> origin/Afrid
     def _load_training_data_pickle(self, dataFile):
         """This function read in training data set at every sample point"""
         logging.info("loading training data from {} ...".format(dataFile))
@@ -221,6 +254,11 @@ class Emulator:
         self.model_data = np.array(self.model_data)
         self.model_data_err = np.nan_to_num(
                 np.abs(np.array(self.model_data_err)))
+<<<<<<< HEAD
+=======
+        if self.transformDesign_:
+            self.design_points = self._transform_design(self.design_points)
+>>>>>>> origin/Afrid
         logging.info("All training data are loaded.")
 
 
@@ -230,6 +268,62 @@ class Emulator:
         return(relErr)
 
 
+<<<<<<< HEAD
+=======
+    def _transform_design(self, X):
+        """This function transform the parameters of bulk viscosity
+        to another representation for better emulation performance.
+        """
+        # pop out the bulk viscous parameters
+        indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                   12, 13, 14, 16, 17,
+                   21]
+        new_design_X = X[:, indices]
+
+        #now append the values of eta/s and zeta/s at various temperatures
+        num_T = 10
+        Temperature_grid = np.linspace(0.12, 0.35, num_T)
+        #num_muB = 3
+        #muB_grid = np.linspace(0.0, 0.4, num_muB)
+        zeta_vals = []
+        for T_i in Temperature_grid:
+            #for muB_i in muB_grid:
+            zeta_vals.append(
+                self._vec_zeta_s(T_i, 0.0, X[:, 15], X[:, 15], X[:, 15],
+                                 X[:, 18], X[:, 19], X[:, 20])
+            )
+
+        zeta_vals = np.array(zeta_vals).T
+
+        new_design_X = np.concatenate( (new_design_X, zeta_vals), axis=1)
+        return new_design_X
+
+
+    def _zeta_over_s(self, T, muB, bulkMax0, bulkMax1, bulkMax2,
+                     bulkTpeak0, bulkWhigh, bulkWlow):
+        if muB < 0.2:
+            bulkMax = bulkMax0 + (bulkMax1 - bulkMax0)/0.2*muB
+        elif muB < 0.4:
+            bulkMax = bulkMax1 + (bulkMax2 - bulkMax1)/0.2*(muB - 0.2)
+        else:
+            bulkMax = bulkMax2
+        bulkTpeak = bulkTpeak0 - 0.15*muB*muB
+        zeta_s = self._zeta_over_s_base(T, bulkMax, bulkTpeak,
+                                        bulkWhigh, bulkWlow)
+        return zeta_s
+
+
+    def _zeta_over_s_base(self, T, bulkMax, bulkTpeak, bulkWhigh, bulkWlow):
+        Tdiff = T - bulkTpeak
+        if Tdiff > 0:
+            Tdiff /= bulkWhigh
+        else:
+            Tdiff /= bulkWlow
+        zeta_s = bulkMax*np.exp(-Tdiff*Tdiff)
+        return zeta_s
+
+
+>>>>>>> origin/Afrid
     def print_learning_curve(self):
         Z = self.pca.fit_transform(
                 self.scaler.fit_transform(self.model_data))[:, :self.npc]
@@ -293,6 +387,12 @@ class Emulator:
         It may either be a scalar or an array-like of length nsamples.
 
         """
+<<<<<<< HEAD
+=======
+        if self.transformDesign_:
+            X = self._transform_design(X)
+
+>>>>>>> origin/Afrid
         gp_mean = [gp.predict(X, return_cov=return_cov) for gp in self.gps]
 
         if return_cov:
@@ -302,6 +402,11 @@ class Emulator:
             np.concatenate([m[:, np.newaxis] for m in gp_mean], axis=1)
         )
 
+<<<<<<< HEAD
+=======
+     
+
+>>>>>>> origin/Afrid
         if return_cov:
             # Build array of the GP predictive variances at each sample point.
             # shape: (nsamples, npc)
@@ -336,6 +441,11 @@ class Emulator:
         """
         # Sample the GP for each emulated PC.  The remaining components are
         # assumed to have a standard normal distribution.
+<<<<<<< HEAD
+=======
+        if self.transformDesign_:
+            X = self._transform_design(X)
+>>>>>>> origin/Afrid
         return self._inverse_transform(
             np.concatenate([
                 gp.sample_y(
@@ -359,6 +469,10 @@ class Emulator:
         It returns the emulator predictions, their errors,
         the actual values of observabels and their errors as four arrays.
         """
+<<<<<<< HEAD
+=======
+        rng = np.random.default_rng()
+>>>>>>> origin/Afrid
         emulatorPreds = []
         emulatorPredsErr = []
         validationData = []
@@ -366,6 +480,10 @@ class Emulator:
         for iter_i in range(nIters):
             logging.info(
                     "Validating GP emulators iter = {} ...".format(iter_i))
+<<<<<<< HEAD
+=======
+            #eventIdxList = rng.choice(self.nev, nTestPoints, replace=False)
+>>>>>>> origin/Afrid
             eventIdxList = range(self.nev - nTestPoints, self.nev)
             trainEventMask = [True]*self.nev
             for event_i in eventIdxList:
@@ -384,14 +502,25 @@ class Emulator:
             emulatorPredsErr.append(predCov)
             
             validationData.append(self.model_data[validateEventMask, :])
+<<<<<<< HEAD
+=======
+            print(validationData)
+>>>>>>> origin/Afrid
             validationDataErr.append(
                         self.model_data_err[validateEventMask, :]
                 )
         emulatorPreds = np.array(emulatorPreds).reshape(-1, self.nobs)
+<<<<<<< HEAD
         emulatorPredsErr = np.array(emulatorPredsErr).reshape(-1, self.nobs, self.nobs)
         validationData = np.array(validationData).reshape(-1, self.nobs)
         validationDataErr = np.array(validationDataErr).reshape(-1, self.nobs)
         return (emulatorPreds, emulatorPredsErr,
+=======
+        emulatorPredsErr = np.array(emulatorPredsErr).reshape(-1, self.nobs)
+        validationData = np.array(validationData).reshape(-1, self.nobs)
+        validationDataErr = np.array(validationDataErr).reshape(-1, self.nobs)
+        return(emulatorPreds, emulatorPredsErr,
+>>>>>>> origin/Afrid
                validationData, validationDataErr)
 
 
