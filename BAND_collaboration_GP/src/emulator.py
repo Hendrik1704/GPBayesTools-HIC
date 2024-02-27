@@ -53,7 +53,8 @@ class Emulator:
 
     """
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
-                 npc=10, nrestarts=0):
+                 npc=10, nrestarts=0, logTrafo=False):
+        self.logTrafo_ = logTrafo
         #self._load_training_data(training_set_path)
         self._load_training_data_pickle(training_set_path)
 
@@ -75,7 +76,7 @@ class Emulator:
 
 
     def outputPCAvsParam(self):
-        logging.info('Perforing PCA ...')
+        logging.info('Performing PCA ...')
         Z = self.pca.fit_transform(
                 self.scaler.fit_transform(self.model_data)
         )[:, :self.npc]
@@ -85,7 +86,7 @@ class Emulator:
     def trainEmulator(self, eventMask):
         # Standardize observables and transform through PCA.  Use the first
         # `npc` components but save the full PC transformation for later.
-        logging.info('Perforing PCA ...')
+        logging.info('Performing PCA ...')
         Z = self.pca.fit_transform(
                 self.scaler.fit_transform(self.model_data[eventMask, :])
         )[:, :self.npc]
@@ -205,23 +206,32 @@ class Emulator:
         with open(dataFile, "rb") as fp:
             dataDict = pickle.load(fp)
 
+        discarded_points = 0
         for event_id in dataDict.keys():
             temp_data = dataDict[event_id]["obs"].transpose()
             statErrMax = np.abs((temp_data[:, 1]/(temp_data[:, 0]+1e-16))).max()
             if statErrMax > 0.1:
                 logging.info("Discard Parameter {}, stat err = {:.2f}".format(
                                                     event_id, statErrMax))
+                discarded_points += 1
                 continue
             self.design_points.append(dataDict[event_id]["parameter"])
-            self.model_data.append(temp_data[:, 0])
-            self.model_data_err.append(temp_data[:, 1])
-        logging.info("Training dataset size: {}".format(len(self.model_data)))
+            if self.logTrafo_ == False:
+                self.model_data.append(temp_data[:, 0])
+                self.model_data_err.append(temp_data[:, 1])
+            else:
+                self.model_data.append(np.log(np.abs(temp_data[:, 0]) + 1e-30))
+                self.model_data_err.append(
+                    np.abs(temp_data[:, 1]/(temp_data[:, 0] + 1e-30))
+                )
         self.design_points = np.array(self.design_points)
         self.design_points_org_ = np.copy(self.design_points)
         self.model_data = np.array(self.model_data)
         self.model_data_err = np.nan_to_num(
                 np.abs(np.array(self.model_data_err)))
         logging.info("All training data are loaded.")
+        logging.info("Training dataset size: {}, discarded points: {}".format(
+            len(self.model_data),discarded_points))
 
 
     def getAvgTrainingDataRelError(self,):
@@ -320,7 +330,6 @@ class Emulator:
             )
             cov += self._cov_trunc
 
-
             return mean, cov
         else:
             return mean
@@ -350,50 +359,50 @@ class Emulator:
         )
 
 
-    def testEmulatorErrors(self, nTestPoints=1, nIters=1):
+    def testEmulatorErrors(self, nTestPoints=1):
         """
         This function uses (nev - nTestPoints) points to train the emulator
         and use nTestPoints points to test the emulator in each iteration.
-        In each iteraction, the nTestPoints data points are randomly
-        chosen.
         It returns the emulator predictions, their errors,
-        the actual values of observabels and their errors as four arrays.
+        the actual values of observables and their errors as four arrays.
         """
         emulatorPreds = []
         emulatorPredsErr = []
         validationData = []
         validationDataErr = []
-        for iter_i in range(nIters):
-            logging.info(
-                    "Validating GP emulators iter = {} ...".format(iter_i))
-            eventIdxList = range(self.nev - nTestPoints, self.nev)
-            trainEventMask = [True]*self.nev
-            for event_i in eventIdxList:
-                trainEventMask[event_i] = False
-            self.trainEmulator(trainEventMask)
-            validateEventMask = [not i for i in trainEventMask]
 
-            pred, predCov = self.predict(
-                self.design_points_org_[validateEventMask, :], return_cov=True)
-            emulatorPreds.append(pred)
-            '''
-            predErr = np.zeros([nTestPoints, self.nobs])
-            for iobs in range(self.nobs):
-                predErr[:, iobs] = np.sqrt(predCov[:, iobs, iobs])
-                '''
-            emulatorPredsErr.append(predCov)
-            
-            validationData.append(self.model_data[validateEventMask, :])
-            validationDataErr.append(
-                        self.model_data_err[validateEventMask, :]
-                )
+        logging.info("Validating GP emulator ...")
+        eventIdxList = range(self.nev - nTestPoints, self.nev)
+        trainEventMask = [True]*self.nev
+        for event_i in eventIdxList:
+            trainEventMask[event_i] = False
+        self.trainEmulator(trainEventMask)
+        validateEventMask = [not i for i in trainEventMask]
+
+        pred, predCov = self.predict(
+            self.design_points_org_[validateEventMask, :], return_cov=True)
+        pred_var = np.sqrt(np.array([predCov[i].diagonal() for i in range(predCov.shape[0])]))
+        
+        if self.logTrafo_:
+            emulatorPreds = np.exp(pred)
+            emulatorPredsErr = pred_var*np.exp(pred)
+        else:
+            emulatorPreds = pred
+            emulatorPredsErr = pred_var
+        
+        if self.logTrafo_:
+            validationData = np.exp(self.model_data[validateEventMask, :])
+            validationDataErr = self.model_data_err[validateEventMask, :]*np.exp(self.model_data[validateEventMask, :])
+        else:
+            validationData = self.model_data[validateEventMask, :]
+            validationDataErr = self.model_data_err[validateEventMask, :]
+        
         emulatorPreds = np.array(emulatorPreds).reshape(-1, self.nobs)
-        emulatorPredsErr = np.array(emulatorPredsErr).reshape(-1, self.nobs, self.nobs)
+        emulatorPredsErr = np.array(emulatorPredsErr).reshape(-1, self.nobs)
         validationData = np.array(validationData).reshape(-1, self.nobs)
         validationDataErr = np.array(validationDataErr).reshape(-1, self.nobs)
         return (emulatorPreds, emulatorPredsErr,
                validationData, validationDataErr)
-
 
 
 if __name__ == '__main__':
