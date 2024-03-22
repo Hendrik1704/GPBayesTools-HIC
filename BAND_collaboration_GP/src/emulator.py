@@ -82,6 +82,9 @@ class Emulator:
         )[:, :self.npc]
         return(self.design_points, Z.T)
 
+    def trainEmulatorAutoMask(self):
+        trainEventMask = [True]*self.nev
+        self.trainEmulator(trainEventMask)
 
     def trainEmulator(self, eventMask):
         # Standardize observables and transform through PCA.  Use the first

@@ -16,6 +16,7 @@ import logging
 import numpy as np
 import pickle
 from surmise.emulation import emulator
+import joblib
 
 from . import cachedir, parse_model_parameter_file
 
@@ -76,6 +77,10 @@ class EmulatorBAND:
         logging.info("All training data are loaded.")
         logging.info("Training dataset size: {}, discarded points: {}".format(
             len(self.model_data),discarded_points))
+
+    def trainEmulatorAutoMask(self):
+        trainEventMask = [True]*self.nev
+        self.trainEmulator(trainEventMask)
 
     def trainEmulator(self, event_mask):
         logging.info('Performing emulator training ...')
