@@ -70,7 +70,6 @@ class EmulatorBAND:
 
         discarded_points = 0
         for event_id in sorted_event_ids:
-            print(event_id)
             temp_data = dataDict[event_id]["obs"].transpose()
             statErrMax = np.abs((temp_data[:, 1]/(temp_data[:, 0]+1e-16))).max()
             if statErrMax > 0.1:
