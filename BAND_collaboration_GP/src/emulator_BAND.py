@@ -16,7 +16,8 @@ import logging
 import numpy as np
 import pickle
 from surmise.emulation import emulator
-import joblib
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 from . import cachedir, parse_model_parameter_file
 
@@ -27,9 +28,10 @@ class EmulatorBAND:
     """
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt", 
-                 method='PCGP',logTrafo=False):
+                 method='PCGP',logTrafo=False,parameterTrafoPCA=False):
         self.method_ = method
         self.logTrafo_ = logTrafo 
+        self.parameterTrafoPCA_ = parameterTrafoPCA
         self._load_training_data_pickle(training_set_path)
 
         self.pardict = parse_model_parameter_file(parameter_file)
@@ -44,6 +46,16 @@ class EmulatorBAND:
         self.nev, self.nobs = self.model_data.shape
         self.nparameters = self.design_points.shape[1]
 
+        if self.parameterTrafoPCA_:
+            self.paramTrafoScaler = StandardScaler()
+            self.targetVariance = 0.99
+            self.paramTrafoPCA = PCA(n_components=self.targetVariance)# 0.99 is the minimum of explained variance
+            logging.info("Prepare bulk viscosity parameter PCA ...")
+            self.indices_zeta_s_parameters = [15,18,19,20] # zeta_max,T_zeta0,sigma_plus,sigma_minus
+            self.perform_bulk_viscosity_PCA()
+            self.nparameters = self.PCA_new_design_points.shape[1]
+
+
     def _load_training_data_pickle(self, dataFile):
         """This function reads in training data sets at every sample point"""
         logging.info("loading training data from {} ...".format(dataFile))
@@ -53,8 +65,12 @@ class EmulatorBAND:
         with open(dataFile, "rb") as fp:
             dataDict = pickle.load(fp)
 
+        # Sort keys in ascending order
+        sorted_event_ids = sorted(dataDict.keys(), key=lambda x: int(x))
+
         discarded_points = 0
-        for event_id in dataDict.keys():
+        for event_id in sorted_event_ids:
+            print(event_id)
             temp_data = dataDict[event_id]["obs"].transpose()
             statErrMax = np.abs((temp_data[:, 1]/(temp_data[:, 0]+1e-16))).max()
             if statErrMax > 0.1:
@@ -78,24 +94,74 @@ class EmulatorBAND:
         logging.info("Training dataset size: {}, discarded points: {}".format(
             len(self.model_data),discarded_points))
 
+
+    def parametrization_zeta_over_s_vs_T(self,zeta_max,T_zeta0,
+                                         sigma_plus,sigma_minus,T,mu_B):
+        T_zeta_muB = T_zeta0 - 0.15*mu_B**2.
+        if T < T_zeta0:
+            return zeta_max * np.exp(-(T-T_zeta_muB)**2./(2.*sigma_minus**2.))
+        else:
+            return zeta_max * np.exp(-(T-T_zeta_muB)**2./(2.*sigma_plus**2.))
+
+
+    def perform_bulk_viscosity_PCA(self):
+        # get the corresponding parameters for the training points
+        bulk_viscosity_parameters = self.design_points[:,self.indices_zeta_s_parameters]
+        T_range = np.linspace(0.0, 0.35, 100)
+        data_functions = []
+        # Iterate over each parameter set
+        for p in range(self.nev):
+            # Evaluate the function for each temperature value in T_range
+            parameter_function = [self.parametrization_zeta_over_s_vs_T(
+                bulk_viscosity_parameters[p, 0], bulk_viscosity_parameters[p, 1],
+                bulk_viscosity_parameters[p, 2], bulk_viscosity_parameters[p, 3],
+                T, 0.0) for T in T_range]
+            data_functions.append(parameter_function)
+
+        data_functions = np.array(data_functions)
+        scaled_data_functions = self.paramTrafoScaler.fit_transform(data_functions)
+        self.paramTrafoPCA.fit(scaled_data_functions)
+
+        # Get the number of components needed to achieve the target variance
+        n_components = self.paramTrafoPCA.n_components_
+        logging.info(f"Bulk viscosity parameter PCA uses {n_components} PCs to explain {self.targetVariance*100}% of the variance ...")
+
+        # Get the principal components
+        # principal_components will have shape (1000, n_components)
+        principal_components = self.paramTrafoPCA.transform(scaled_data_functions)
+
+        # Modify the design points
+        new_design_points = np.delete(self.design_points, self.indices_zeta_s_parameters, axis=1)
+        new_design_points = np.concatenate((new_design_points, principal_components), axis=1)
+        self.PCA_new_design_points = new_design_points
+
+        # delete the parameters from the pardict and add the new ones
+        self.design_min = np.delete(self.design_min, self.indices_zeta_s_parameters)
+        self.design_max = np.delete(self.design_max, self.indices_zeta_s_parameters)
+        min_values_PC = np.min(principal_components, axis=0)
+        max_values_PC = np.max(principal_components, axis=0)
+        self.design_min = np.concatenate((self.design_min,min_values_PC))
+        self.design_max = np.concatenate((self.design_max,max_values_PC))
+
+
     def trainEmulatorAutoMask(self):
         trainEventMask = [True]*self.nev
         self.trainEmulator(trainEventMask)
+
 
     def trainEmulator(self, event_mask):
         logging.info('Performing emulator training ...')
         nev, nobs = self.model_data[event_mask, :].shape
         logging.info(
             'Train GP emulators with {} training points ...'.format(nev))
-
         X = np.arange(nobs).reshape(-1, 1)
 
-        #print("x = ",X.shape)
-        #print("theta = ",self.design_points[event_mask, :].shape)
-        #print("f = ",self.model_data[event_mask, :].T.shape)
+        design_points = self.design_points[event_mask, :]
+        if self.parameterTrafoPCA_:
+            design_points = self.PCA_new_design_points[event_mask, :]
 
         if self.method_ == 'PCGP':
-            self.emu = emulator(x=X,theta=self.design_points[event_mask, :],
+            self.emu = emulator(x=X,theta=design_points,
                             f=self.model_data[event_mask, :].T,
                             method='PCGP',
                             args={'warnings': True}
@@ -103,36 +169,95 @@ class EmulatorBAND:
         elif self.method_ == 'PCSK':
             sim_sdev = self.model_data_err[event_mask, :].T
 
-            self.emu = emulator(x=X,theta=self.design_points[event_mask, :],
+            self.emu = emulator(x=X,theta=design_points,
                                 f=self.model_data[event_mask, :].T,
                                 method='PCSK',
                                 args={'warnings': True, 'simsd': sim_sdev}
                                 )
         elif self.method_ == 'PCGPwImpute':
-            self.emu = emulator(x=X,theta=self.design_points[event_mask, :],
+            self.emu = emulator(x=X,theta=design_points,
                                 f=self.model_data[event_mask, :].T,
                                 method='PCGPwImpute',
                                 args={'warnings': True})
         elif self.method_ == 'PCGPwM':
-            self.emu = emulator(x=X,theta=self.design_points[event_mask, :],
+            self.emu = emulator(x=X,theta=design_points,
                                 f=self.model_data[event_mask, :].T,
                                 method='PCGPwImpute',
                                 args={'warnings': True})
         else:
             ValueError("Requested method not implemented!")
 
-        
-    def predict(self,X,theta):
+
+    def predict_test_emu_errors(self,X,theta):
         """
         Predict model output.
         """
-        gp = self.emu.predict(x=X,theta=theta)
+        if self.parameterTrafoPCA_:
+            bulk_viscosity_parameters = theta[:,self.indices_zeta_s_parameters]
+            T_range = np.linspace(0.0, 0.35, 100)
+            data_functions = []
+            for p in range(theta.shape[0]):
+                parameter_function = [self.parametrization_zeta_over_s_vs_T(
+                    bulk_viscosity_parameters[p, 0], bulk_viscosity_parameters[p, 1],
+                    bulk_viscosity_parameters[p, 2], bulk_viscosity_parameters[p, 3],
+                    T, 0.0) for T in T_range]
+                data_functions.append(parameter_function)
+            data_functions = np.array(data_functions)
+
+            scaled_data = self.paramTrafoScaler.transform(data_functions)
+            projected_parameters = self.paramTrafoPCA.transform(scaled_data)
+
+            new_theta = np.delete(theta, self.indices_zeta_s_parameters, axis=1)
+            new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
+
+            gp = self.emu.predict(x=X,theta=new_theta)
+        else:
+            gp = self.emu.predict(x=X,theta=theta)
 
         fpredmean = gp.mean()
         fpredcov = gp.covx().transpose((1, 0, 2))
 
         return (fpredmean, fpredcov)
-    
+
+
+    def predict(self,X,return_cov=True, extra_std=0.0):
+        """
+        Predict model output. Here X is the parameter vector at the prediction
+        point.
+        """
+        x = np.arange(self.nobs).reshape(-1, 1)
+
+        if self.parameterTrafoPCA_:
+            bulk_viscosity_parameters = X[:,self.indices_zeta_s_parameters]
+            T_range = np.linspace(0.0, 0.35, 100)
+            data_functions = []
+            for p in range(X.shape[0]):
+                parameter_function = [self.parametrization_zeta_over_s_vs_T(
+                    bulk_viscosity_parameters[p, 0], bulk_viscosity_parameters[p, 1],
+                    bulk_viscosity_parameters[p, 2], bulk_viscosity_parameters[p, 3],
+                    T, 0.0) for T in T_range]
+                data_functions.append(parameter_function)
+            data_functions = np.array(data_functions)
+
+            scaled_data = self.paramTrafoScaler.transform(data_functions)
+            projected_parameters = self.paramTrafoPCA.transform(scaled_data)
+
+            new_theta = np.delete(X, self.indices_zeta_s_parameters, axis=1)
+            new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
+
+            gp = self.emu.predict(x=x,theta=new_theta)
+        else:
+            gp = self.emu.predict(x=x,theta=X)
+
+        fpredmean = gp.mean()
+        fpredcov = gp.covx().transpose((1, 0, 2))
+
+        if return_cov:
+            return (fpredmean.T, fpredcov)
+        else:
+            return fpredmean.T
+
+
     def testEmulatorErrors(self, number_test_points=1):
         """
         This function uses (nev - number_test_points) points to train the 
@@ -155,7 +280,7 @@ class EmulatorBAND:
         validate_event_mask = [not i for i in train_event_mask]
 
         x = np.arange(self.nobs).reshape(-1, 1)
-        pred_mean, pred_cov = self.predict(x,
+        pred_mean, pred_cov = self.predict_test_emu_errors(x,
             self.design_points[validate_event_mask, :])
         pred_mean = pred_mean.T
         pred_var = np.sqrt(np.array([pred_cov[i].diagonal() for i in range(pred_cov.shape[0])]))
