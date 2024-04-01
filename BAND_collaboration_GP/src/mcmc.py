@@ -30,13 +30,11 @@ import pickle
 
 from pathlib import Path
 import emcee
-import ptemcee
 import h5py
 import numpy as np
 from scipy.linalg import lapack
 import matplotlib.pyplot as plt
 import dill
-import time
 
 from multiprocessing import Pool
 from multiprocessing import cpu_count
@@ -129,7 +127,6 @@ class Chain:
     def __init__(self, mcmc_path="./mcmc/chain.h5",
                  expdata_path="./exp_data.dat",
                  model_parafile="./model.dat",
-                 usePTSampler=False,
     ):
         logging.info('Initializing MCMC ...')
         self.mcmc_path = Path(mcmc_path)
@@ -158,12 +155,7 @@ class Chain:
         diff =  self.max - self.min
         self.prior_volume_ = np.prod( diff )
 
-        self.usePTSampler_ = usePTSampler
-        if self.usePTSampler_:
-            logging.info("Run MCMC with ptemcee...")
-        else:
-            logging.info("Run MCMC with emcee...")
-
+        logging.info("Run MCMC with emcee...")
         # load the experimental data to be fit
         logging.info(
             'Loading the experiment data from {} ...'.format(expdata_path))
@@ -186,7 +178,7 @@ class Chain:
 
 
     def loadEmulator(self, emulatorPathList):
-        for emuPath in emulatorPathList:
+        for i, emuPath in enumerate(emulatorPathList):
             with open(emuPath, 'rb') as f:
                 emu_i = dill.load(f)
                 self.emuList.append(emu_i)
@@ -201,7 +193,7 @@ class Chain:
         X0[:, 16] = X[:, 15]; X0[:, 17] = X[:, 15]
         X1[:, 15] = X[:, 16]; X1[:, 17] = X[:, 16]
         X2[:, 15] = X[:, 17]; X2[:, 16] = X[:, 17]
-        # X0=200 GeV, X1=19 GeV, X2=7.7 GeV
+        # X0=200 GeV data, X1=19 GeV data, X2=7.7 GeV data
         XList = [X0, X0, X0, X0, X1, X1, X1, X2, X2]
         modelPred = np.zeros([nPreds, self.nobs])
         modelPredCov = np.zeros([nPreds, self.nobs, self.nobs])
@@ -335,10 +327,10 @@ class Chain:
                 logging.info("Discard Parameter {}, stat err = {:.2f}".format(
                                                     event_id, statErrMax))
                 continue
-            
+
             model_data.append(temp_data[:, 0])
             model_data_err.append(temp_data[:, 1])
-        #logging.info("Training dataset size: {}".format(len(self.model_data))
+        logging.info("Training dataset size: {}".format(len(model_data)))
         model_data = np.array(model_data)
         model_data_err = np.nan_to_num(
                 np.abs(np.array(model_data_err)))
@@ -407,112 +399,53 @@ class Chain:
             nwalkers = dset.shape[0]
 
         logging.info('Starting MCMC ...')
-        if self.usePTSampler_:
-            ntemps = 1
-            logging.info("Using PTSampler with ntemps = {} ...".format(ntemps))
-            ncpu = cpu_count()
-            logging.info("Use {0} CPUs".format(ncpu))
-            Tmax=np.inf
-            with Pool() as pool:
-                sampler=ptemcee.Sampler(nwalkers, self.ndim,
-                                        self.log_likelihood, self.log_prior,
-                                        ntemps, Tmax, pool=pool)
-                logging.info("Running burn-in phase")
-                nburn0 = nburnsteps
-                pos0 = np.random.uniform(self.min, self.max,
-                                         (ntemps, nwalkers, self.ndim))
-                start = time.time()
-                sampler.run_mcmc(pos0, nburn0, adapt=True)
-                end = time.time()
-                logging.info("... finished in {} sec".format(end - start))
-                logging.info(
-                        "sampler.chain.shape: {}".format(sampler.chain.shape))
-                logging.info("betas = {}".format(sampler.betas))
+        sampler = LoggingEnsembleSampler(
+            nwalkers, self.ndim, self.log_posterior, pool=self
+        )
 
-                #get the last step of the chain
-                pos0 = sampler.chain[:, :, -1, :]
-                logging.info("pos0.shape " + str(pos0.shape))
-                sampler.reset()
+        if burnFlag:
+            logging.info(
+                    'no existing chain found, starting initial burn-in')
 
-                logging.info("Running MCMC chains")
-                niters = 10
-                for iter in range(niters):
-                    logging.info("betas = {}".format(sampler.betas))
-                    logging.info("iteration {} ...".format(iter))
-                    start = time.time()
-                    sampler.run_mcmc(pos0, nsteps // 10)
-                    end = time.time()
-                    logZ, dlogZ = sampler.log_evidence_estimate()
-                    logging.info("logZ = {} +/- {}".format(logZ, dlogZ))
-                    logging.info("... finished in {} sec".format(end - start))
-
-                logging.info(
-                        "sampler.chain.shape: {}".format(sampler.chain.shape))
-
-                thinedChain = sampler.chain[:, :, ::nthin, :]
-                self.chain = thinedChain
-                chainLen = thinedChain.shape[2]
-
-                logging.info('writing chain to file')
-                dset.resize(dset.shape[1] + chainLen, 1)
-                #save only the zero temperature chain
-                dset[:, -chainLen:, :] = thinedChain[0, :, :, :]
-
-                #save the thermodynamic log evidence
-                #logZ, dlogZ = sampler.thermodynamic_integration_log_evidence()
-                logZ, dlogZ = sampler.log_evidence_estimate()
-                logging.info("logZ = {} +/- {}".format(logZ, dlogZ))
-                with open('./mcmc/chain-info.dat', 'w') as f:
-                    f.write('logZ ' + str(logZ) + '\n')
-                    f.write('dlogZ ' + str(dlogZ))
-        else:
-            sampler = LoggingEnsembleSampler(
-                nwalkers, self.ndim, self.log_posterior, pool=self
+            # Run first half of burn-in starting from random positions.
+            nburn0 = nburnsteps // 2
+            sampler.run_mcmc(
+                self.random_pos(nwalkers),
+                nburn0,
+                status=status
             )
+            logging.info('resampling walker positions')
+            # Reposition walkers to the most likely points in the chain,
+            # then run the second half of burn-in.  This significantly
+            # accelerates burn-in and helps prevent stuck walkers.
+            X0 = sampler.flatchain[
+                np.unique(
+                    sampler.flatlnprobability,
+                    return_index=True
+                )[1][-nwalkers:]
+            ]
+            sampler.reset()
+            X0 = sampler.run_mcmc(
+                X0,
+                nburnsteps - nburn0,
+                status=status,
+            )
+            sampler.reset()
+            logging.info('burn-in complete, starting production')
+        else:
+            logging.info('restarting from last point of existing chain')
+            print("dset dimension ", dset.shape)
+            X0 = dset[:, -1, :]
 
-            if burnFlag:
-                logging.info(
-                        'no existing chain found, starting initial burn-in')
+        sampler.run_mcmc(X0, nsteps, status=status)
 
-                # Run first half of burn-in starting from random positions.
-                nburn0 = nburnsteps // 2
-                sampler.run_mcmc(
-                    self.random_pos(nwalkers),
-                    nburn0,
-                    status=status
-                )
-                logging.info('resampling walker positions')
-                # Reposition walkers to the most likely points in the chain,
-                # then run the second half of burn-in.  This significantly
-                # accelerates burn-in and helps prevent stuck walkers.
-                X0 = sampler.flatchain[
-                    np.unique(
-                        sampler.flatlnprobability,
-                        return_index=True
-                    )[1][-nwalkers:]
-                ]
-                sampler.reset()
-                X0 = sampler.run_mcmc(
-                    X0,
-                    nburnsteps - nburn0,
-                    status=status,
-                )
-                sampler.reset()
-                logging.info('burn-in complete, starting production')
-            else:
-                logging.info('restarting from last point of existing chain')
-                print("dset dimension ", dset.shape)
-                X0 = dset[:, -1, :]
+        thinedChain = sampler.chain[:, ::nthin, :]
+        self.chain = thinedChain
 
-            sampler.run_mcmc(X0, nsteps, status=status)
-
-            thinedChain = sampler.chain[:, ::nthin, :]
-            self.chain = thinedChain
-
-            chainLen = thinedChain.shape[1]
-            logging.info('writing chain to file')
-            dset.resize(dset.shape[1] + chainLen, 1)
-            dset[:, -chainLen:, :] = thinedChain
+        chainLen = thinedChain.shape[1]
+        logging.info('writing chain to file')
+        dset.resize(dset.shape[1] + chainLen, 1)
+        dset[:, -chainLen:, :] = thinedChain
         hf.close()
 
 
@@ -557,7 +490,6 @@ class Chain:
         for model_res in model_Y:
             plt.plot(range(len(self.expdata)), model_res, color='r', alpha=0.2)
         plt.show()
-
 
 
 def main():
