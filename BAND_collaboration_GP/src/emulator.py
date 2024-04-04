@@ -86,6 +86,33 @@ class Emulator:
             return zeta_max * np.exp(-(T-T_zeta_muB)**2./(2.*sigma_plus**2.))
 
 
+    def parametrization_zeta_over_s_vs_T(self,zeta_max,T_zeta0,
+                                         sigma_plus,sigma_minus,T,mu_B):
+        T_zeta_muB = T_zeta0 - 0.15*mu_B**2.
+        if T < T_zeta0:
+            return zeta_max * np.exp(-(T-T_zeta_muB)**2./(2.*sigma_minus**2.))
+        else:
+            return zeta_max * np.exp(-(T-T_zeta_muB)**2./(2.*sigma_plus**2.))
+
+
+    def parametrization_eta_over_s_vs_mu_B(self,eta_0,eta_2,eta_4,mu_B):
+        if mu_B >= 0. and mu_B <= 0.2:
+            return eta_0 + (eta_2 - eta_0) * (mu_B / 0.2)
+        elif mu_B > 0.2 and mu_B < 0.4:
+            return eta_2 + (eta_4 - eta_2) * ((mu_B - 0.2) / 0.2)
+        else:
+            return eta_4
+
+
+    def parametrization_y_loss_vs_y_init(self,yloss_2,yloss_4,yloss_6,y_init):
+        if y_init >= 0. and y_init <= 0.2:
+            return yloss_2 * (y_init / 2.)
+        elif y_init > 2 and y_init < 4:
+            return yloss_2 + (yloss_4 - yloss_2) * ((y_init - 2.) / 2.)
+        else:
+            return yloss_4 + (yloss_6 - yloss_4) * ((y_init - 4.) / 2.)
+
+
     def perform_bulk_viscosity_PCA(self):
         # get the corresponding parameters for the training points
         bulk_viscosity_parameters = self.design_points[:,self.indices_zeta_s_parameters]
