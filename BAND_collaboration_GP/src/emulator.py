@@ -69,21 +69,26 @@ class Emulator:
         self.pca = PCA(copy=False, whiten=True, svd_solver='full')
 
         if self.parameterTrafoPCA_:
-            self.paramTrafoScaler = StandardScaler()
             self.targetVariance = 0.99
-            self.paramTrafoPCA = PCA(n_components=self.targetVariance)# 0.99 is the minimum of explained variance
+            # the order of the PCA trafos is important here, since the second and
+            # third trafo will update the PCA_new_design_points
             logging.info("Prepare bulk viscosity parameter PCA ...")
+            self.paramTrafoScaler_bulk = StandardScaler()
+            self.paramTrafoPCA_bulk = PCA(n_components=self.targetVariance)# 0.99 is the minimum of explained variance
             self.indices_zeta_s_parameters = [15,18,19,20] # zeta_max,T_zeta0,sigma_plus,sigma_minus
             self.perform_bulk_viscosity_PCA()
 
+            logging.info("Prepare shear viscosity parameter PCA ...")
+            self.paramTrafoScaler_shear = StandardScaler()
+            self.paramTrafoPCA_shear = PCA(n_components=self.targetVariance)# 0.99 is the minimum of explained variance
+            self.indices_eta_s_parameters = [12,13,14]
+            self.perform_shear_viscosity_PCA()
 
-    def parametrization_zeta_over_s_vs_T(self,zeta_max,T_zeta0,
-                                         sigma_plus,sigma_minus,T,mu_B):
-        T_zeta_muB = T_zeta0 - 0.15*mu_B**2.
-        if T < T_zeta0:
-            return zeta_max * np.exp(-(T-T_zeta_muB)**2./(2.*sigma_minus**2.))
-        else:
-            return zeta_max * np.exp(-(T-T_zeta_muB)**2./(2.*sigma_plus**2.))
+            logging.info("Prepare yloss parameter PCA ...")
+            self.paramTrafoScaler_yloss = StandardScaler()
+            self.paramTrafoPCA_yloss = PCA(n_components=self.targetVariance)# 0.99 is the minimum of explained variance
+            self.indices_yloss_parameters = [2,3,4]
+            self.perform_yloss_PCA()
 
 
     def parametrization_zeta_over_s_vs_T(self,zeta_max,T_zeta0,
@@ -128,16 +133,16 @@ class Emulator:
             data_functions.append(parameter_function)
 
         data_functions = np.array(data_functions)
-        scaled_data_functions = self.paramTrafoScaler.fit_transform(data_functions)
-        self.paramTrafoPCA.fit(scaled_data_functions)
+        scaled_data_functions = self.paramTrafoScaler_bulk.fit_transform(data_functions)
+        self.paramTrafoPCA_bulk.fit(scaled_data_functions)
 
         # Get the number of components needed to achieve the target variance
-        n_components = self.paramTrafoPCA.n_components_
+        n_components = self.paramTrafoPCA_bulk.n_components_
         logging.info(f"Bulk viscosity parameter PCA uses {n_components} PCs to explain {self.targetVariance*100}% of the variance ...")
 
         # Get the principal components
         # principal_components will have shape (1000, n_components)
-        principal_components = self.paramTrafoPCA.transform(scaled_data_functions)
+        principal_components = self.paramTrafoPCA_bulk.transform(scaled_data_functions)
 
         # Modify the design points
         new_design_points = np.delete(self.design_points, self.indices_zeta_s_parameters, axis=1)
@@ -147,6 +152,82 @@ class Emulator:
         # delete the parameters from the pardict and add the new ones
         self.design_min = np.delete(self.design_min, self.indices_zeta_s_parameters)
         self.design_max = np.delete(self.design_max, self.indices_zeta_s_parameters)
+        min_values_PC = np.min(principal_components, axis=0)
+        max_values_PC = np.max(principal_components, axis=0)
+        self.design_min = np.concatenate((self.design_min,min_values_PC))
+        self.design_max = np.concatenate((self.design_max,max_values_PC))
+
+
+    def perform_shear_viscosity_PCA(self):
+        # get the corresponding parameters for the training points
+        shear_viscosity_parameters = self.design_points[:,self.indices_eta_s_parameters]
+        mu_B_range = np.linspace(0.0, 0.4, 100)
+        data_functions = []
+        # Iterate over each parameter set
+        for p in range(self.nev):
+            # Evaluate the function for each mu_B value in mu_B_range
+            parameter_function = [self.parametrization_eta_over_s_vs_mu_B(
+                shear_viscosity_parameters[p, 0], shear_viscosity_parameters[p, 1],
+                shear_viscosity_parameters[p, 2], mu_B) for mu_B in mu_B_range]
+            data_functions.append(parameter_function)
+
+        data_functions = np.array(data_functions)
+        scaled_data_functions = self.paramTrafoScaler_shear.fit_transform(data_functions)
+        self.paramTrafoPCA_shear.fit(scaled_data_functions)
+
+        # Get the number of components needed to achieve the target variance
+        n_components = self.paramTrafoPCA_shear.n_components_
+        logging.info(f"Shear viscosity parameter PCA uses {n_components} PCs to explain {self.targetVariance*100}% of the variance ...")
+
+        # Get the principal components
+        # principal_components will have shape (1000, n_components)
+        principal_components = self.paramTrafoPCA_shear.transform(scaled_data_functions)
+
+        # Modify the design points
+        self.PCA_new_design_points = np.delete(self.PCA_new_design_points, self.indices_eta_s_parameters, axis=1)
+        self.PCA_new_design_points = np.concatenate((self.PCA_new_design_points, principal_components), axis=1)
+
+        # delete the parameters from the pardict and add the new ones
+        self.design_min = np.delete(self.design_min, self.indices_eta_s_parameters)
+        self.design_max = np.delete(self.design_max, self.indices_eta_s_parameters)
+        min_values_PC = np.min(principal_components, axis=0)
+        max_values_PC = np.max(principal_components, axis=0)
+        self.design_min = np.concatenate((self.design_min,min_values_PC))
+        self.design_max = np.concatenate((self.design_max,max_values_PC))
+
+
+    def perform_yloss_PCA(self):
+        # get the corresponding parameters for the training points
+        yloss_parameters = self.design_points[:,self.indices_yloss_parameters]
+        yinit_range = np.linspace(0.0, 6.2, 100)
+        data_functions = []
+        # Iterate over each parameter set
+        for p in range(self.nev):
+            # Evaluate the function for each value in yinit_range
+            parameter_function = [self.parametrization_y_loss_vs_y_init(
+                yloss_parameters[p, 0], yloss_parameters[p, 1],
+                yloss_parameters[p, 2], yinit) for yinit in yinit_range]
+            data_functions.append(parameter_function)
+
+        data_functions = np.array(data_functions)
+        scaled_data_functions = self.paramTrafoScaler_yloss.fit_transform(data_functions)
+        self.paramTrafoPCA_yloss.fit(scaled_data_functions)
+
+        # Get the number of components needed to achieve the target variance
+        n_components = self.paramTrafoPCA_yloss.n_components_
+        logging.info(f"yloss parameter PCA uses {n_components} PCs to explain {self.targetVariance*100}% of the variance ...")
+
+        # Get the principal components
+        # principal_components will have shape (1000, n_components)
+        principal_components = self.paramTrafoPCA_yloss.transform(scaled_data_functions)
+
+        # Modify the design points
+        self.PCA_new_design_points = np.delete(self.PCA_new_design_points, self.indices_yloss_parameters, axis=1)
+        self.PCA_new_design_points = np.concatenate((self.PCA_new_design_points, principal_components), axis=1)
+
+        # delete the parameters from the pardict and add the new ones
+        self.design_min = np.delete(self.design_min, self.indices_yloss_parameters)
+        self.design_max = np.delete(self.design_max, self.indices_yloss_parameters)
         min_values_PC = np.min(principal_components, axis=0)
         max_values_PC = np.max(principal_components, axis=0)
         self.design_min = np.concatenate((self.design_min,min_values_PC))
@@ -409,10 +490,42 @@ class Emulator:
                 data_functions.append(parameter_function)
             data_functions = np.array(data_functions)
 
-            scaled_data = self.paramTrafoScaler.transform(data_functions)
-            projected_parameters = self.paramTrafoPCA.transform(scaled_data)
+            scaled_data = self.paramTrafoScaler_bulk.transform(data_functions)
+            projected_parameters = self.paramTrafoPCA_bulk.transform(scaled_data)
 
             new_theta = np.delete(X, self.indices_zeta_s_parameters, axis=1)
+            new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
+
+            shear_viscosity_parameters = X[:,self.indices_eta_s_parameters]
+            mu_B_range = np.linspace(0.0, 0.4, 100)
+            data_functions = []
+            for p in range(X.shape[0]):
+                parameter_function = [self.parametrization_eta_over_s_vs_mu_B(
+                    shear_viscosity_parameters[p, 0], shear_viscosity_parameters[p, 1],
+                    shear_viscosity_parameters[p, 2], mu_B) for mu_B in mu_B_range]
+                data_functions.append(parameter_function)
+            data_functions = np.array(data_functions)
+
+            scaled_data = self.paramTrafoScaler_shear.transform(data_functions)
+            projected_parameters = self.paramTrafoPCA_shear.transform(scaled_data)
+
+            new_theta = np.delete(new_theta, self.indices_eta_s_parameters, axis=1)
+            new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
+
+            yloss_viscosity_parameters = X[:,self.indices_yloss_parameters]
+            yinit_range = np.linspace(0.0, 0.4, 100)
+            data_functions = []
+            for p in range(X.shape[0]):
+                parameter_function = [self.parametrization_y_loss_vs_y_init(
+                    yloss_viscosity_parameters[p, 0], yloss_viscosity_parameters[p, 1],
+                    yloss_viscosity_parameters[p, 2], yinit) for yinit in yinit_range]
+                data_functions.append(parameter_function)
+            data_functions = np.array(data_functions)
+
+            scaled_data = self.paramTrafoScaler_yloss.transform(data_functions)
+            projected_parameters = self.paramTrafoPCA_yloss.transform(scaled_data)
+
+            new_theta = np.delete(new_theta, self.indices_yloss_parameters, axis=1)
             new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
 
             gp_mean = [gp.predict(new_theta, return_cov=return_cov) for gp in self.gps]
