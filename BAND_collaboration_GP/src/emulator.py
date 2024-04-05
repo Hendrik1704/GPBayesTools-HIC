@@ -513,7 +513,7 @@ class Emulator:
             new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
 
             yloss_viscosity_parameters = X[:,self.indices_yloss_parameters]
-            yinit_range = np.linspace(0.0, 0.4, 100)
+            yinit_range = np.linspace(0.0, 6.2, 100)
             data_functions = []
             for p in range(X.shape[0]):
                 parameter_function = [self.parametrization_y_loss_vs_y_init(
