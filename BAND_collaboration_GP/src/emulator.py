@@ -121,7 +121,7 @@ class Emulator:
     def perform_bulk_viscosity_PCA(self):
         # get the corresponding parameters for the training points
         bulk_viscosity_parameters = self.design_points[:,self.indices_zeta_s_parameters]
-        T_range = np.linspace(0.0, 0.35, 100)
+        T_range = np.linspace(0.0, 0.5, 100)
         data_functions = []
         # Iterate over each parameter set
         for p in range(self.nev):
@@ -161,7 +161,7 @@ class Emulator:
     def perform_shear_viscosity_PCA(self):
         # get the corresponding parameters for the training points
         shear_viscosity_parameters = self.design_points[:,self.indices_eta_s_parameters]
-        mu_B_range = np.linspace(0.0, 0.4, 100)
+        mu_B_range = np.linspace(0.0, 0.6, 100)
         data_functions = []
         # Iterate over each parameter set
         for p in range(self.nev):
@@ -480,7 +480,7 @@ class Emulator:
         """
         if self.parameterTrafoPCA_:
             bulk_viscosity_parameters = X[:,self.indices_zeta_s_parameters]
-            T_range = np.linspace(0.0, 0.35, 100)
+            T_range = np.linspace(0.0, 0.5, 100)
             data_functions = []
             for p in range(X.shape[0]):
                 parameter_function = [self.parametrization_zeta_over_s_vs_T(
@@ -497,7 +497,7 @@ class Emulator:
             new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
 
             shear_viscosity_parameters = X[:,self.indices_eta_s_parameters]
-            mu_B_range = np.linspace(0.0, 0.4, 100)
+            mu_B_range = np.linspace(0.0, 0.6, 100)
             data_functions = []
             for p in range(X.shape[0]):
                 parameter_function = [self.parametrization_eta_over_s_vs_mu_B(
