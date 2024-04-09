@@ -17,8 +17,6 @@ shear_muB0: shear_0, 0.001, 0.3      # effective shear viscosity at mu_B = 0
 shear_muB0p2: shear_1, 0.001, 0.3    # effective shear viscosity at mu_B = 0.2 GeV
 shear_muB0p4: shear_2, 0.001, 0.3    # effective shear viscosity at mu_B = 0.4 GeV
 bulk_viscosity_10_max: bulk_max, 0, 0.2                      # the peak of zeta/s(T) at mu_B = 0
-bulk_viscosity_10_max_muB0p2: bulk_max_muB0p2, 0, 0.2        # the peak of zeta/s(T) at mu_B = 0.2 GeV
-bulk_viscosity_10_max_muB0p4: bulk_max_muB0p4, 0, 0.2        # the peak of zeta/s(T) at mu_B = 0.4 GeV
 bulk_viscosity_10_T_peak: bulk_Tpeak, 0.15, 0.25             # the peak temperature of the zeta/s (GeV)
 bulk_viscosity_10_width_high: bulk_width_high, 0.01, 0.15    # high temperature width of zeta/s(T) (GeV)
 bulk_viscosity_10_width_low: bulk_width_low, 0.005, 0.1      # low temperature width of zeta/s(T) (GeV)
