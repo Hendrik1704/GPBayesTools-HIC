@@ -75,7 +75,7 @@ class Emulator:
             logging.info("Prepare bulk viscosity parameter PCA ...")
             self.paramTrafoScaler_bulk = StandardScaler()
             self.paramTrafoPCA_bulk = PCA(n_components=self.targetVariance)# 0.99 is the minimum of explained variance
-            self.indices_zeta_s_parameters = [15,18,19,20] # zeta_max,T_zeta0,sigma_plus,sigma_minus
+            self.indices_zeta_s_parameters = [15,16,17,18] # zeta_max,T_zeta0,sigma_plus,sigma_minus
             self.perform_bulk_viscosity_PCA()
 
             logging.info("Prepare shear viscosity parameter PCA ...")
@@ -110,9 +110,9 @@ class Emulator:
 
 
     def parametrization_y_loss_vs_y_init(self,yloss_2,yloss_4,yloss_6,y_init):
-        if 0. < y_init and y_init <= 2:
+        if 0. < y_init and y_init <= 2.:
             return yloss_2 * (y_init / 2.)
-        elif 2 < y_init and y_init < 4:
+        elif 2. < y_init and y_init < 4.:
             return yloss_2 + (yloss_4 - yloss_2) * ((y_init - 2.) / 2.)
         else:
             return yloss_4 + (yloss_6 - yloss_4) * ((y_init - 4.) / 2.)

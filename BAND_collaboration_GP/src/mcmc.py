@@ -187,21 +187,13 @@ class Chain:
 
     def _predict(self, X, extra_std=0.0):
         nPreds = X.shape[0]
-        X0 = np.copy(X)
-        X1 = np.copy(X)
-        X2 = np.copy(X)
-        X0[:, 16] = X[:, 15]; X0[:, 17] = X[:, 15]
-        X1[:, 15] = X[:, 16]; X1[:, 17] = X[:, 16]
-        X2[:, 15] = X[:, 17]; X2[:, 16] = X[:, 17]
-        # X0=200 GeV data, X1=19 GeV data, X2=7.7 GeV data
-        XList = [X0, X0, X0, X0, X1, X1, X1, X2, X2]
         modelPred = np.zeros([nPreds, self.nobs])
         modelPredCov = np.zeros([nPreds, self.nobs, self.nobs])
         extra_std_arr = extra_std*X[:, -1]
         currIdx = 0
         for i, emu_i in enumerate(self.emuList):
             model_Y, model_cov = emu_i.predict(
-                XList[i], return_cov=True, extra_std=extra_std_arr)
+                X[i], return_cov=True, extra_std=extra_std_arr)
             nobs_i = model_Y.shape[1]
             modelPred[:, currIdx:currIdx+nobs_i] = model_Y
 
