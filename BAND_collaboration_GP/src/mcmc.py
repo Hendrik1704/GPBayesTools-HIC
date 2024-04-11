@@ -193,7 +193,7 @@ class Chain:
         currIdx = 0
         for i, emu_i in enumerate(self.emuList):
             model_Y, model_cov = emu_i.predict(
-                X[i], return_cov=True, extra_std=extra_std_arr)
+                X, return_cov=True, extra_std=extra_std_arr)
             nobs_i = model_Y.shape[1]
             modelPred[:, currIdx:currIdx+nobs_i] = model_Y
 

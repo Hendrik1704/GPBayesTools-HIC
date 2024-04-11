@@ -145,9 +145,8 @@ class Emulator:
         principal_components = self.paramTrafoPCA_bulk.transform(scaled_data_functions)
 
         # Modify the design points
-        new_design_points = np.delete(self.design_points, self.indices_zeta_s_parameters, axis=1)
-        new_design_points = np.concatenate((new_design_points, principal_components), axis=1)
-        self.PCA_new_design_points = new_design_points
+        self.PCA_new_design_points = np.delete(self.design_points, self.indices_zeta_s_parameters, axis=1)
+        self.PCA_new_design_points = np.concatenate((self.PCA_new_design_points, principal_components), axis=1)
 
         # delete the parameters from the pardict and add the new ones
         self.design_min = np.delete(self.design_min, self.indices_zeta_s_parameters)
@@ -479,7 +478,10 @@ class Emulator:
 
         """
         if self.parameterTrafoPCA_:
-            bulk_viscosity_parameters = X[:,self.indices_zeta_s_parameters]
+            if np.ndim(X) == 1:
+                bulk_viscosity_parameters = X[self.indices_zeta_s_parameters]
+            else:
+                bulk_viscosity_parameters = X[:,self.indices_zeta_s_parameters]
             T_range = np.linspace(0.0, 0.5, 100)
             data_functions = []
             for p in range(X.shape[0]):
@@ -496,7 +498,10 @@ class Emulator:
             new_theta = np.delete(X, self.indices_zeta_s_parameters, axis=1)
             new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
 
-            shear_viscosity_parameters = X[:,self.indices_eta_s_parameters]
+            if np.ndim(X) == 1:
+                shear_viscosity_parameters = X[self.indices_eta_s_parameters]
+            else:
+                shear_viscosity_parameters = X[:,self.indices_eta_s_parameters]
             mu_B_range = np.linspace(0.0, 0.6, 100)
             data_functions = []
             for p in range(X.shape[0]):
@@ -512,7 +517,10 @@ class Emulator:
             new_theta = np.delete(new_theta, self.indices_eta_s_parameters, axis=1)
             new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
 
-            yloss_viscosity_parameters = X[:,self.indices_yloss_parameters]
+            if np.ndim(X) == 1:
+                yloss_viscosity_parameters = X[self.indices_yloss_parameters]
+            else:
+                yloss_viscosity_parameters = X[:,self.indices_yloss_parameters]
             yinit_range = np.linspace(0.0, 6.2, 100)
             data_functions = []
             for p in range(X.shape[0]):
