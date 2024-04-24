@@ -638,6 +638,52 @@ class Emulator:
         validationDataErr = np.array(validationDataErr).reshape(-1, self.nobs)
         return (emulatorPreds, emulatorPredsErr,
                validationData, validationDataErr)
+    
+    def testEmulatorErrorsWithTrainingPoints(self, nTestPoints=1):
+        """
+        This function uses number_test_points points to train the 
+        emulator and the same points to test the emulator in each 
+        iteration. The resulting errors should be very small.
+        It returns the emulator predictions, their errors,
+        the actual values of observables and their errors as four arrays.
+        """
+        emulatorPreds = []
+        emulatorPredsErr = []
+        validationData = []
+        validationDataErr = []
+
+        logging.info("Validating GP emulator ...")
+        eventIdxList = range(self.nev - nTestPoints, self.nev)
+        trainEventMask = [True]*self.nev
+        for event_i in eventIdxList:
+            trainEventMask[event_i] = False
+        self.trainEmulator(trainEventMask)
+        validateEventMask = [i for i in trainEventMask] # here is the difference to the previous function
+
+        pred, predCov = self.predict(
+            self.design_points_org_[validateEventMask, :], return_cov=True)
+        pred_var = np.sqrt(np.array([predCov[i].diagonal() for i in range(predCov.shape[0])]))
+        
+        if self.logTrafo_:
+            emulatorPreds = np.exp(pred)
+            emulatorPredsErr = pred_var*np.exp(pred)
+        else:
+            emulatorPreds = pred
+            emulatorPredsErr = pred_var
+        
+        if self.logTrafo_:
+            validationData = np.exp(self.model_data[validateEventMask, :])
+            validationDataErr = self.model_data_err[validateEventMask, :]*np.exp(self.model_data[validateEventMask, :])
+        else:
+            validationData = self.model_data[validateEventMask, :]
+            validationDataErr = self.model_data_err[validateEventMask, :]
+        
+        emulatorPreds = np.array(emulatorPreds).reshape(-1, self.nobs)
+        emulatorPredsErr = np.array(emulatorPredsErr).reshape(-1, self.nobs)
+        validationData = np.array(validationData).reshape(-1, self.nobs)
+        validationDataErr = np.array(validationDataErr).reshape(-1, self.nobs)
+        return (emulatorPreds, emulatorPredsErr,
+               validationData, validationDataErr)
 
 
 if __name__ == '__main__':

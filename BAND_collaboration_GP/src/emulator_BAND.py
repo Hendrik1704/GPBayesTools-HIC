@@ -495,6 +495,55 @@ class EmulatorBAND:
 
         return (emulator_predictions, emulator_predictions_err, 
                     validation_data, validation_data_err)
+    
+    def testEmulatorErrorsWithTrainingPoints(self, number_test_points=1):
+        """
+        This function uses number_test_points points to train the 
+        emulator and the same points to test the emulator in each 
+        iteration. The resulting errors should be very small.
+        It returns the emulator predictions, their errors,
+        the actual values of observables and their errors as four arrays.
+        """
+        emulator_predictions = []
+        emulator_predictions_err = []
+        validation_data = []
+        validation_data_err = []
+
+        logging.info("Validation GP emulator ...")
+        event_idx_list = range(self.nev - number_test_points, self.nev)
+        train_event_mask = [True]*self.nev
+        for event_i in event_idx_list:
+            train_event_mask[event_i] = False
+        self.trainEmulator(train_event_mask)
+        validate_event_mask = [i for i in train_event_mask] # here is the difference to the previous function
+
+        x = np.arange(self.nobs).reshape(-1, 1)
+        pred_mean, pred_cov = self.predict_test_emu_errors(x,
+            self.design_points[validate_event_mask, :])
+        pred_mean = pred_mean.T
+        pred_var = np.sqrt(np.array([pred_cov[i].diagonal() for i in range(pred_cov.shape[0])]))
+
+        if self.logTrafo_:
+            emulator_predictions = np.exp(pred_mean)
+            emulator_predictions_err = pred_var*np.exp(pred_mean)
+        else:
+            emulator_predictions = pred_mean
+            emulator_predictions_err = pred_var
+
+        if self.logTrafo_:
+            validation_data = np.exp(self.model_data[validate_event_mask, :])
+            validation_data_err = self.model_data_err[validate_event_mask, :]*np.exp(self.model_data[validate_event_mask, :])
+        else:
+            validation_data = self.model_data[validate_event_mask, :]
+            validation_data_err = self.model_data_err[validate_event_mask, :]
+
+        emulator_predictions = np.array(emulator_predictions).reshape(-1, self.nobs)
+        emulator_predictions_err = np.array(emulator_predictions_err).reshape(-1, self.nobs)
+        validation_data = np.array(validation_data).reshape(-1, self.nobs)
+        validation_data_err = np.array(validation_data_err).reshape(-1, self.nobs)
+
+        return (emulator_predictions, emulator_predictions_err, 
+                    validation_data, validation_data_err)
 
 
 if __name__ == '__main__':
