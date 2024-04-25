@@ -33,7 +33,6 @@ import emcee
 import h5py
 import numpy as np
 from scipy.linalg import lapack
-import matplotlib.pyplot as plt
 import dill
 
 from multiprocessing import cpu_count
@@ -41,8 +40,8 @@ from multiprocessing import cpu_count
 from . import workdir, parse_model_parameter_file
 from .emulator import Emulator
 from .emulator_BAND import EmulatorBAND
-from surmise.utilitiesmethods.PTMC import sampler as samplerPTMC
 import scipy.optimize as spo
+from .ptemcee_modified.sampler import Sampler as PTemceeSampler
 
 def mvn_loglike(y, cov):
     """
@@ -441,15 +440,109 @@ class Chain:
         dset[:, -chainLen:, :] = thinedChain
         hf.close()
 
+    # This function is taken from the surmise package (version 0.2.1) and slightly modified.
+    # The ptemcee package source code is copied and modified to work with more modern versions of numpy.
+    def sampler_PTemcee_wrapper(self,draw_func,
+            log_likelihood,
+            log_prior,
+            nburnin=100,
+            ndim=15,
+            niterations=200,
+            ntemps=50,
+            nthin=1,
+            nwalkers=200,
+            nthreads=10,
+            Tmax=np.inf,
+            verbose=False):
+        """
+        Parameters
+        ----------
+        logpostfunc: function,
+            Not used in PTMC sampler. It uses log_likelihood and log_prior instead.
+
+        draw_func: function, required
+            A function that produces approximate draws from the prior distribution.
+            This is used to initialize MCMC chains.
+        log_likelihood: function, required
+            Log of the likelihood.
+        log_prior: function, required
+            Log of the prior.
+        nburnin:
+            Number of burnin samples.
+        ndim:
+            Dimension of the model parameter space.
+        niterations:
+            Number of MCMC samples for each chain after burnin.
+        nthin:
+            Thinning applied to MCMC chains. The default is 1, which is no thinning.
+        nwalkers:
+            Number of chains.
+        nthreads:
+            Number of threads for parallel computation.
+        ntemps: integer, optional
+            A positive integer that controls how many chains of varying temperature to run simultaneously.
+            The default is 50.
+        Tmax: double, optional
+            A number larger than 1 that gives the maximum temperature used in parallel tempering.
+            The default is inf.
+        verbose: bool, optional
+            Boolean flag to control output printing.  The default is False (do not print).
+
+        Raises
+        ------
+        ValueError
+            Indicates that something was not entered right, please check the documentation.
+
+        Returns
+        -------
+        dictionary
+            A dictionary that contains the sampled values in the key 'theta' and the acceptance rate in the key 'acc_rate'.
+        """
+        nburnin = int(nburnin)
+        ndim = int(ndim)
+        niterations = int(niterations)
+        ntemps = int(ntemps)
+        nthin = int(nthin)
+        nwalkers = int(nwalkers)
+        nthreads = int(nthreads)
+        Tmax = float(Tmax)
+        global log_like
+        def log_like(x): return log_likelihood(x.reshape(-1, ndim))
+        global log_prior_fix
+        def log_prior_fix(x): return log_prior(x.reshape(-1, ndim))
+        ptsampler_ex = PTemceeSampler(nwalkers=nwalkers, dim=ndim, logl=log_like, logp=log_prior_fix, ntemps=ntemps, threads=nthreads, Tmax=Tmax)
+
+        pos0 = np.array([draw_func(nwalkers) for n in range(0, ntemps)])
+        if verbose:
+            print("Running burn-in phase")
+        for p, lnprob, lnlike in ptsampler_ex.sample(pos0, iterations=nburnin, adapt=True):
+            pass
+        ptsampler_ex.reset()  # Discard previous samples from the chain, but keep the position
+
+        if verbose:
+            print("Running MCMC chains")
+        # Now we sample for nwalkers*niterations, recording every nthin-th sample
+        for p, lnprob, lnlike in ptsampler_ex.sample(p, iterations=niterations, thin=nthin, adapt=True):
+            pass
+
+        if verbose:
+            print('Done MCMC')
+
+        mean_acc_frac = np.mean(ptsampler_ex.acceptance_fraction)
+
+        if verbose:
+            print(f"Mean acceptance fraction: {mean_acc_frac:.3f}",
+                f"(in total {nwalkers*niterations} steps)")
+
+        # We only analyze the zero temperature MCMC samples
+        samples = ptsampler_ex.chain[0, :, :, :].reshape((-1, ndim))
+        sampler_info = {'theta': samples, 'acc_rate': mean_acc_frac}
+        return sampler_info
 
     def run_MCMC_ptemcee(self, nsteps=500, nburnsteps=None, nwalkers=None,
                  status=None, nthin=10, ntemps=50, nthreads=cpu_count()):
         """
         This function wrapps the ptemcee package to run the parallel tempering MCMC
-
-        The function will cause problems when used with numpy>=1.24.0. The error is
-        comning from the ptemcee package. It is related to a depracted np.float function
-        in numpy.
         """
         # Check that nsteps modulo nthin is zero
         if nsteps % nthin != 0:
@@ -460,8 +553,7 @@ class Chain:
 
         # Run the MCMC
         logging.info('Starting MCMC ...')
-        result_dict = samplerPTMC(logpost_func=self.log_posterior,
-                                draw_func=self.random_pos,
+        result_dict = self.sampler_PTemcee_wrapper(draw_func=self.random_pos,
                                 log_likelihood=self.log_likelihood,
                                 log_prior=self.log_prior,
                                 nburnin=nburnsteps,
@@ -470,7 +562,7 @@ class Chain:
                                 ntemps=ntemps,
                                 nthin=nthin,
                                 nwalkers=nwalkers,
-                                nprocesses=nthreads,
+                                nthreads=nthreads,
                                 verbose=status)
         
         # This is the thinned chain already at 0 temperature
@@ -491,7 +583,7 @@ class Chain:
         )
         hf.close()
 
-    # This function is taken from the surmise package and slightly modified
+    # This function is taken from the surmise package (version 0.2.1) and slightly modified
     # to match with our definition of logpostfunc and the format of the chain output
     def samplerPTLMC(self,logpostfunc,
                 draw_func,
@@ -536,8 +628,7 @@ class Chain:
         Returns
         -------
         dictionary
-            A dictionary that contains the sampled values in the key 'theta' and the corresponding log pdf values in the
-            key 'logpost'.
+            A dictionary that contains the sampled values in the key 'theta'.
         """
         # If we do not get parameters to start, draw 1000
         if theta0 is None:
@@ -735,7 +826,7 @@ class Chain:
         sampler_info = {'theta': theta}
         return sampler_info
 
-
+    # This function is taken from the surmise package (vesion 0.2.1)
     def tempexchange(self, lpostf, temps, iters=1):
         # This function will swap values along the chain given the log pdf values in an
         # array lpostf with temperature array temps. It will do it iters number of times.
