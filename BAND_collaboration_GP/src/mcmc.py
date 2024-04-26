@@ -775,6 +775,8 @@ class Chain:
         numtimes = 0  # number of times we reject, just to star
         logging.info('Run over all PTLMC chains and tune ...')
         for k in range(0, samptunning+sampperchain):  # loop over all chains
+            if k % 100 == 0:
+                logging.info(f"Currently working on {k}")
             rvalo = np.random.normal(0, 1, thetac.shape)
             rval = np.sqrt(2) * adjrho * (rvalo @ hc)
             thetap = thetac + rval
