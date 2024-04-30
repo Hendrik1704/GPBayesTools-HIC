@@ -216,7 +216,7 @@ class Sampler(object):
         self.adaptation_time = adaptation_time
         self.adaptation_lag = adaptation_lag
 
-        # Set temperature ladder.  Append beta=0 to generated ladder.
+        # Set temperature ladder. Append beta=0 to generated ladder.
         if betas is not None:
             self._betas = np.array(betas).copy()
         else:
@@ -230,10 +230,13 @@ class Sampler(object):
         if self.nwalkers < 2 * self.dim:
             raise ValueError('The number of walkers must be greater than ``2*dimension``.')
 
+        if threads > 1:
+            print('Setting up pool')
         self.pool = pool
         if threads > 1 and pool is None:
             self.pool = multi.Pool(threads)
-
+        if threads > 1:
+            print('Pool set up')
         self.reset()
 
     def reset(self, random=None, betas=None, time=None):
@@ -321,7 +324,6 @@ class Sampler(object):
         * ``ratios``, the instantaneous inter-chain acceptance ratios (if requested).
 
         """
-
         # Set initial walker positions.
         if p0 is not None:
             # Start anew.
@@ -359,6 +361,8 @@ class Sampler(object):
             isave = self._expand_chain(iterations // thin)
 
         for i in range(iterations):
+            if i % 100 == 0:
+                print(f'PTMCMC iteration {i}')
             for j in [0, 1]:
                 # Get positions of walkers to be updated and walker to be sampled.
                 jupdate = j

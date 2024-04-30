@@ -30,12 +30,9 @@ import pickle
 
 from pathlib import Path
 import emcee
-import h5py
 import numpy as np
 from scipy.linalg import lapack
 import dill
-
-from multiprocessing import cpu_count
 
 from . import workdir, parse_model_parameter_file
 from .emulator import Emulator
@@ -124,9 +121,9 @@ class Chain:
     system designs have the same parameters and ranges (except for the norms).
 
     """
-    def __init__(self, mcmc_path="./mcmc/chain.h5",
+    def __init__(self, mcmc_path="./mcmc/chain.pkl",
                  expdata_path="./exp_data.dat",
-                 model_parafile="./model.dat",
+                 model_parafile="./model.dat"
     ):
         logging.info('Initializing MCMC ...')
         self.mcmc_path = Path(mcmc_path)
@@ -368,27 +365,23 @@ class Chain:
         """
         Run MCMC model calibration. If the chain already exists, continue from
         the last point, otherwise burn-in and start the chain.
-
         """
-        burnFlag = False
-        hf = h5py.File(str(self.mcmc_path), 'a')
+        chain_data = {}
         try:
-            dset = hf['chain']
-        except KeyError:
+            with open(self.mcmc_path, 'rb') as f:
+                chain_data = pickle.load(f)
+        except FileNotFoundError:
+            pass
+
+        if 'chain' not in chain_data:
             burnFlag = True
-            if nburnsteps is None or nwalkers is None:
+        else:
+            burnFlag = False
+
+        if nburnsteps is None or nwalkers is None:
                 logging.error(
                     'must specify nburnsteps and nwalkers to start chain')
                 return
-            dset = hf.create_dataset(
-                    'chain', dtype='f8',
-                    shape=(nwalkers, 0, self.ndim),
-                    chunks=(nwalkers, 1, self.ndim),
-                    maxshape=(nwalkers, None, self.ndim),
-                    compression='lzf'
-            )
-        else:
-            nwalkers = dset.shape[0]
 
         logging.info('Starting MCMC ...')
         sampler = LoggingEnsembleSampler(
@@ -426,19 +419,31 @@ class Chain:
             logging.info('burn-in complete, starting production')
         else:
             logging.info('restarting from last point of existing chain')
-            print("dset dimension ", dset.shape)
-            X0 = dset[:, -1, :]
+            X0 = chain_data['chain'][:, -1, :]
 
         sampler.run_mcmc(X0, nsteps, status=status)
 
         thinedChain = sampler.chain[:, ::nthin, :]
-        self.chain = thinedChain
+        if 'chain' in chain_data:
+            chain_data['chain'] = np.concatenate((chain_data['chain'], thinedChain), axis=1)
+        else:
+            chain_data['chain'] = thinedChain
 
-        chainLen = thinedChain.shape[1]
+        # compute the likelihood for the thinned chain
+        logging.info('computing log_likelihood for the thinned chain')
+        reshapeThinedChain = thinedChain.reshape(-1, self.ndim)
+        thinedLikelihood = self.log_likelihood(reshapeThinedChain)
+        thinedLikelihood = thinedLikelihood.reshape((thinedChain.shape[0], thinedChain.shape[1]))
+        if 'log_likelihood' in chain_data:
+            chain_data['log_likelihood'] = np.concatenate((chain_data['log_likelihood'], thinedLikelihood), axis=1)
+        else:
+            chain_data['log_likelihood'] = thinedLikelihood
+
+        # Append the new data to the existing file
         logging.info('writing chain to file')
-        dset.resize(dset.shape[1] + chainLen, 1)
-        dset[:, -chainLen:, :] = thinedChain
-        hf.close()
+        with open(self.mcmc_path, 'wb') as file:
+            pickle.dump(chain_data, file)
+
 
     # This function is taken from the surmise package (version 0.2.1) and slightly modified.
     # The ptemcee package source code is copied and modified to work with more modern versions of numpy.
@@ -536,20 +541,26 @@ class Chain:
 
         # We only analyze the zero temperature MCMC samples
         samples = ptsampler_ex.chain[0, :, :, :].reshape((-1, ndim))
+
         sampler_info = {'theta': samples, 'acc_rate': mean_acc_frac}
         return sampler_info
 
+
     def run_MCMC_ptemcee(self, nsteps=500, nburnsteps=None, nwalkers=None,
-                 status=None, nthin=10, ntemps=50, nthreads=cpu_count()):
+                 status=None, nthin=10, ntemps=50, nthreads=1):
         """
-        This function wrapps the ptemcee package to run the parallel tempering MCMC
+        This function wrapps the ptemcee package to run the parallel tempering 
+        MCMC.
+        The parameter nthreads should be used with caution. The Pool object is
+        pckling and unpickling all the data and this can be very slow.
+        It might be faster to run in sequential mode. There is a print out around
+        the Pool initialization, if you still want to try it and check the speed.
         """
         # Check that nsteps modulo nthin is zero
         if nsteps % nthin != 0:
             raise ValueError('nsteps must be divisible by nthin')
 
-        # Create the output file
-        hf = h5py.File(str(self.mcmc_path), 'w')
+        chain_data = {}
 
         # Run the MCMC
         logging.info('Starting MCMC ...')
@@ -566,22 +577,26 @@ class Chain:
                                 verbose=status)
         
         # This is the thinned chain already at 0 temperature
-        self.chain = result_dict['theta']
+        chain_data['chain'] = result_dict['theta']
 
         # Reshape the chain to have the shape (nwalkers, nsteps//nthin, ndim)
         # This format is similar to the other MCMC implemented in this file
         old_shape = (nwalkers, nsteps//nthin, self.ndim)
-        self.chain = self.chain.reshape(old_shape)
+        chain_data['chain'] = chain_data['chain'].reshape(old_shape)
+        self.chain = chain_data['chain']
+
+        # Compute the log likelihood for the thinned chain
+        logging.info('Computing log likelihood for the chain...')
+        reshape_thinned_chain = chain_data['chain'].reshape(-1, self.ndim)
+        thinned_likelihood = self.log_likelihood(reshape_thinned_chain)
+        thinned_likelihood = thinned_likelihood.reshape((chain_data['chain'].shape[0], chain_data['chain'].shape[1]))
+        chain_data['log_likelihood'] = thinned_likelihood
 
         # Write the chain to file
         logging.info('Writing MCMC chains to file...')
-        hf.create_dataset(
-                'chain', dtype='f8',
-                data=self.chain,
-                chunks=(nwalkers, 1, self.ndim),
-                compression='lzf'
-        )
-        hf.close()
+        with open(self.mcmc_path, 'wb') as file:
+            pickle.dump(chain_data, file)
+
 
     # This function is taken from the surmise package (version 0.2.1) and slightly modified
     # to match with our definition of logpostfunc and the format of the chain output
@@ -710,6 +725,8 @@ class Chain:
         # now we are ready to optimize for each chain
         logging.info('Begin PTLMC chain optimization ...')
         for k in range(0, numopt):
+            if k % 10 == 0:
+                logging.info(f"Currently working on optimization of k = {k}")
             if logpostf_grad is None:
                 opval = spo.minimize(neglogpostf_nograd,
                                     (thetaop[k, :] - thetacen) / thetas,
@@ -828,6 +845,7 @@ class Chain:
         sampler_info = {'theta': theta}
         return sampler_info
 
+
     # This function is taken from the surmise package (vesion 0.2.1)
     def tempexchange(self, lpostf, temps, iters=1):
         # This function will swap values along the chain given the log pdf values in an
@@ -846,13 +864,12 @@ class Chain:
         return order
 
 
-    def run_MCMC_PTLMC(self, nsteps=500, nwalkers=16, nposteriorsamp=2000, 
-                       ntemps=50, maxtemp=100):
+    def run_MCMC_PTLMC(self, nsteps=500, nwalkers=16, ntemps=50, maxtemp=100):
         """
         This function wrapps the PTLMC package to run the parallel tempering 
         ensemble MCMC with Langevin Monte Carlo
         """
-        hf = h5py.File(str(self.mcmc_path), 'w')
+        chain_data = {}
 
         logging.info('Starting MCMC ...')
         result_dict = self.samplerPTLMC(logpostfunc=self.log_posterior,
@@ -869,13 +886,19 @@ class Chain:
 
         # Write the chain to file (nwalkers, nsteps, self.ndim)
         logging.info('Writing MCMC chains to file ...')
-        hf.create_dataset(
-                'chain', dtype='f8',
-                data=self.chain,
-                chunks=(nwalkers, 1, self.ndim),
-                compression='lzf'
-        )
-        hf.close()
+        chain_data['chain'] = self.chain
+
+        # Compute the log likelihood for the thinned chain
+        logging.info('Computing log likelihood for the chain...')
+        reshape_thinned_chain = chain_data['chain'].reshape(-1, self.ndim)
+        thinned_likelihood = self.log_likelihood(reshape_thinned_chain)
+        thinned_likelihood = thinned_likelihood.reshape((chain_data['chain'].shape[0], chain_data['chain'].shape[1]))
+        chain_data['log_likelihood'] = thinned_likelihood
+
+        # Write the chain to file
+        logging.info('Writing MCMC chains to file...')
+        with open(self.mcmc_path, 'wb') as file:
+            pickle.dump(chain_data, file)
 
 
 def main():
