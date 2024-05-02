@@ -361,7 +361,7 @@ class Chain:
 
 
     def run_mcmc(self, nsteps=500, nburnsteps=None, nwalkers=None,
-                 status=None, nthin=10):
+                 status=None, nthin=10, skip_initial_state_check=False):
         """
         Run MCMC model calibration. If the chain already exists, continue from
         the last point, otherwise burn-in and start the chain.
@@ -397,7 +397,8 @@ class Chain:
             sampler.run_mcmc(
                 self.random_pos(nwalkers),
                 nburn0,
-                status=status
+                status=status,
+                skip_initial_state_check=skip_initial_state_check
             )
             logging.info('resampling walker positions')
             # Reposition walkers to the most likely points in the chain,
@@ -414,6 +415,7 @@ class Chain:
                 X0,
                 nburnsteps - nburn0,
                 status=status,
+                skip_initial_state_check=skip_initial_state_check
             )
             sampler.reset()
             logging.info('burn-in complete, starting production')
@@ -421,7 +423,8 @@ class Chain:
             logging.info('restarting from last point of existing chain')
             X0 = chain_data['chain'][:, -1, :]
 
-        sampler.run_mcmc(X0, nsteps, status=status)
+        sampler.run_mcmc(X0, nsteps, status=status, 
+                         skip_initial_state_check=skip_initial_state_check)
 
         thinedChain = sampler.chain[:, ::nthin, :]
         if 'chain' in chain_data:
