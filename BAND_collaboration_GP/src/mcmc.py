@@ -311,15 +311,9 @@ class Chain:
 
         for event_id in dataDict.keys():
             temp_data = dataDict[event_id]["obs"].transpose()
-            statErrMax = np.abs((temp_data[:, 1]/(temp_data[:, 0]+1e-16))).max()
-            if statErrMax > 0.1:
-                logging.info("Discard Parameter {}, stat err = {:.2f}".format(
-                                                    event_id, statErrMax))
-                continue
-
             model_data.append(temp_data[:, 0])
             model_data_err.append(temp_data[:, 1])
-        logging.info("Training dataset size: {}".format(len(model_data)))
+        logging.info("Experimental dataset size: {}".format(model_data[0].shape[0]))
         model_data = np.array(model_data)
         model_data_err = np.nan_to_num(
                 np.abs(np.array(model_data_err)))
@@ -429,18 +423,10 @@ class Chain:
         thinedChain = sampler.chain[:, ::nthin, :]
         if 'chain' in chain_data:
             chain_data['chain'] = np.concatenate((chain_data['chain'], thinedChain), axis=1)
+            self.chain = chain_data['chain']
         else:
             chain_data['chain'] = thinedChain
-
-        # compute the likelihood for the thinned chain
-        logging.info('computing log_likelihood for the thinned chain')
-        reshapeThinedChain = thinedChain.reshape(-1, self.ndim)
-        thinedLikelihood = self.log_likelihood(reshapeThinedChain)
-        thinedLikelihood = thinedLikelihood.reshape((thinedChain.shape[0], thinedChain.shape[1]))
-        if 'log_likelihood' in chain_data:
-            chain_data['log_likelihood'] = np.concatenate((chain_data['log_likelihood'], thinedLikelihood), axis=1)
-        else:
-            chain_data['log_likelihood'] = thinedLikelihood
+            self.chain = thinedChain
 
         # Append the new data to the existing file
         logging.info('writing chain to file')
@@ -588,13 +574,6 @@ class Chain:
         chain_data['chain'] = chain_data['chain'].reshape(old_shape)
         self.chain = chain_data['chain']
 
-        # Compute the log likelihood for the thinned chain
-        logging.info('Computing log likelihood for the chain...')
-        reshape_thinned_chain = chain_data['chain'].reshape(-1, self.ndim)
-        thinned_likelihood = self.log_likelihood(reshape_thinned_chain)
-        thinned_likelihood = thinned_likelihood.reshape((chain_data['chain'].shape[0], chain_data['chain'].shape[1]))
-        chain_data['log_likelihood'] = thinned_likelihood
-
         # Write the chain to file
         logging.info('Writing MCMC chains to file...')
         with open(self.mcmc_path, 'wb') as file:
@@ -609,7 +588,8 @@ class Chain:
                 numtemps=32,
                 numchain=16,
                 sampperchain=400,
-                maxtemp=30):
+                maxtemp=30,
+                nstartparameters=1000):
         """
 
         Parameters
@@ -648,14 +628,14 @@ class Chain:
         dictionary
             A dictionary that contains the sampled values in the key 'theta'.
         """
-        # If we do not get parameters to start, draw 1000
+        # If we do not get parameters to start, draw nstartparameters
         if theta0 is None:
-            theta0 = draw_func(1000)
+            theta0 = draw_func(nstartparameters)
         # Need to make sure the initial draws are sufficent to continue
         if theta0.shape[0] < 10*theta0.shape[1]:
-            theta0 = draw_func(1000)
+            theta0 = draw_func(nstartparameters)
         # Setting up some default parameters
-        fractunning = 0.5  # number of samples spent tunning the sampler
+        fractunning = 2.0  # number of samples spent tunning the sampler
         # define the number of samples for tunning
         samptunning = np.ceil(sampperchain*fractunning).astype('int')
         # defining the total number of chains
@@ -867,7 +847,7 @@ class Chain:
         return order
 
 
-    def run_MCMC_PTLMC(self, nsteps=500, nwalkers=16, ntemps=50, maxtemp=100):
+    def run_MCMC_PTLMC(self, nsteps=500, nwalkers=16, ntemps=50, maxtemp=100, nstartparameters=1000):
         """
         This function wrapps the PTLMC package to run the parallel tempering 
         ensemble MCMC with Langevin Monte Carlo
@@ -881,7 +861,9 @@ class Chain:
                                    numtemps=ntemps,
                                    numchain=nwalkers,
                                    sampperchain=nsteps,
-                                   maxtemp=maxtemp)
+                                   maxtemp=maxtemp,
+                                   nstartparameters=nstartparameters
+                                   )
 
         self.chain = result_dict['theta']
         # This reshape should not be necessary, just done to match the format of the other MCMC
@@ -891,17 +873,34 @@ class Chain:
         logging.info('Writing MCMC chains to file ...')
         chain_data['chain'] = self.chain
 
-        # Compute the log likelihood for the thinned chain
-        logging.info('Computing log likelihood for the chain...')
-        reshape_thinned_chain = chain_data['chain'].reshape(-1, self.ndim)
-        thinned_likelihood = self.log_likelihood(reshape_thinned_chain)
-        thinned_likelihood = thinned_likelihood.reshape((chain_data['chain'].shape[0], chain_data['chain'].shape[1]))
-        chain_data['log_likelihood'] = thinned_likelihood
-
         # Write the chain to file
         logging.info('Writing MCMC chains to file...')
         with open(self.mcmc_path, 'wb') as file:
             pickle.dump(chain_data, file)
+
+
+    def compute_log_likelihood_for_chain(self, output_path="./mcmc/log_likelihood.pkl"):
+        """
+        This function computes the log likelihood for the loaded chain.
+        The log likelihood is computed for each point in the chain and stored
+        in a new pkl file.
+        """
+        if self.chain is False:
+            logging.error('Load chain before computing log likelihood')
+            with open(self.mcmc_path, 'rb') as f:
+                chain_data = pickle.load(f)
+            self.chain = chain_data['chain']
+
+        logging.info('Computing log likelihood for the chain...')
+        reshape_chain = self.chain.reshape(-1, self.ndim)
+        likelihood = self.log_likelihood(reshape_chain)
+        likelihood = likelihood.reshape((self.chain.shape[0], self.chain.shape[1]))
+
+        # Write the log_likelihood to file
+        logging.info('Writing log_likelihood for chains to file...')
+        likelihood_data = {'log_likelihood': likelihood}
+        with open(output_path, 'wb') as file:
+            pickle.dump(likelihood_data, file)
 
 
 def main():
