@@ -14,3 +14,7 @@ The following wrappers for MC sampling are included:
 - [PTMCMC](https://github.com/willvousden/ptemcee) (Parallel Tempering Markov Chain Monte Carlo) wrapper
     - Not recommend to use this one for larger runs. There are problems with the parallelization.
 - [PTLMC](https://github.com/bandframework/surmise) from the surmise package (Parallel Tempering Langevin Monte Carlo)
+
+
+:exclamation: The jupyter notebooks are just meant as examples for how to use the emulators and samplers and analyze the output.
+Paths and data files need the proper input formats.
