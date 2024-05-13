@@ -193,7 +193,6 @@ class Chain:
                 X, return_cov=True, extra_std=extra_std_arr)
             nobs_i = model_Y.shape[1]
             modelPred[:, currIdx:currIdx+nobs_i] = model_Y
-
             modelPredCov[:, currIdx:currIdx+nobs_i, currIdx:currIdx+nobs_i] = model_cov
             currIdx += nobs_i
         return modelPred, modelPredCov
@@ -223,9 +222,7 @@ class Chain:
         Evaluate the likelihood at `X`.
         """
         X = np.array(X, copy=False, ndmin=2)
-
         lp = np.zeros(X.shape[0])
-
         inside = np.all( (X > self.min) & (X < self.max), axis=1)
         lp[~inside] = -np.inf
 
@@ -236,16 +233,13 @@ class Chain:
             # not sure why to use the last parameter for extra std
             extra_std = 0.0*X[inside, -1]
 
-            #model_Y, model_cov = self.emu.predict(
-            #    X[inside], return_cov=True, extra_std=extra_std
-            #)
             model_Y, model_cov = self._predict(X[inside], extra_std)
 
-            # allocate difference (model - expt) and covariance arrays
+            # allocate difference (model - experiment) and covariance arrays
             dY = np.empty([nsamples, self.nobs])
             cov = np.empty([nsamples, self.nobs, self.nobs])
             dY = model_Y - self.expdata
-            # add expt cov to model cov
+            # add experiment cov to model cov
             cov = model_cov + self.expdata_cov
 
             # compute log likelihood at each point
@@ -256,6 +250,40 @@ class Chain:
                            - extra_std/extra_std_prior_scale)
         return lp
 
+    def log_likelihood_point_by_point(self, X, extra_std_prior_scale=0.001):
+        """
+        Evaluate the likelihood at `X` point by point.
+        This is used for the log_likelihood computation when the chain is already
+        generated and the likelihood is computed for each point in the chain.
+        """
+        lp = np.zeros(X.shape[0])
+        
+        for k in range(X.shape[0]):
+            if k % 100 == 0:
+                logging.info("Evaluating log_likelihood at point {}".format(k))
+            Xk = np.array(X[k], copy=False, ndmin=2)
+            inside = np.all( (Xk > self.min) & (Xk < self.max))
+            lp[k] = -np.inf if not inside else 0.0
+
+            nsamples = 1 if inside else 0
+            if nsamples > 0:
+                extra_std = 0.0*Xk[0,-1]
+                model_Y, model_cov = self._predict(Xk, extra_std)
+
+                # allocate difference (model - experiment) and covariance arrays
+                dY = np.empty([nsamples, self.nobs])
+                cov = np.empty([nsamples, self.nobs, self.nobs])
+                dY = model_Y - self.expdata
+                # add experiment cov to model cov
+                cov = model_cov + self.expdata_cov
+
+                # compute log likelihood at each point
+                lp[k] += list(map(mvn_loglike, dY, cov))
+
+                # add prior for extra_std (model sys error)
+                lp[k] += (2*np.log(extra_std + 1e-16)
+                               - extra_std/extra_std_prior_scale)
+        return lp
 
     def log_posterior(self, X, extra_std_prior_scale=.05):
         """
@@ -890,10 +918,9 @@ class Chain:
             with open(self.mcmc_path, 'rb') as f:
                 chain_data = pickle.load(f)
             self.chain = chain_data['chain']
-
         logging.info('Computing log likelihood for the chain...')
         reshape_chain = self.chain.reshape(-1, self.ndim)
-        likelihood = self.log_likelihood(reshape_chain)
+        likelihood = self.log_likelihood_point_by_point(reshape_chain)
         likelihood = likelihood.reshape((self.chain.shape[0], self.chain.shape[1]))
 
         # Write the log_likelihood to file
