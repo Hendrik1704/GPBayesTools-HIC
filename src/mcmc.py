@@ -39,6 +39,9 @@ from .emulator import Emulator
 from .emulator_BAND import EmulatorBAND
 import scipy.optimize as spo
 from .ptemcee_modified.sampler import Sampler as PTemceeSampler
+import pocomc
+from scipy.stats import uniform
+
 
 def mvn_loglike(y, cov):
     """
@@ -217,14 +220,17 @@ class Chain:
         return lp
 
 
-    def log_likelihood(self, X, extra_std_prior_scale=0.001):
+    def log_likelihood(self, X, extra_std_prior_scale=0.001, finite=False):
         """
         Evaluate the likelihood at `X`.
         """
         X = np.array(X, copy=False, ndmin=2)
         lp = np.zeros(X.shape[0])
         inside = np.all( (X > self.min) & (X < self.max), axis=1)
-        lp[~inside] = -np.inf
+        if not finite:
+            lp[~inside] = -np.inf
+        elif finite:
+            lp[~inside] = -1e300
 
         extra_std = X[inside, -1]
 
@@ -929,6 +935,51 @@ class Chain:
         with open(output_path, 'wb') as file:
             pickle.dump(likelihood_data, file)
 
+
+    def run_pocoMC(self,n_ess=1000,n_active=250,n_prior=2000,sample="pcn",max_steps=100,random_state=42,n_total=5000,n_evidence=5000):
+        """
+        pocoMC is a Preconditioned Monte Carlo (PMC) sampler that uses 
+        normalizing flows to precondition the target distribution.
+
+        n_ess (int) – The effective sample size maintained during the run (default is n_ess=1000).
+        n_active (int) – The number of active particles (default is n_active=250). It must be smaller than n_ess.
+        n_prior (int) – Number of prior samples to draw (default is n_prior=2*(n_ess//n_active)*n_active).
+        sample (str) – Type of MCMC sampler to use (default is sample="pcn"). Options are "pcn" (Preconditioned Crank-Nicolson) or "rwm" (Random-Walk Metropolis).
+        max_steps (int) – Maximum number of MCMC steps (default is max_steps=5*n_dim).
+        random_state (int or None) – Initial random seed.
+
+        n_total (int) – The total number of effectively independent samples to be collected (default is n_total=5000).
+        n_evidence (int) – The number of importance samples used to estimate the evidence (default is n_evidence=5000). 
+                            If n_evidence=0, the evidence is not estimated using importance sampling and the SMC estimate is used instead. 
+                            If preconditioned=False, the evidence is estimated using SMC and n_evidence is ignored.
+        """
+        logging.info('Generate the prior class for pocoMC ...')
+        prior_distributions = []
+        for i in range(self.ndim):
+            prior_distributions.append(uniform(self.min[i], self.max[i]))
+        prior = pocomc.Prior(prior_distributions)
+
+        logging.info('Starting pocoMC ...')
+        sampler = pocomc.Sampler(prior=prior, likelihood=self.log_likelihood, 
+                                likelihood_kwargs={'finite': True}, 
+                                n_ess=n_ess, n_active=n_active, n_prior=n_prior,
+                                sample=sample, max_steps=max_steps, 
+                                random_state=random_state, vectorize=True)
+        sampler.run(n_total=n_total, n_evidence=n_evidence)
+
+        logging.info('Generate the posterior samples ...')
+        samples, weights, logl, logp = sampler.posterior() # Weighted posterior samples
+
+        logging.info('Generate the evidence ...')
+        logz, logz_err = sampler.evidence() # Bayesian model evidence estimate and uncertainty
+        print("Log evidence: ", logz)
+        print("Log evidence error: ", logz_err)
+
+        logging.info('Writing pocoMC chains to file...')
+        chain_data = {'chain': samples, 'weights': weights, 'logl': logl,
+                        'logp': logp, 'logz': logz, 'logz_err': logz_err}
+        with open(self.mcmc_path, 'wb') as file:
+            pickle.dump(chain_data, file)
 
 def main():
     parser = argparse.ArgumentParser(
