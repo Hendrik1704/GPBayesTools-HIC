@@ -936,22 +936,30 @@ class Chain:
             pickle.dump(likelihood_data, file)
 
 
-    def run_pocoMC(self,n_ess=1000,n_active=250,n_prior=2000,sample="pcn",max_steps=100,random_state=42,n_total=5000,n_evidence=5000):
+    def run_pocoMC(self,n_effective=1000,n_active=250,n_prior=2000,sample="tpcn",n_max_steps=200,random_state=42,n_total=5000,n_evidence=5000,pool=None):
         """
+        This function is based on PocoMC package (version 1.2.1).
         pocoMC is a Preconditioned Monte Carlo (PMC) sampler that uses 
         normalizing flows to precondition the target distribution.
 
-        n_ess (int) – The effective sample size maintained during the run (default is n_ess=1000).
+        n_effective (int) – The effective sample size maintained during the run (default is n_ess=1000).
         n_active (int) – The number of active particles (default is n_active=250). It must be smaller than n_ess.
-        n_prior (int) – Number of prior samples to draw (default is n_prior=2*(n_ess//n_active)*n_active).
-        sample (str) – Type of MCMC sampler to use (default is sample="pcn"). Options are "pcn" (Preconditioned Crank-Nicolson) or "rwm" (Random-Walk Metropolis).
-        max_steps (int) – Maximum number of MCMC steps (default is max_steps=5*n_dim).
+        n_prior (int) – Number of prior samples to draw (default is n_prior=2*(n_effective//n_active)*n_active).
+        sample (str) – Type of MCMC sampler to use (default is sample="pcn"). 
+            Options are ``"pcn"`` (t-preconditioned Crank-Nicolson) or ``"rwm"`` (Random-walk Metropolis).
+            t-preconditioned Crank-Nicolson is the default and recommended sampler for PMC as it is more efficient and scales better with the number of parameters.
+        n_max_steps (int) – Maximum number of MCMC steps (default is max_steps=10*n_dim).
         random_state (int or None) – Initial random seed.
 
         n_total (int) – The total number of effectively independent samples to be collected (default is n_total=5000).
         n_evidence (int) – The number of importance samples used to estimate the evidence (default is n_evidence=5000). 
                             If n_evidence=0, the evidence is not estimated using importance sampling and the SMC estimate is used instead. 
                             If preconditioned=False, the evidence is estimated using SMC and n_evidence is ignored.
+
+        pool (int) – Number of processes to use for parallelisation (default is ``pool=None``). 
+            If ``pool`` is an integer greater than 1, a ``multiprocessing`` pool is created with the specified number of processes.
+
+            When experiencing issues with the fork() function, set the environment variable ``export RDMAV_FORK_SAFE=1``.
         """
         logging.info('Generate the prior class for pocoMC ...')
         prior_distributions = []
@@ -962,9 +970,9 @@ class Chain:
         logging.info('Starting pocoMC ...')
         sampler = pocomc.Sampler(prior=prior, likelihood=self.log_likelihood, 
                                 likelihood_kwargs={'finite': True}, 
-                                n_ess=n_ess, n_active=n_active, n_prior=n_prior,
-                                sample=sample, max_steps=max_steps, 
-                                random_state=random_state, vectorize=True)
+                                n_effective=n_effective, n_active=n_active, n_prior=n_prior,
+                                sample=sample, n_max_steps=n_max_steps, 
+                                random_state=random_state, vectorize=True, pool=pool)
         sampler.run(n_total=n_total, n_evidence=n_evidence)
 
         logging.info('Generate the posterior samples ...')
