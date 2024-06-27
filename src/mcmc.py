@@ -184,9 +184,24 @@ class Chain:
                 self.emuList.append(emu_i)
         logging.info("Number of Emulators: {}".format(len(self.emuList)))
 
-
     def _predict(self, X, extra_std=0.0):
         nPreds = X.shape[0]
+        X0 = np.copy(X)
+        X1 = np.copy(X)
+        X2 = np.copy(X)
+        #X3 = np.copy(X)
+        X0 = np.delete(X, [7, 8, 10, 11, 13, 14, 26, 27], axis=1)
+        X1 = np.delete(X, [6, 8, 9, 11, 12, 14, 25, 27], axis=1)
+        X2 = np.delete(X, [6, 7, 9, 10, 12, 13, 25, 26], axis=1)
+        '''
+        X0 = np.delete(X, [7, 8, 9, 11, 12, 13, 15, 16, 17, 29, 30, 31], axis=1)
+        X1 = np.delete(X, [6, 8, 9, 10, 12, 13, 14, 16, 17, 28, 30, 31], axis=1)
+        X2 = np.delete(X, [6, 7, 9, 10, 11, 13, 14, 15, 17, 28, 29, 31], axis=1)
+        X3 = np.delete(X, [6, 7, 8, 10, 11, 12, 14, 15, 16, 28, 29, 30], axis=1)
+        '''
+        # X0=200 GeV, X1=19.6 GeV, X2=7.7 GeV, X3=17.3 GeV
+        XList = [X0, X0, X0, X0, X1, X1, X1, X2, X2]
+        #XList = [X0, X0, X0, X0, X1, X1, X1, X2, X2, X3]
         modelPred = np.zeros([nPreds, self.nobs])
         modelPredCov = np.zeros([nPreds, self.nobs, self.nobs])
         extra_std_arr = extra_std*X[:, -1]
