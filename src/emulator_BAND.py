@@ -28,10 +28,12 @@ class EmulatorBAND:
     """
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt", 
-                 method='PCGP',logTrafo=False,parameterTrafoPCA=False):
+                 method='PCGP',logTrafo=False,parameterTrafoPCA=False,
+                 max_rel_uncertainty_data=0.1):
         self.method_ = method
         self.logTrafo_ = logTrafo 
         self.parameterTrafoPCA_ = parameterTrafoPCA
+        self.max_rel_uncertainty_data_ = max_rel_uncertainty_data
         self._load_training_data_pickle(training_set_path)
 
         self.pardict = parse_model_parameter_file(parameter_file)
@@ -87,7 +89,7 @@ class EmulatorBAND:
         for event_id in sorted_event_ids:
             temp_data = dataDict[event_id]["obs"].transpose()
             statErrMax = np.abs((temp_data[:, 1]/(temp_data[:, 0]+1e-16))).max()
-            if statErrMax > 0.1:
+            if statErrMax > self.max_rel_uncertainty_data_:
                 logging.info("Discard Parameter {}, stat err = {:.2f}".format(
                                                     event_id, statErrMax))
                 discarded_points += 1
