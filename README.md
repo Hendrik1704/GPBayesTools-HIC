@@ -16,6 +16,7 @@ The following wrappers for MC sampling are included:
 - [PTLMC](https://github.com/bandframework/surmise) from the surmise package (Parallel Tempering Langevin Monte Carlo)
 - [pocoMC](https://github.com/minaskar/pocomc) Preconditioned Monte Carlo method for accelerated Bayesian inference
 
+Check the `requirements.txt` file for the dependencies of this code.
 
 :exclamation: The jupyter notebooks are just meant as examples for how to use the emulators and samplers and analyze the output.
 Paths and data files need the proper input formats.
