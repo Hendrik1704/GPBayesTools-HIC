@@ -1,30 +1,10 @@
 """
-Markov chain Monte Carlo model calibration using the `affine-invariant ensemble
-sampler (emcee) <http://dfm.io/emcee>`_.
-
-This module must be run explicitly to create the posterior distribution.
-Run ``python -m src.mcmc --help`` for complete usage information.
-
-On first run, the number of walkers and burn-in steps must be specified, e.g.
-::
-
-    python -m src.mcmc --nwalkers 500 --nburnsteps 100 200
-
-would run 500 walkers for 100 burn-in steps followed by 200 production steps.
-This will create the HDF5 file :file:`mcmc/chain.hdf` (default path).
-
-On subsequent runs, the chain resumes from the last point and the number of
-walkers is inferred from the chain, so only the number of production steps is
-required, e.g. ::
-
-    python -m src.mcmc 300
-
-would run an additional 300 production steps (total of 500).
-
-To restart the chain, delete (or rename) the chain HDF5 file.
+Markov chain Monte Carlo model calibration. The following methods are available
+- run_mcmc: run MCMC model calibration with emcee
+- run_MCMC_ptemcee: run MCMC model calibration with parallel tempering ptemcee
+- run_MCMC_PTLMC: run MCMC model calibration with PTLMC sampler
+- run_pocoMC: run MCMC model calibration with pocoMC sampler (recommended)
 """
-
-import argparse
 import logging
 import pickle
 
@@ -35,8 +15,6 @@ from scipy.linalg import lapack
 import dill
 
 from . import workdir, parse_model_parameter_file
-from .emulator import Emulator
-from .emulator_BAND import EmulatorBAND
 import scipy.optimize as spo
 from .ptemcee_modified.sampler import Sampler as PTemceeSampler
 import pocomc
@@ -161,20 +139,8 @@ class Chain:
             'Loading the experiment data from {} ...'.format(expdata_path))
         self.expdata, self.expdata_cov = self._read_in_exp_data_pickle(expdata_path)
         self.nobs = self.expdata.shape[1]
-        self.closureTestFalg = False
         self.emuList = []
         self.chain = False
-
-
-    def trainEmulator(self, model_parafile="./model.dat",
-                      training_data_path="./training_data", npc=10):
-        # setup the emulator
-        logging.info('Initializing emulators for the training model ...')
-        self.emuList.append(
-                Emulator(training_set_path=training_data_path,
-                         parameter_file=model_parafile,
-                         npc=npc)
-        )
 
 
     def loadEmulator(self, emulatorPathList):
@@ -256,6 +222,7 @@ class Chain:
                            - extra_std/extra_std_prior_scale)
         return lp
 
+
     def log_likelihood_point_by_point(self, X, extra_std_prior_scale=0.001):
         """
         Evaluate the likelihood at `X` point by point.
@@ -291,6 +258,7 @@ class Chain:
                                - extra_std/extra_std_prior_scale)
         return lp
 
+
     def log_posterior(self, X, extra_std_prior_scale=.05):
         """
         Evaluate the posterior at `X`.
@@ -313,9 +281,6 @@ class Chain:
             # not sure why to use the last parameter for extra std
             extra_std = 0.0*X[inside, -1]
 
-            #model_Y, model_cov = self.emu.predict(
-            #    X[inside], return_cov=True, extra_std=extra_std
-            #)
             model_Y, model_cov = self._predict(X[inside], extra_std)
 
             # allocate difference (model - expt) and covariance arrays
@@ -368,16 +333,6 @@ class Chain:
         return np.random.uniform(self.min, self.max, (n, self.ndim))
 
 
-    def set_closure_test_truth(self, filename):
-        self.closureTestFalg = True
-        self.trueParams = []
-        with open(filename, "r") as parfile:
-            for line in parfile:
-                line = line.split()
-                self.trueParams.append(float(line[1]))
-        self.trueParams = np.array(self.trueParams)
-
-
     @staticmethod
     def map(f, args):
         """
@@ -391,6 +346,9 @@ class Chain:
     def run_mcmc(self, nsteps=500, nburnsteps=None, nwalkers=None,
                  status=None, nthin=10, skip_initial_state_check=False):
         """
+        Markov chain Monte Carlo model calibration using the `affine-invariant 
+        ensemble sampler (emcee) <http://dfm.io/emcee>`_.
+        
         Run MCMC model calibration. If the chain already exists, continue from
         the last point, otherwise burn-in and start the chain.
         """
@@ -456,7 +414,8 @@ class Chain:
 
         thinedChain = sampler.chain[:, ::nthin, :]
         if 'chain' in chain_data:
-            chain_data['chain'] = np.concatenate((chain_data['chain'], thinedChain), axis=1)
+            chain_data['chain'] = np.concatenate((chain_data['chain'], 
+                                                  thinedChain), axis=1)
             self.chain = chain_data['chain']
         else:
             chain_data['chain'] = thinedChain
@@ -538,29 +497,32 @@ class Chain:
         def log_like(x): return log_likelihood(x.reshape(-1, ndim))
         global log_prior_fix
         def log_prior_fix(x): return log_prior(x.reshape(-1, ndim))
-        ptsampler_ex = PTemceeSampler(nwalkers=nwalkers, dim=ndim, logl=log_like, logp=log_prior_fix, ntemps=ntemps, threads=nthreads, Tmax=Tmax)
+        ptsampler_ex = PTemceeSampler(nwalkers=nwalkers, dim=ndim, logl=log_like, 
+                                      logp=log_prior_fix, ntemps=ntemps, 
+                                      threads=nthreads, Tmax=Tmax)
 
         pos0 = np.array([draw_func(nwalkers) for n in range(0, ntemps)])
         if verbose:
-            print("Running burn-in phase")
+            logging.info('Running burn-in phase')
         for p, lnprob, lnlike in ptsampler_ex.sample(pos0, iterations=nburnin, adapt=True):
             pass
         ptsampler_ex.reset()  # Discard previous samples from the chain, but keep the position
 
         if verbose:
-            print("Running MCMC chains")
+            logging.info('Burn-in phase complete. Running MCMC chains')
         # Now we sample for nwalkers*niterations, recording every nthin-th sample
-        for p, lnprob, lnlike in ptsampler_ex.sample(p, iterations=niterations, thin=nthin, adapt=True):
+        for p, lnprob, lnlike in ptsampler_ex.sample(p, iterations=niterations, 
+                                                     thin=nthin, adapt=True):
             pass
 
         if verbose:
-            print('Done MCMC')
+            logging.info('Done MCMC')
 
         mean_acc_frac = np.mean(ptsampler_ex.acceptance_fraction)
 
         if verbose:
-            print(f"Mean acceptance fraction: {mean_acc_frac:.3f}",
-                f"(in total {nwalkers*niterations} steps)")
+            logging.info(f"Mean acceptance fraction: {mean_acc_frac:.3f}",
+                         f"(in total {nwalkers*niterations} steps)")
 
         # We only analyze the zero temperature MCMC samples
         samples = ptsampler_ex.chain[0, :, :, :].reshape((-1, ndim))
@@ -575,7 +537,7 @@ class Chain:
         This function wrapps the ptemcee package to run the parallel tempering 
         MCMC.
         The parameter nthreads should be used with caution. The Pool object is
-        pckling and unpickling all the data and this can be very slow.
+        pickling and unpickling all the data and this can be very slow.
         It might be faster to run in sequential mode. There is a print out around
         the Pool initialization, if you still want to try it and check the speed.
         """
@@ -881,7 +843,8 @@ class Chain:
         return order
 
 
-    def run_MCMC_PTLMC(self, nsteps=500, nwalkers=16, ntemps=50, maxtemp=100, nstartparameters=1000):
+    def run_MCMC_PTLMC(self, nsteps=500, nwalkers=16, ntemps=50, maxtemp=100, 
+                       nstartparameters=1000):
         """
         This function wrapps the PTLMC package to run the parallel tempering 
         ensemble MCMC with Langevin Monte Carlo
@@ -936,9 +899,12 @@ class Chain:
             pickle.dump(likelihood_data, file)
 
 
-    def run_pocoMC(self,n_effective=1000,n_active=250,n_prior=2000,sample="tpcn",n_max_steps=200,random_state=42,n_total=5000,n_evidence=5000,pool=None):
+    def run_pocoMC(self,n_effective=1000,n_active=250,n_prior=2000,
+                   sample="tpcn",n_max_steps=200,random_state=42,
+                   n_total=5000,n_evidence=5000,pool=None):
         """
-        This function is based on PocoMC package (version 1.2.1).
+        This function is based on PocoMC package (version 1.2.6).
+        It works with versions of pocomc >= 1.2.2 and is tested up to 1.2.6.
         pocoMC is a Preconditioned Monte Carlo (PMC) sampler that uses 
         normalizing flows to precondition the target distribution.
 
@@ -970,9 +936,11 @@ class Chain:
         logging.info('Starting pocoMC ...')
         sampler = pocomc.Sampler(prior=prior, likelihood=self.log_likelihood, 
                                 likelihood_kwargs={'finite': True}, 
-                                n_effective=n_effective, n_active=n_active, n_prior=n_prior,
-                                sample=sample, n_max_steps=n_max_steps, 
-                                random_state=random_state, vectorize=True, pool=pool)
+                                n_effective=n_effective, n_active=n_active, 
+                                n_prior=n_prior, sample=sample, 
+                                n_max_steps=n_max_steps, 
+                                random_state=random_state, vectorize=True, 
+                                pool=pool)
         sampler.run(n_total=n_total, n_evidence=n_evidence)
 
         logging.info('Generate the posterior samples ...')
@@ -980,57 +948,11 @@ class Chain:
 
         logging.info('Generate the evidence ...')
         logz, logz_err = sampler.evidence() # Bayesian model evidence estimate and uncertainty
-        print("Log evidence: ", logz)
-        print("Log evidence error: ", logz_err)
+        logging.info('Log evidence: {}'.format(logz))
+        logging.info('Log evidence error: {}'.format(logz_err))
 
         logging.info('Writing pocoMC chains to file...')
         chain_data = {'chain': samples, 'weights': weights, 'logl': logl,
                         'logp': logp, 'logz': logz, 'logz_err': logz_err}
         with open(self.mcmc_path, 'wb') as file:
             pickle.dump(chain_data, file)
-
-def main():
-    parser = argparse.ArgumentParser(
-            description='Markov Chain Monte Carlo',
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument(
-        '--nsteps', type=int, default=500,
-        help='number of steps'
-    )
-    parser.add_argument(
-        '--nwalkers', type=int, default=100,
-        help='number of walkers'
-    )
-    parser.add_argument(
-        '--nburnsteps', type=int, default=200,
-        help='number of burn-in steps'
-    )
-    parser.add_argument(
-        '--status', type=int,
-        help='number of steps between logging status'
-    )
-    parser.add_argument(
-        '--exp', type=str, default='./exp_data.dat',
-        help="experimental data"
-    )
-    parser.add_argument(
-        '--model_design', type=str,
-        default='model_parameter_dict_examples/ABCD.txt',
-        help="model parameter filename"
-    )
-    parser.add_argument(
-        '--training_set', type=str,
-        default='./training_dataset',
-        help="model training set parameters"
-    )
-    args = parser.parse_args()
-
-    mymcmc = Chain(expdata_path=args.exp, model_parafile=args.model_design,
-                   training_data_path=args.training_set)
-    mymcmc.run_mcmc(nsteps=args.nsteps, nburnsteps=args.nburnsteps,
-                    nwalkers=args.nwalkers, status=args.status)
-
-
-if __name__ == '__main__':
-    main()
