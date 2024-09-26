@@ -1,10 +1,5 @@
 """
-Trains Gaussian process emulators.
-
-When run as a script, allows retraining emulators, specifying the number of
-principal components, and other options (however it is not necessary to do this
-explicitly --- the emulators will be trained automatically when needed).  Run
-``python -m src.emulator --help`` for usage information.
+Training for Gaussian process emulators.
 
 Uses the `Gaussian process regression
 <https://surmise.readthedocs.io/en/latest/index.html>`_ implemented by the BAND 
@@ -12,7 +7,6 @@ collaboration.
 """
 
 import logging
-
 import numpy as np
 import pickle
 from surmise.emulation import emulator
@@ -546,36 +540,3 @@ class EmulatorBAND:
 
         return (emulator_predictions, emulator_predictions_err, 
                     validation_data, validation_data_err)
-
-
-if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description='train emulators with the model dataset',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument(
-        '-par', '--parameter_file', type=str, default='ABCD.txt',
-        help='model parameter filename')
-    parser.add_argument(
-        '-t', '--training_set_path', type=str, default=".",
-        help='path for the training data set from model'
-    )
-    parser.add_argument(
-        '--npc', type=int, default=10,
-        help='number of principal components'
-    )
-    parser.add_argument(
-        '--nrestarts', type=int, default=0,
-        help='number of optimizer restarts'
-    )
-    parser.add_argument(
-        '--retrain', action='store_true', default=False,
-        help='retrain even if emulator is cached'
-    )
-
-    args = parser.parse_args()
-    kwargs = vars(args)
-
-    emu = EmulatorBAND(**kwargs)
