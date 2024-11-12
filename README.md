@@ -18,6 +18,8 @@ The following wrappers for MC sampling are included:
 
 We recommend to use the `pocoMC` sampler.
 
+There is also a script to generate Latin Hypercube Design parameter files.
+
 Check the `requirements.txt` file for the dependencies of this code.
 
 :exclamation: The jupyter notebooks are just meant as examples for how to use the emulators and samplers and analyze the output.

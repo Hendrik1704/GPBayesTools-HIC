@@ -4,6 +4,7 @@ Date: 2024-XX-XX
 - Delete unused dependencies and add `requirements.txt`
 - Running the scripts parsing arguments from the terminal is no longer supported
 - Move all examples to the `examples` directory
+- Add a Latin Hypercube Sampler script (`R` with `lhs` required)
 
 ## v1.1.0
 Date: 2024-07-24
