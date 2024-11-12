@@ -16,7 +16,6 @@ import dill
 
 from . import workdir, parse_model_parameter_file
 import scipy.optimize as spo
-from .ptemcee_modified.sampler import Sampler as PTemceeSampler
 import pocomc
 from scipy.stats import uniform
 
