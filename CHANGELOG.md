@@ -4,6 +4,7 @@ Date: 2024-XX-XX
 - Delete unused dependencies and add `requirements.txt`
 - Running the scripts parsing arguments from the terminal is no longer supported
 - Move all examples to the `examples` directory
+- Fix range of pocoMC uniform prior distributions. This does not cause problems with previous results, since the `log_likelihood` evaluates to `-np.inf` for values outside the prior range.
 
 ## v1.1.0
 Date: 2024-07-24
