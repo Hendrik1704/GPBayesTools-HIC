@@ -6,6 +6,7 @@ Date: 2024-XX-XX
 - Move all examples to the `examples` directory
 - Add a Latin Hypercube Sampler script (`R` with `lhs` required)
 - Remove PTMCMC since the code does not parallelize properly and ptemcee is no longer maintained
+- Fix range of pocoMC uniform prior distributions. This does not cause problems with previous results, since the `log_likelihood` evaluates to `-np.inf` for values outside the prior range. Thanks @wenbin1501110084 for pointing this out.
 
 [Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v1.1.0...v1.2.0)
 

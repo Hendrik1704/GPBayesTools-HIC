@@ -780,7 +780,8 @@ class Chain:
         logging.info('Generate the prior class for pocoMC ...')
         prior_distributions = []
         for i in range(self.ndim):
-            prior_distributions.append(uniform(self.min[i], self.max[i]))
+            prior_distributions.append(uniform(self.min[i], 
+                                               self.max[i] - self.min[i]))
         prior = pocomc.Prior(prior_distributions)
 
         logging.info('Starting pocoMC ...')
