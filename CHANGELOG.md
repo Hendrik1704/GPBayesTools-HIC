@@ -1,5 +1,5 @@
 ## v1.2.0
-Date: 2024-XX-XX
+Date: 2025-XX-XX
 
 - Delete unused dependencies and add `requirements.txt`
 - Running the scripts parsing arguments from the terminal is no longer supported
@@ -7,6 +7,7 @@ Date: 2024-XX-XX
 - Add a Latin Hypercube Sampler script (`R` with `lhs` required)
 - Remove PTMCMC since the code does not parallelize properly and ptemcee is no longer maintained
 - Fix range of pocoMC uniform prior distributions. This does not cause problems with previous results, since the `log_likelihood` evaluates to `-np.inf` for values outside the prior range. Thanks @wenbin1501110084 for pointing this out.
+- Add possibility to use pocoMC with a custom prior distribution class
 
 [Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v1.1.0...v1.2.0)
 
