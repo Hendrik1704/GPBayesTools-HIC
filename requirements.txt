@@ -9,3 +9,5 @@ dill>=0.3.8
 scikit-learn>=1.4.0
 multiprocess>=0.70.16
 
+# for the design.py script (optional) you have to install R and the 'lhs' package in R
+

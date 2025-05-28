@@ -11,12 +11,12 @@ The following wrappers for GP emulators are currently included:
 
 The following wrappers for MC sampling are included:
 - MCMC wrapper for the [emcee](https://github.com/topics/emcee) package
-- [PTMCMC](https://github.com/willvousden/ptemcee) (Parallel Tempering Markov Chain Monte Carlo) wrapper
-    - Not recommend to use this one for larger runs. There are problems with the parallelization.
 - [PTLMC](https://github.com/bandframework/surmise) from the surmise package (Parallel Tempering Langevin Monte Carlo)
 - [pocoMC](https://github.com/minaskar/pocomc) Preconditioned Monte Carlo method for accelerated Bayesian inference
 
 We recommend to use the `pocoMC` sampler.
+
+There is also a script to generate Latin Hypercube Design parameter files.
 
 Check the `requirements.txt` file for the dependencies of this code.
 
