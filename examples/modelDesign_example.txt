@@ -1,0 +1,6 @@
+# This file contains model parameters in the XYZ model
+# for bayesian analysis
+# format: parameter_name: label, min, max
+x: x, 0.0, 1.0							# parameter x
+y: y, 1, 10							# parameter y 
+z: z, 0.05, 1.5							# parameter z

@@ -16,7 +16,13 @@ The following wrappers for MC sampling are included:
 
 We recommend to use the `pocoMC` sampler.
 
+## Latin Hypercube Sampling
+
 There is also a script to generate Latin Hypercube Design parameter files.
+An example how to use it is given in the `examples` directory in the `generate_LHD_Bayes.py` script.
+This requires a file specifying the parameter ranges, see for example `examples/modelDesign_example.txt`.
+
+## Requirements
 
 Check the `requirements.txt` file for the dependencies of this code.
 
