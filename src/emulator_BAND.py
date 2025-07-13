@@ -23,12 +23,15 @@ class EmulatorBAND:
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt", 
                  method='PCGP',logTrafo=False,parameterTrafoPCA=False,
-                 max_rel_uncertainty_data=0.1):
+                 max_rel_uncertainty_data=0.1, exp_and_cov_diagonal=False):
         self.method_ = method
         self.logTrafo_ = logTrafo 
         self.parameterTrafoPCA_ = parameterTrafoPCA
         self.max_rel_uncertainty_data_ = max_rel_uncertainty_data
         self._load_training_data_pickle(training_set_path)
+        self.exp_and_cov_diagonal_ = exp_and_cov_diagonal
+        if not self.logTrafo_ and self.exp_and_cov_diagonal_:
+            raise ValueError("exp_and_cov_diagonal can only be set to True if logTrafo is True.")
 
         self.pardict = parse_model_parameter_file(parameter_file)
         self.design_min = []
@@ -358,8 +361,24 @@ class EmulatorBAND:
         else:
             gp = self.emu.predict(x=X,theta=theta)
 
-        fpredmean = gp.mean()
+        if self.exp_and_cov_diagonal_:
+            # If the emulator is trained on the log of the data, we return the
+            # predictions in the original scale with diagonal covariance matrix.
+            fpredmean = np.exp(gp.mean())
+        else:
+            fpredmean = gp.mean()
+
         fpredcov = gp.covx().transpose((1, 0, 2))
+
+        if self.exp_and_cov_diagonal_:
+            fcov = np.zeros((theta.shape[0], self.nobs, self.nobs))
+            # Extract the diagonal of the covariance matrix for each prediction
+            for i in range(theta.shape[0]):
+                diagonal_cov = np.zeros((self.nobs, self.nobs))
+                fstd = np.sqrt(np.diag(fpredcov[i]))
+                np.fill_diagonal(diagonal_cov, (fstd * fpredmean.T[i])**2)
+                fcov[i] = diagonal_cov
+            fpredcov = fcov
 
         return (fpredmean, fpredcov)
 
@@ -434,13 +453,29 @@ class EmulatorBAND:
         else:
             gp = self.emu.predict(x=x,theta=X)
 
-        fpredmean = gp.mean()
+        if self.exp_and_cov_diagonal_:
+            # If the emulator is trained on the log of the data, we return the
+            # predictions in the original scale with diagonal covariance matrix.
+            fpredmean = np.exp(gp.mean().T)
+        else:
+            fpredmean = gp.mean().T
+
         fpredcov = gp.covx().transpose((1, 0, 2))
 
+        if self.exp_and_cov_diagonal_:
+            fcov = np.zeros((X.shape[0], self.nobs, self.nobs))
+            # Extract the diagonal of the covariance matrix for each prediction
+            for i in range(X.shape[0]):
+                diagonal_cov = np.zeros((self.nobs, self.nobs))
+                fstd = np.sqrt(np.diag(fpredcov[i]))
+                np.fill_diagonal(diagonal_cov, (fstd * fpredmean[i])**2)
+                fcov[i] = diagonal_cov
+            fpredcov = fcov
+
         if return_cov:
-            return (fpredmean.T, fpredcov)
+            return (fpredmean, fpredcov)
         else:
-            return fpredmean.T
+            return fpredmean
 
 
     def testEmulatorErrors(self, number_test_points=1):
@@ -470,7 +505,10 @@ class EmulatorBAND:
         pred_mean = pred_mean.T
         pred_var = np.sqrt(np.array([pred_cov[i].diagonal() for i in range(pred_cov.shape[0])]))
 
-        if self.logTrafo_:
+        # if logTrafo is True, then the predictions are in log space
+        # and we need to transform them back to the original space
+        # if exp_and_cov_diag_ is True, then the predictions are not in log space
+        if self.logTrafo_ and not self.exp_and_cov_diagonal_:
             emulator_predictions = np.exp(pred_mean)
             emulator_predictions_err = pred_var*np.exp(pred_mean)
         else:
@@ -519,7 +557,7 @@ class EmulatorBAND:
         pred_mean = pred_mean.T
         pred_var = np.sqrt(np.array([pred_cov[i].diagonal() for i in range(pred_cov.shape[0])]))
 
-        if self.logTrafo_:
+        if self.logTrafo_ and not self.exp_and_cov_diagonal_:
             emulator_predictions = np.exp(pred_mean)
             emulator_predictions_err = pred_var*np.exp(pred_mean)
         else:
