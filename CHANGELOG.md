@@ -1,5 +1,5 @@
 ## v1.2.0
-Date: 2024-XX-XX
+Date: 2024-07-14
 
 - Delete unused dependencies and add `requirements.txt`
 - Running the scripts parsing arguments from the terminal is no longer supported
@@ -10,6 +10,8 @@ Date: 2024-XX-XX
 - Implement option to switch off PCA transformation in the scikit GP emulator wrapper
 - Implement option for 'Matern' kernel in the scikit GP emulator wrapper ('RBF' is the default)
 - Implement option to only use the diagonal of the covariances in all GP emulator wrappers (only when logTrafo is set to True)
+- Add a script to sample posterior clusters from the posterior chain file after a Bayesian inference run.
+- Add possibility to use pocoMC with a custom prior distribution class
 
 [Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v1.1.0...v1.2.0)
 
