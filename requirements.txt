@@ -1,0 +1,13 @@
+surmise==0.2.1 # new version 0.3.0 is released, but we have not tested it yet (needs modifications for the covariance matrix handling)
+pocomc==1.2.6
+
+# versions that work for us, maybe also versions lower than that work, but we have not tested them
+emcee>=3.1.4
+numpy>=1.26.0
+scipy>=1.10.1
+dill>=0.3.8
+scikit-learn>=1.4.0
+multiprocess>=0.70.16
+
+# for the design.py script (optional) you have to install R and the 'lhs' package in R
+

@@ -11,11 +11,27 @@ The following wrappers for GP emulators are currently included:
 
 The following wrappers for MC sampling are included:
 - MCMC wrapper for the [emcee](https://github.com/topics/emcee) package
-- [PTMCMC](https://github.com/willvousden/ptemcee) (Parallel Tempering Markov Chain Monte Carlo) wrapper
-    - Not recommend to use this one for larger runs. There are problems with the parallelization.
 - [PTLMC](https://github.com/bandframework/surmise) from the surmise package (Parallel Tempering Langevin Monte Carlo)
 - [pocoMC](https://github.com/minaskar/pocomc) Preconditioned Monte Carlo method for accelerated Bayesian inference
 
+We recommend to use the `pocoMC` sampler.
+
+## Latin Hypercube Sampling
+
+There is also a script to generate Latin Hypercube Design parameter files.
+An example how to use it is given in the `examples` directory in the `generate_LHD_Bayes.py` script.
+This requires a file specifying the parameter ranges, see for example `examples/modelDesign_example.txt`.
+
+## Posterior Cluster Sampling
+
+The `posterior_cluster_sampling.py` script in the `examples` directory can be used to sample parameter 
+clusters from the posterior chain file after a Bayesian inference run and propagate model
+uncertainties to the observables.
+The final `cluster_centers.txt` file contains the sampled parameter clusters as separate columns.
+
+## Requirements
+
+Check the `requirements.txt` file for the dependencies of this code.
 
 :exclamation: The jupyter notebooks are just meant as examples for how to use the emulators and samplers and analyze the output.
 Paths and data files need the proper input formats.
