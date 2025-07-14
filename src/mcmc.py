@@ -751,7 +751,7 @@ class Chain:
 
     def run_pocoMC(self,n_effective=1000,n_active=250,n_prior=2000,
                    sample="tpcn",n_max_steps=200,random_state=42,
-                   n_total=5000,n_evidence=5000,pool=None):
+                   n_total=5000,n_evidence=5000,pool=None,prior=None):
         """
         This function is based on PocoMC package (version 1.2.6).
         It works with versions of pocomc >= 1.2.2 and is tested up to 1.2.6.
@@ -774,15 +774,25 @@ class Chain:
 
         pool (int) – Number of processes to use for parallelisation (default is ``pool=None``). 
             If ``pool`` is an integer greater than 1, a ``multiprocessing`` pool is created with the specified number of processes.
+        prior (class) – Prior distribution class implementing logpdf, rvs functions and dim, bounds attributes (default is None).
 
-            When experiencing issues with the fork() function, set the environment variable ``export RDMAV_FORK_SAFE=1``.
+        When experiencing issues with the fork() function, set the environment variable ``export RDMAV_FORK_SAFE=1``.
+        For more information on customizing the prior, see the PocoMC documentation.
         """
         logging.info('Generate the prior class for pocoMC ...')
-        prior_distributions = []
-        for i in range(self.ndim):
-            prior_distributions.append(uniform(self.min[i], 
+        if prior is None:
+            logging.info('Using uniform prior for all parameters ...')
+            prior_distributions = []
+            for i in range(self.ndim):
+                prior_distributions.append(uniform(self.min[i], 
                                                self.max[i] - self.min[i]))
-        prior = pocomc.Prior(prior_distributions)
+            prior = pocomc.Prior(prior_distributions)
+        else:
+            logging.info('Using custom prior ...')
+            # Check the dimensions of the prior
+            if self.ndim != prior.dim:
+                logging.error('prior.dim does not match the model parameter space')
+                raise ValueError('prior.dim does not match the model parameter space')
 
         logging.info('Starting pocoMC ...')
         sampler = pocomc.Sampler(prior=prior, likelihood=self.log_likelihood, 

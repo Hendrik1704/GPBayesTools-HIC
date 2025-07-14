@@ -8,6 +8,7 @@ Date: 2024-07-14
 - Remove PTMCMC since the code does not parallelize properly and ptemcee is no longer maintained
 - Fix range of pocoMC uniform prior distributions. This does not cause problems with previous results, since the `log_likelihood` evaluates to `-np.inf` for values outside the prior range. Thanks @wenbin1501110084 for pointing this out.
 - Add a script to sample posterior clusters from the posterior chain file after a Bayesian inference run.
+- Add possibility to use pocoMC with a custom prior distribution class
 
 [Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v1.1.0...v1.2.0)
 
