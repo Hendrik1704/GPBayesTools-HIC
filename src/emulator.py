@@ -16,8 +16,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process import kernels
 from sklearn.model_selection import learning_curve
-#from gp_extras.kernels import HeteroscedasticKernel
-from sklearn.cluster import KMeans
 
 from . import cachedir, parse_model_parameter_file
 
@@ -25,7 +23,8 @@ from . import cachedir, parse_model_parameter_file
 class Emulator:
     """
     Multidimensional Gaussian process emulator using principal component
-    analysis.
+    analysis. There is the option to switch off the PCA transformation
+    and use the raw data for the Gaussian process emulation.
 
     The model training data are standardized (subtract mean and scale to unit
     variance), then transformed through PCA.  The first `npc` principal
@@ -38,14 +37,28 @@ class Emulator:
     preprocessing into modular classes, to be used with an sklearn pipeline.
     The classes would also need to handle transforming uncertainties, which
     could be tricky.
+
+    The parameter `exp_and_cov_diagonal` can be set to True to
+    exponentiate the mean and set the off-diagonal elements of the covariance
+    matrix to zero. For log trained emulators, this will return predictions
+    in the original scale of the observables, but with diagonal covariance
+    matrices.
+
+    The parameter `perform_no_PCA` can be set to True to switch off the PCA
+    transformation and use the raw data for the Gaussian process emulation.
     """
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
                  npc=10, nrestarts=0, logTrafo=False, parameterTrafoPCA=False,
-                 max_rel_uncertainty_data=0.1):
+                 max_rel_uncertainty_data=0.1, exp_and_cov_diagonal=False,
+                 perform_no_PCA=False):
         self.logTrafo_ = logTrafo
         self.parameterTrafoPCA_ = parameterTrafoPCA
         self.max_rel_uncertainty_data_ = max_rel_uncertainty_data
         self._load_training_data_pickle(training_set_path)
+        self.exp_and_cov_diagonal_ = exp_and_cov_diagonal
+        if not self.logTrafo_ and self.exp_and_cov_diagonal_:
+            raise ValueError("exp_and_cov_diagonal can only be set to True if logTrafo is True.")
+        self.perform_no_PCA_ = perform_no_PCA
 
         self.pardict = parse_model_parameter_file(parameter_file)
         self.design_min = []
@@ -241,17 +254,24 @@ class Emulator:
         self.trainEmulator(trainEventMask)
 
 
-    def trainEmulator(self, eventMask):
-        # Standardize observables and transform through PCA.  Use the first
-        # `npc` components but save the full PC transformation for later.
-        logging.info('Performing PCA ...')
-        Z = self.pca.fit_transform(
-                self.scaler.fit_transform(self.model_data[eventMask, :])
-        )[:, :self.npc]
+    def trainEmulator(self, eventMask, kernel_type="RBF"):
+        data_to_use = self.model_data[eventMask, :]
+        # Standardize the input data
+        standardized_data = self.scaler.fit_transform(data_to_use)
 
-        logging.info('{} PCs explain {:.5f} of variance'.format(
-            self.npc, self.pca.explained_variance_ratio_[:self.npc].sum()
-        ))
+        if self.perform_no_PCA_:
+            logging.info('Skipping PCA. Using raw standardized data for GP training ...')
+            Z = standardized_data
+            logging.info('Standardized data shape: {}'.format(Z.shape))
+        else:
+            logging.info('Standardizing data and performing PCA ...')
+            # Transform data with PCA. Use the first
+            # `npc` components but save the full PC transformation for later.
+            Z = self.pca.fit_transform(standardized_data)[:, :self.npc]
+
+            logging.info('{} PCs explain {:.5f} of variance'.format(
+                self.npc, self.pca.explained_variance_ratio_[:self.npc].sum()
+            ))
 
         nev, nobs = self.model_data[eventMask, :].shape
         logging.info(
@@ -264,32 +284,27 @@ class Emulator:
         # Define kernel (covariance function):
         # Gaussian correlation (RBF) plus a noise term.
         ptp = self.design_max - self.design_min
-
-        rbf_kern = 1. * kernels.RBF(
-                      length_scale=ptp,
-                      length_scale_bounds=np.outer(ptp, (1e-1, 1e2)),
-                   )
-        const_kern = kernels.ConstantKernel()
+        if kernel_type == "RBF":
+            rbf_kern = 1. * kernels.RBF(
+                    length_scale=ptp,
+                    length_scale_bounds=np.outer(ptp, (1e-1, 1e2)),
+                    )
+        elif kernel_type == "Matern":
+            rbf_kern = 1. * kernels.Matern(
+                    length_scale=ptp,
+                    length_scale_bounds=np.outer(ptp, (1e-3, 1e5)),
+                    nu=1.5
+                    )
+        else:
+            logging.error("Unknown kernel type: {}".format(kernel_type))
 
         #homoscedastic noise kernel
         hom_white_kern = kernels.WhiteKernel(
                                  noise_level=.05,
                                  noise_level_bounds=(1e-2, 1e2)
                                  )
-
-        #heteroscedastic noise kernel
-        use_hom_sced_noise = True
-
-        if use_hom_sced_noise:
-            kernel = (rbf_kern + hom_white_kern)
-        else:
-            n_clusters = 10
-            prototypes = KMeans(n_clusters=n_clusters).fit(
-                        design_points).cluster_centers_
-            het_noise_kern = HeteroscedasticKernel.construct(
-                prototypes, 1., (1e-1, 1e1), gamma=1e-5, gamma_bounds="fixed")
-            kernel = (rbf_kern + het_noise_kern)
-
+        kernel = (rbf_kern + hom_white_kern)
+        
         # Fit a GP (optimize the kernel hyperparameters) to each PC.
         self.gps = [
             GPR(kernel=kernel, alpha=0.1,
@@ -301,49 +316,51 @@ class Emulator:
         gpScores = []
         for i, gp in enumerate(self.gps):
             gpScores.append(gp.score(design_points, Z.T[i]))
+        logging.info('GP scores: {}'.format(gpScores))
 
-        for n, (evr, gp) in enumerate(zip(
-                self.pca.explained_variance_ratio_, self.gps
-        )):
-            logging.info(
-                'GP {}: {:.5f} of variance, LML = {:.5g}, Score = {:.2f}, kernel: {}'
-                .format(n, evr, gp.log_marginal_likelihood_value_, gpScores[n],
-                        gp.kernel_)
+        if not self.perform_no_PCA_:
+            for n, gp in enumerate(self.gps):
+                evr = self.pca.explained_variance_ratio_[n]
+                logging.info(
+                    'GP {}: {:.5f} of variance, LML = {:.5g}, Score = {:.2f}, kernel: {}'
+                    .format(n, evr, gp.log_marginal_likelihood_value_,
+                            gpScores[n], gp.kernel_)
+                )
+
+        if not self.perform_no_PCA_:
+            # Construct the full linear transformation matrix, which is just the PC
+            # matrix with the first axis multiplied by the explained standard
+            # deviation of each PC and the second axis multiplied by the
+            # standardization scale factor of each observable.
+            self._trans_matrix = (
+                self.pca.components_
+                * np.sqrt(self.pca.explained_variance_[:, np.newaxis])
+                * self.scaler.scale_
             )
 
-        # Construct the full linear transformation matrix, which is just the PC
-        # matrix with the first axis multiplied by the explained standard
-        # deviation of each PC and the second axis multiplied by the
-        # standardization scale factor of each observable.
-        self._trans_matrix = (
-            self.pca.components_
-            * np.sqrt(self.pca.explained_variance_[:, np.newaxis])
-            * self.scaler.scale_
-        )
+            # Pre-calculate some arrays for inverse transforming the predictive
+            # variance (from PC space to physical space).
 
-        # Pre-calculate some arrays for inverse transforming the predictive
-        # variance (from PC space to physical space).
+            # Assuming the PCs are uncorrelated, the transformation is
+            #
+            #   cov_ij = sum_k A_ki var_k A_kj
+            #
+            # where A is the trans matrix and var_k is the variance of the kth PC.
+            # https://en.wikipedia.org/wiki/Propagation_of_uncertainty
 
-        # Assuming the PCs are uncorrelated, the transformation is
-        #
-        #   cov_ij = sum_k A_ki var_k A_kj
-        #
-        # where A is the trans matrix and var_k is the variance of the kth PC.
-        # https://en.wikipedia.org/wiki/Propagation_of_uncertainty
+            # Compute the partial transformation for the first `npc` components
+            # that are actually emulated.
+            A = self._trans_matrix[:self.npc]
+            self._var_trans = np.einsum(
+                'ki,kj->kij', A, A, optimize=False).reshape(self.npc, self.nobs**2)
 
-        # Compute the partial transformation for the first `npc` components
-        # that are actually emulated.
-        A = self._trans_matrix[:self.npc]
-        self._var_trans = np.einsum(
-            'ki,kj->kij', A, A, optimize=False).reshape(self.npc, self.nobs**2)
+            # Compute the covariance matrix for the remaining neglected PCs
+            # (truncation error).  These components always have variance == 1.
+            B = self._trans_matrix[self.npc:]
+            self._cov_trunc = np.dot(B.T, B)
 
-        # Compute the covariance matrix for the remaining neglected PCs
-        # (truncation error).  These components always have variance == 1.
-        B = self._trans_matrix[self.npc:]
-        self._cov_trunc = np.dot(B.T, B)
-
-        # Add small term to diagonal for numerical stability.
-        self._cov_trunc.flat[::self.nobs + 1] += 1e-4 * self.scaler.var_
+            # Add small term to diagonal for numerical stability.
+            self._cov_trunc.flat[::self.nobs + 1] += 1e-4 * self.scaler.var_
 
 
     def _inverse_transform(self, Z):
@@ -538,9 +555,17 @@ class Emulator:
         if return_cov:
             gp_mean, gp_cov = zip(*gp_mean)
 
-        mean = self._inverse_transform(
-            np.concatenate([m[:, np.newaxis] for m in gp_mean], axis=1)
-        )
+        if not self.perform_no_PCA_:
+            mean = self._inverse_transform(
+                np.concatenate([m[:, np.newaxis] for m in gp_mean], axis=1)
+            )
+        else:
+            mean = self.scaler.inverse_transform(
+                np.concatenate([m[:, np.newaxis] for m in gp_mean], axis=1)
+            )
+
+        if self.exp_and_cov_diagonal_:
+            mean = np.exp(mean)
 
         if return_cov:
             # Build array of the GP predictive variances at each sample point.
@@ -553,12 +578,27 @@ class Emulator:
             extra_std = np.array(extra_std, copy=False).reshape(-1, 1)
             gp_var += extra_std**2
 
-            # Compute the covariance at each sample point using the
-            # pre-calculated arrays (see constructor).
-            cov = np.dot(gp_var, self._var_trans).reshape(
-                X.shape[0], self.nobs, self.nobs
-            )
-            cov += self._cov_trunc
+            if not self.perform_no_PCA_:
+                # Compute the covariance at each sample point using the
+                # pre-calculated arrays (see constructor).
+                cov = np.dot(gp_var, self._var_trans).reshape(
+                    X.shape[0], self.nobs, self.nobs
+                )
+                cov += self._cov_trunc
+            else:
+                # Create a covariance matrix for each sample point from gp_var
+                cov = np.zeros((X.shape[0], self.nobs, self.nobs))
+                for i in range(X.shape[0]):
+                    cov[i] = np.diag(gp_var[i])
+
+            if self.exp_and_cov_diagonal_:
+                # For each prediction set the off-diagonal elements of the
+                # covariance matrix to zero
+                for i in range(cov.shape[0]):
+                    new_cov = np.zeros((self.nobs, self.nobs))
+                    fstd = np.sqrt(np.diag(cov[i]))
+                    np.fill_diagonal(new_cov, (fstd * mean[i])**2)
+                    cov[i] = new_cov
 
             return mean, cov
         else:
@@ -573,20 +613,24 @@ class Emulator:
         ``(n_samples_X, n_samples, n_cent_bins)``.
 
         """
-        # Sample the GP for each emulated PC.  The remaining components are
-        # assumed to have a standard normal distribution.
-        return self._inverse_transform(
-            np.concatenate([
-                gp.sample_y(
-                    X, n_samples=n_samples, random_state=random_state
-                )[:, :, np.newaxis]
-                for gp in self.gps
-            ] + [
-                np.random.standard_normal(
-                    (X.shape[0], n_samples, self.pca.n_components_ - self.npc)
-                )
-            ], axis=2)
-        )
+        if not self.perform_no_PCA_:
+            # Sample the GP for each emulated PC.  The remaining components are
+            # assumed to have a standard normal distribution.
+            return self._inverse_transform(
+                np.concatenate([
+                    gp.sample_y(
+                        X, n_samples=n_samples, random_state=random_state
+                    )[:, :, np.newaxis]
+                    for gp in self.gps
+                ] + [
+                    np.random.standard_normal(
+                        (X.shape[0], n_samples, self.pca.n_components_ - self.npc)
+                    )
+                ], axis=2)
+            )
+        else:
+            logging.warning("Sampling from raw data is not implemented.")
+            return None
 
 
     def testEmulatorErrors(self, nTestPoints=1):
@@ -613,7 +657,7 @@ class Emulator:
             self.design_points_org_[validateEventMask, :], return_cov=True)
         pred_var = np.sqrt(np.array([predCov[i].diagonal() for i in range(predCov.shape[0])]))
         
-        if self.logTrafo_:
+        if self.logTrafo_ and not self.exp_and_cov_diagonal_:
             emulatorPreds = np.exp(pred)
             emulatorPredsErr = pred_var*np.exp(pred)
         else:
@@ -633,7 +677,8 @@ class Emulator:
         validationDataErr = np.array(validationDataErr).reshape(-1, self.nobs)
         return (emulatorPreds, emulatorPredsErr,
                validationData, validationDataErr)
-    
+
+
     def testEmulatorErrorsWithTrainingPoints(self, nTestPoints=1):
         """
         This function uses number_test_points points to train the 
@@ -659,7 +704,7 @@ class Emulator:
             self.design_points_org_[validateEventMask, :], return_cov=True)
         pred_var = np.sqrt(np.array([predCov[i].diagonal() for i in range(predCov.shape[0])]))
         
-        if self.logTrafo_:
+        if self.logTrafo_ and not self.exp_and_cov_diagonal_:
             emulatorPreds = np.exp(pred)
             emulatorPredsErr = pred_var*np.exp(pred)
         else:

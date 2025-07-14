@@ -7,6 +7,9 @@ Date: 2024-07-14
 - Add a Latin Hypercube Sampler script (`R` with `lhs` required)
 - Remove PTMCMC since the code does not parallelize properly and ptemcee is no longer maintained
 - Fix range of pocoMC uniform prior distributions. This does not cause problems with previous results, since the `log_likelihood` evaluates to `-np.inf` for values outside the prior range. Thanks @wenbin1501110084 for pointing this out.
+- Implement option to switch off PCA transformation in the scikit GP emulator wrapper
+- Implement option for 'Matern' kernel in the scikit GP emulator wrapper ('RBF' is the default)
+- Implement option to only use the diagonal of the covariances in all GP emulator wrappers (only when logTrafo is set to True)
 - Add a script to sample posterior clusters from the posterior chain file after a Bayesian inference run.
 - Add possibility to use pocoMC with a custom prior distribution class
 
