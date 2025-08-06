@@ -1,5 +1,12 @@
+## v1.2.1
+Date: 2025-08-06
+
+- Fix a bug in the example script `generate_posterior_clusters.py` where the number of samples argument was not handled correctly when set to 'None'.
+
+[Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v1.2.0...v1.2.1)
+
 ## v1.2.0
-Date: 2024-07-14
+Date: 2025-07-14
 
 - Delete unused dependencies and add `requirements.txt`
 - Running the scripts parsing arguments from the terminal is no longer supported
