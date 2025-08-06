@@ -55,12 +55,14 @@ def sort_chain_likelihood(PATH_pklfile_chain):
     with open(PATH_pklfile_chain.replace('.pkl', '_sorted.pkl'), 'wb') as f:
         pickle.dump(data, f)
 
-def generate_posterior_clusters(PATH_pklfile_chain_sorted, num_samples, num_clusters):
+def generate_posterior_clusters(PATH_pklfile_chain_sorted, num_samples=None, num_clusters=10):
     """
     Generate posterior clusters from the sorted chain file.
     """
     run_chain = read_pkl_file_chain_pocoMC(PATH_pklfile_chain_sorted)
     array_chain = run_chain['chain']
+    if num_samples is not None:
+        array_chain = array_chain[:num_samples]
 
     scaler = StandardScaler()
     scaled_chain = scaler.fit_transform(array_chain)
@@ -76,9 +78,14 @@ def generate_posterior_clusters(PATH_pklfile_chain_sorted, num_samples, num_clus
 if __name__ == '__main__':
     if len(sys.argv) != 4:
         print("Usage: python sort_chain_likelihood.py <path_to_chain_file> <number_of_most_likely_samples_considered> <number_of_clusters>")
+        print("Arguments:")
+        print("  <path_to_chain_file>: Path to the pickle file containing the chain data from pocoMC.")
+        print("  <number_of_most_likely_samples_considered>: Number of most likely samples to consider for clustering. Use 'None' to consider all samples.")
+        print("  <number_of_clusters>: Number of clusters to generate.")
         sys.exit(1)
     PATH_pklfile_chain = sys.argv[1]
-    num_samples = int(sys.argv[2])
+    num_samples_str = sys.argv[2]
+    num_samples = None if num_samples_str == 'None' else int(num_samples_str)
     num_clusters = int(sys.argv[3])
     sort_chain_likelihood(PATH_pklfile_chain)
     PATH_pklfile_chain_sorted = PATH_pklfile_chain.replace('.pkl', '_sorted.pkl')
