@@ -800,6 +800,7 @@ class Chain:
                                 n_effective=n_effective, n_active=n_active, 
                                 n_prior=n_prior, sample=sample, 
                                 n_max_steps=n_max_steps, 
+                                n_steps=2*self.ndim,
                                 random_state=random_state, vectorize=True, 
                                 pool=pool)
         sampler.run(n_total=n_total, n_evidence=n_evidence)

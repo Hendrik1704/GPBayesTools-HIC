@@ -3,6 +3,7 @@ Date: 2025-09-17
 
 - Fix the standard behavior of the pocoMC sampler to resample the samples (i.e., make them have equal weights). The resampled points can be used just like you would do with MCMC samples. In older versions the 'weights' from the chain have to be used to generate the posterior corner plots. Thanks to @hejajama for pointing this out.
 - Update to surmise 0.3.0. This update in our `predict` function is not backward compatible, since the handling of the covariance matrices has changed. `fpredcov = gp.covx().transpose((1, 0, 2))` has to be used when using older versions of surmise (<=0.2.1) or emulators trained with that version. The new version (0.3.0) returns the covariance matrices in the expected shape `(theta, ndim, ndim)`, so `fpredcov = gp.covx()` is sufficient.
+- Increase the default `n_steps` for the pocoMC sampler to `2*ndim` (twice the number of dimensions). This should improve the exploration of the posterior distribution. The default value was `ndim` in previous versions.
 
 [Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v1.2.1...v2.0.0)
 
