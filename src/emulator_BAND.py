@@ -368,7 +368,7 @@ class EmulatorBAND:
         else:
             fpredmean = gp.mean()
 
-        fpredcov = gp.covx().transpose((1, 0, 2))
+        fpredcov = gp.covx()
 
         if self.exp_and_cov_diagonal_:
             fcov = np.zeros((theta.shape[0], self.nobs, self.nobs))
@@ -460,7 +460,7 @@ class EmulatorBAND:
         else:
             fpredmean = gp.mean().T
 
-        fpredcov = gp.covx().transpose((1, 0, 2))
+        fpredcov = gp.covx()
 
         if self.exp_and_cov_diagonal_:
             fcov = np.zeros((X.shape[0], self.nobs, self.nobs))
