@@ -805,7 +805,7 @@ class Chain:
         sampler.run(n_total=n_total, n_evidence=n_evidence)
 
         logging.info('Generate the posterior samples ...')
-        samples, weights, logl, logp = sampler.posterior(resample=True)
+        samples, logl, logp = sampler.posterior(resample=True)
 
         logging.info('Generate the evidence ...')
         logz, logz_err = sampler.evidence()
@@ -813,7 +813,7 @@ class Chain:
         logging.info('Log evidence error: {}'.format(logz_err))
 
         logging.info('Writing pocoMC chains to file...')
-        chain_data = {'chain': samples, 'weights': weights, 'logl': logl,
+        chain_data = {'chain': samples, 'logl': logl,
                         'logp': logp, 'logz': logz, 'logz_err': logz_err}
         with open(self.mcmc_path, 'wb') as file:
             pickle.dump(chain_data, file)
