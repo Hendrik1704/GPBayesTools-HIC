@@ -9,7 +9,6 @@ def read_pkl_file_chain_pocoMC(PATH_pklfile_chain):
     Reads a pickle file containing the chain data from pocoMC.
     The expected structure of the data is:
     - 'chain'
-    - 'weights'
     - 'logl'
     - 'logp'
     - 'logz'
@@ -28,7 +27,6 @@ def sort_chain_likelihood(PATH_pklfile_chain):
     """
     run_chain = read_pkl_file_chain_pocoMC(PATH_pklfile_chain)
     array_chain = run_chain['chain']
-    array_weights = run_chain['weights']
     array_logl = run_chain['logl']
     array_logp = run_chain['logp']
     array_logz = run_chain['logz']
@@ -40,15 +38,13 @@ def sort_chain_likelihood(PATH_pklfile_chain):
     sorted_array_logl = array_logl[sorted_indices]
     # sort also the other arrays
     sorted_array_chain = array_chain[sorted_indices]
-    sorted_array_weights = array_weights[sorted_indices]
     sorted_array_logp = array_logp[sorted_indices]
 
     # write a new file with the same content and the sorted data
-    data = {'chain': sorted_array_chain, 
-            'weights': sorted_array_weights, 
-            'logl': sorted_array_logl, 
-            'logp': sorted_array_logp, 
-            'logz': array_logz, 
+    data = {'chain': sorted_array_chain,
+            'logl': sorted_array_logl,
+            'logp': sorted_array_logp,
+            'logz': array_logz,
             'logz_err': array_logz_err
             }
     

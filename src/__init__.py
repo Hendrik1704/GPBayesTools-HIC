@@ -30,4 +30,5 @@ def parse_model_parameter_file(parfile):
             for i in range(1, 3):
                 val[i] = float(val[i])
             pardict.update({key: val})
+    f.close()
     return pardict

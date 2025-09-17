@@ -800,20 +800,21 @@ class Chain:
                                 n_effective=n_effective, n_active=n_active, 
                                 n_prior=n_prior, sample=sample, 
                                 n_max_steps=n_max_steps, 
+                                n_steps=2*self.ndim,
                                 random_state=random_state, vectorize=True, 
                                 pool=pool)
         sampler.run(n_total=n_total, n_evidence=n_evidence)
 
         logging.info('Generate the posterior samples ...')
-        samples, weights, logl, logp = sampler.posterior() # Weighted posterior samples
+        samples, logl, logp = sampler.posterior(resample=True)
 
         logging.info('Generate the evidence ...')
-        logz, logz_err = sampler.evidence() # Bayesian model evidence estimate and uncertainty
+        logz, logz_err = sampler.evidence()
         logging.info('Log evidence: {}'.format(logz))
         logging.info('Log evidence error: {}'.format(logz_err))
 
         logging.info('Writing pocoMC chains to file...')
-        chain_data = {'chain': samples, 'weights': weights, 'logl': logl,
+        chain_data = {'chain': samples, 'logl': logl,
                         'logp': logp, 'logz': logz, 'logz_err': logz_err}
         with open(self.mcmc_path, 'wb') as file:
             pickle.dump(chain_data, file)
