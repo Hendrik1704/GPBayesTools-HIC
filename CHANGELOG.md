@@ -1,3 +1,10 @@
+## v2.0.0
+Date: 2025-09-17
+
+- Fix the standard behavior of the pocoMC sampler to resample the samples (i.e., make them have equal weights). The resampled points can be used just like you would do with MCMC samples.
+
+[Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v1.2.1...v2.0.0)
+
 ## v1.2.1
 Date: 2025-08-06
 

@@ -805,10 +805,10 @@ class Chain:
         sampler.run(n_total=n_total, n_evidence=n_evidence)
 
         logging.info('Generate the posterior samples ...')
-        samples, weights, logl, logp = sampler.posterior() # Weighted posterior samples
+        samples, weights, logl, logp = sampler.posterior(resample=True)
 
         logging.info('Generate the evidence ...')
-        logz, logz_err = sampler.evidence() # Bayesian model evidence estimate and uncertainty
+        logz, logz_err = sampler.evidence()
         logging.info('Log evidence: {}'.format(logz))
         logging.info('Log evidence error: {}'.format(logz_err))
 
