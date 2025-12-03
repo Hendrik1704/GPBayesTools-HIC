@@ -751,7 +751,7 @@ class Chain:
 
     def run_pocoMC(self,n_effective=1000,n_active=250,n_prior=2000,
                    sample="tpcn",n_max_steps=200,random_state=42,
-                   n_total=5000,n_evidence=5000,pool=None,prior=None):
+                   n_total=5000,n_evidence=5000,n_ndim_steps=2,pool=None,prior=None):
         """
         This function is based on PocoMC package (version 1.2.6).
         It works with versions of pocomc >= 1.2.2 and is tested up to 1.2.6.
@@ -771,6 +771,7 @@ class Chain:
         n_evidence (int) – The number of importance samples used to estimate the evidence (default is n_evidence=5000). 
                             If n_evidence=0, the evidence is not estimated using importance sampling and the SMC estimate is used instead. 
                             If preconditioned=False, the evidence is estimated using SMC and n_evidence is ignored.
+        n_ndim_steps (int) – Number of MCMC steps in beta per dimension (default is n_ndim_steps=2).
 
         pool (int) – Number of processes to use for parallelisation (default is ``pool=None``). 
             If ``pool`` is an integer greater than 1, a ``multiprocessing`` pool is created with the specified number of processes.
@@ -800,7 +801,7 @@ class Chain:
                                 n_effective=n_effective, n_active=n_active, 
                                 n_prior=n_prior, sample=sample, 
                                 n_max_steps=n_max_steps, 
-                                n_steps=2*self.ndim,
+                                n_steps=n_ndim_steps*self.ndim,
                                 random_state=random_state, vectorize=True, 
                                 pool=pool)
         sampler.run(n_total=n_total, n_evidence=n_evidence)
