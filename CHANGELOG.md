@@ -1,3 +1,12 @@
+# Changelog for GPBayesTools-HIC
+
+## v2.0.1
+Date: 2025-12-03
+
+- Make the number of beta steps in the pocoMC sampler adjustable via the `n_max_steps` argument. Previously it was fixed to `ndim`, now it is `n_max_steps*ndim`.
+
+[Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v2.0.0...v2.0.1)
+
 ## v2.0.0
 Date: 2025-09-17
 
