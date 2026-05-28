@@ -1,5 +1,6 @@
-surmise==0.3.0
+surmise==0.4.0
 pocomc==1.2.6
+hetgpy==1.0.4
 
 # versions that work for us, maybe also versions lower than that work, but we have not tested them
 emcee>=3.1.4

@@ -1,5 +1,12 @@
 # Changelog for GPBayesTools-HIC
 
+## v2.1.0
+Date: 2026-01-14
+
+- Update the surmise package requirement to version 0.4.0 including a major update of the PCSK emulator.
+
+[Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v2.0.1...v2.1.0)
+
 ## v2.0.1
 Date: 2025-12-03
 
