@@ -95,7 +95,7 @@ class PCASparseGPEmulator:
     predictive distribution (e.g. rare-event probabilities, tight design margins).
     """
 
-    def __init__(self, n_pc=0.999, M=200, key=jax.random.PRNGKey(0), init_strategy='maxmin'):
+    def __init__(self, n_pc=0.999, M=200, key=None, init_strategy='maxmin'):
         """
         Initialize the emulator.
 
@@ -115,7 +115,7 @@ class PCASparseGPEmulator:
         """
         self.n_pc = n_pc
         self.M = M
-        self.key = key
+        self.key = jax.random.PRNGKey(0) if key is None else key
         self.init_strategy = init_strategy
         self.training_history = None
         self.trunc_cov_yn_ = None   # set in fit(); exact PCA truncation covariance in Yn space
@@ -194,12 +194,14 @@ class PCASparseGPEmulator:
     # -------------------------
     # Fit
     # -------------------------
-    def fit(self, X, Y, Y_err=None, steps=2000, batch_size=None,
+    def fit(self, X, Y, Y_err=None, steps=25000, batch_size=None,
             kernel_lr=1e-3, variational_lr=1e-3, inducing_lr=3e-4,
             _fixed_pca_state=None,
             print_every=200, jitter_init=1e-5, jitter_max=1e-1,
-            verbose=True, early_stopping=False, patience=50,
-            es_rel_tol=1e-5, ema_alpha=0.98):
+            verbose=True, early_stopping=False, patience=20,
+            es_rel_tol=1e-4, ema_alpha=0.95,
+            auto_lr_backoff=True, lr_backoff_factor=0.3,
+            max_lr_backoff_retries=3, nan_patience=10):
         """
         Fit the emulator to training data.
 
@@ -226,12 +228,20 @@ class PCASparseGPEmulator:
             ``predict()`` for correct back-projection to output-space covariance.
 
             When ``None``, no extra observation noise is added.  Default None.
+        steps : int
+            Number of ADAM steps to take (default 25000)
+        batch_size : int or None
+            Mini-batch size for stochastic ELBO. None = full dataset (default).
+        kernel_lr : float
+            Learning rate for kernel parameters (default 1e-3)
+        variational_lr : float
+            Learning rate for variational parameters (default 1e-3)
+        inducing_lr : float
+            Learning rate for inducing points (default 3e-4)
         _fixed_pca_state : dict or None
             Internal parameter used by PCASparseGPEnsemble.  When provided,
             skips normalization and PCA fitting and uses the pre-computed shared
-            Number of optimization steps (default 2000).  For N~1000, M~200,
-            convergence typically needs 1500-3000 steps; use early_stopping=True
-            to avoid over-running.
+            PCA state instead of fitting a new one.
         batch_size : int or None
             Mini-batch size for stochastic ELBO. None = full dataset (default).
             The likelihood term is scaled by N/batch_size so the ELBO remains
@@ -253,14 +263,28 @@ class PCASparseGPEmulator:
             Print training progress (default True)
         early_stopping : bool
             Enable EMA-based early stopping (default False).
-            Stops when the exponential moving average of the ELBO plateaus.
+            Stops when the EMA fails to improve by more than `es_rel_tol`
+            over a recent sliding window for `patience` consecutive checks.
         patience : int
-            Consecutive steps with EMA rel. change < es_rel_tol before stopping (default 50)
+            Consecutive steps without meaningful EMA improvement before stopping (default 20)
         es_rel_tol : float
-            EMA relative change threshold counted toward patience (default 1e-5)
+            Minimum relative EMA improvement over the window required to reset patience (default 1e-4)
         ema_alpha : float
-            EMA smoothing factor in [0, 1). Higher = heavier smoothing (default 0.98).
+            EMA smoothing factor in [0, 1). Higher = heavier smoothing (default 0.95).
             Effective window approx 1/(1 - ema_alpha) steps.
+        auto_lr_backoff : bool
+            Automatically reduce learning rates and retry when repeated NaN
+            losses occur, instead of failing immediately (default True).
+        lr_backoff_factor : float
+            Multiplicative factor in (0, 1) applied to all learning rates
+            on each retry (default 0.3).
+        max_lr_backoff_retries : int
+            Maximum number of learning-rate backoff retries after NaN bursts
+            (default 3).
+        nan_patience : int
+            Number of NaN-triggered jitter escalations allowed before either
+            triggering LR backoff (if enabled) or raising RuntimeError
+            (default 10).
 
         Returns
         -------
@@ -488,24 +512,44 @@ class PCASparseGPEmulator:
             "m": "variational",
             "L_unconstrained": "variational",
         }
-        tx = optax.multi_transform(
-            {
-                "kernel":      optax.adam(kernel_lr),
-                "variational": optax.adam(variational_lr),
-                "inducing":    optax.adam(inducing_lr),
-            },
-            param_labels,
-        )
-        opt_state = tx.init(self.params)
+        if not (0.0 < lr_backoff_factor < 1.0):
+            raise ValueError(
+                f"lr_backoff_factor must be in (0, 1), got {lr_backoff_factor}.")
+        if max_lr_backoff_retries < 0:
+            raise ValueError(
+                "max_lr_backoff_retries must be >= 0.")
+        if nan_patience < 1:
+            raise ValueError("nan_patience must be >= 1.")
 
-        @jax.jit
-        def step(p, opt_state, Xb, Yb, obs_noise_b, jitter_arr):
-            loss_val, grads = jax.value_and_grad(
-                lambda params: -elbo_fn(params, Xb, Yb, obs_noise_b, jitter_arr)
-            )(p)
-            updates, new_opt_state = tx.update(grads, opt_state)
-            new_p = optax.apply_updates(p, updates)
-            return new_p, new_opt_state, -loss_val
+        current_kernel_lr = float(kernel_lr)
+        current_variational_lr = float(variational_lr)
+        current_inducing_lr = float(inducing_lr)
+        lr_backoff_count = 0
+
+        def make_optimizer_and_step(k_lr, v_lr, i_lr):
+            tx_local = optax.multi_transform(
+                {
+                    "kernel":      optax.adam(k_lr),
+                    "variational": optax.adam(v_lr),
+                    "inducing":    optax.adam(i_lr),
+                },
+                param_labels,
+            )
+
+            @jax.jit
+            def step_local(p_local, opt_state_local, Xb, Yb, obs_noise_b, jitter_arr):
+                loss_val, grads = jax.value_and_grad(
+                    lambda params: -elbo_fn(params, Xb, Yb, obs_noise_b, jitter_arr)
+                )(p_local)
+                updates, new_opt_state_local = tx_local.update(grads, opt_state_local)
+                new_p_local = optax.apply_updates(p_local, updates)
+                return new_p_local, new_opt_state_local, -loss_val
+
+            return tx_local, step_local
+
+        tx, step = make_optimizer_and_step(
+            current_kernel_lr, current_variational_lr, current_inducing_lr)
+        opt_state = tx.init(self.params)
 
         p = self.params
         elbos = []
@@ -515,6 +559,8 @@ class PCASparseGPEmulator:
         nan_count = 0
         ema = None
         es_patience_count = 0
+        es_check_interval = max(20, int(round(1.0 / (1.0 - ema_alpha))))
+        ema_history = []
         key = self.key
 
         if verbose:
@@ -522,7 +568,11 @@ class PCASparseGPEmulator:
             if early_stopping:
                 print(f"Early stopping: patience={patience}, "
                       f"es_rel_tol={es_rel_tol:.1e}, "
-                      f"ema_alpha={ema_alpha} (window~{1/(1-ema_alpha):.0f} steps)")
+                      f"ema_alpha={ema_alpha} (window~{es_check_interval} steps)")
+                if auto_lr_backoff:
+                    print(f"NaN recovery: nan_patience={nan_patience}, "
+                        f"max_lr_backoff_retries={max_lr_backoff_retries}, "
+                        f"lr_backoff_factor={lr_backoff_factor:.3f}")
 
         for i in range(steps):
             key, subkey = jax.random.split(key)
@@ -546,11 +596,34 @@ class PCASparseGPEmulator:
                     p = {k: jnp.array(v) for k, v in best_params.items()}
                 opt_state = tx.init(p)
                 nan_count += 1
-                if nan_count > 10:
+                if nan_count > nan_patience:
+                    if auto_lr_backoff and lr_backoff_count < max_lr_backoff_retries:
+                        lr_backoff_count += 1
+                        current_kernel_lr *= lr_backoff_factor
+                        current_variational_lr *= lr_backoff_factor
+                        current_inducing_lr *= lr_backoff_factor
+                        if verbose:
+                            print(
+                                f"  NaN recovery attempt {lr_backoff_count}/"
+                                f"{max_lr_backoff_retries}: lowering learning rates to "
+                                f"kernel={current_kernel_lr:.3e}, "
+                                f"variational={current_variational_lr:.3e}, "
+                                f"inducing={current_inducing_lr:.3e}")
+                        tx, step = make_optimizer_and_step(
+                            current_kernel_lr,
+                            current_variational_lr,
+                            current_inducing_lr,
+                        )
+                        opt_state = tx.init(p)
+                        nan_count = 0
+                        continue
                     raise RuntimeError(
                         f"NaN loss after {nan_count} jitter increases "
-                        f"(jitter={jitter:.1e}). Consider lower learning rates "
-                        f"or larger jitter_init.")
+                        f"(jitter={jitter:.1e}) and {lr_backoff_count} LR backoff retries. "
+                        f"Current LRs: kernel={current_kernel_lr:.3e}, "
+                        f"variational={current_variational_lr:.3e}, "
+                        f"inducing={current_inducing_lr:.3e}. "
+                        f"Try smaller initial learning rates or larger jitter_init/jitter_max.")
                 continue
 
             elbo_val_f = float(elbo_val)
@@ -563,21 +636,29 @@ class PCASparseGPEmulator:
             if early_stopping:
                 if ema is None:
                     ema = elbo_val_f
+                    ema_history.append(ema)
+                    es_patience_count = 0
                 else:
                     ema_new = ema_alpha * ema + (1.0 - ema_alpha) * elbo_val_f
-                    rel_change = abs(ema_new - ema) / (abs(ema) + 1e-8)
                     ema = ema_new
-                    if rel_change < es_rel_tol:
-                        es_patience_count += 1
-                    else:
-                        es_patience_count = 0
-                    if es_patience_count >= patience:
-                        converged = True
-                        if verbose:
-                            print(f"  Step {i:5d}/{steps}: ELBO = {elbo_val_f:10.3f} "
-                                  f"(EMA={ema:.3f})")
-                            print(f"\nEarly stopping: EMA plateau at step {i+1}")
-                        break
+                    ema_history.append(ema)
+                    if len(ema_history) > es_check_interval:
+                        prev_ema = ema_history[-es_check_interval - 1]
+                        scale = max(1.0, abs(prev_ema), abs(ema))
+                        rel_gain = (ema - prev_ema) / scale
+                        if rel_gain < es_rel_tol:
+                            es_patience_count += 1
+                        else:
+                            es_patience_count = 0
+                        if es_patience_count >= patience:
+                            converged = True
+                            if verbose:
+                                print(f"  Step {i:5d}/{steps}: ELBO = {elbo_val_f:10.3f} "
+                                      f"(EMA={ema:.3f})")
+                                print(
+                                    f"\nEarly stopping: EMA gain over {es_check_interval} steps "
+                                    f"stayed below {es_rel_tol:.1e} for {patience} checks at step {i+1}")
+                            break
 
             if verbose and (i % print_every == 0 or i == steps - 1):
                 ema_str = f", EMA={ema:.3f}" if ema is not None else ""
@@ -598,6 +679,10 @@ class PCASparseGPEmulator:
             "converged": converged,
             "n_steps":   actual_steps,
             "jitter":    jitter,
+            "lr_backoff_retries": lr_backoff_count,
+            "kernel_lr_final": current_kernel_lr,
+            "variational_lr_final": current_variational_lr,
+            "inducing_lr_final": current_inducing_lr,
         }
 
         if verbose:
@@ -612,8 +697,9 @@ class PCASparseGPEmulator:
     # -------------------------
     # Predict
     # -------------------------
-    def predict(self, X_star, include_noise=True, include_truncation=True,
-                include_pca_sampling=True, return_var_decomposition=False):
+    def predict(self, X_star, include_noise=False, include_truncation=True,
+                include_pca_sampling=False, include_obs_noise=False,
+                return_var_decomposition=False):
         """
         Make predictions on new data with full uncertainty quantification.
 
@@ -639,7 +725,7 @@ class PCASparseGPEmulator:
                 double-counting the observation noise term.
               - Y_err not provided: keep include_noise=True (default); the
                 nugget is the only noise floor estimate available.
-            Default True.
+                Default False.
         include_truncation : bool
             Add exact PCA truncation uncertainty: the covariance contribution
             from all discarded PCA components, computed in fit() as
@@ -648,7 +734,13 @@ class PCASparseGPEmulator:
             assumption). Default True.
         include_pca_sampling : bool
             Add finite-training-data uncertainty from PCA mean estimation:
-            Var(pc_mean_i) = pc_std_i^2 / N_train per component. Default True.
+            Var(pc_mean_i) = pc_std_i^2 / N_train per component. Default False.
+        include_obs_noise : bool
+            Include the observation/statistical uncertainty propagated from
+            Y_err. For calibration against experimental means this should
+            typically be False because experimental uncertainties are already
+            handled in the likelihood. Set True when predicting noisy finite-
+            statistics observables. Default False.
         return_var_decomposition : bool
             If True, return a dict of individual covariance contributions.
             Keys: "gp_posterior", "nugget", "obs_noise", "pca_truncation" (exact), "pca_sampling"
@@ -746,10 +838,9 @@ class PCASparseGPEmulator:
         Ys_outer = jnp.outer(Ys, Ys)
         full_cov = full_cov * Ys_outer[None, :, :]
 
-        # 4. Observation noise from Y_err — back-projected via the stored (n_pc, n_pc)
-        # mean covariance.  Always added when Y_err was provided, regardless of
-        # include_noise.  Handles both (N,P) and (N,P,P) Y_err inputs uniformly.
-        if self.mean_obs_cov_pc_ is not None:
+        # 4. Observation noise from Y_err — back-projected via the stored
+        # (n_pc, n_pc) mean covariance. Handles both (N,P) and (N,P,P) inputs.
+        if include_obs_noise and self.mean_obs_cov_pc_ is not None:
             obs_cov_pc_orig = self.mean_obs_cov_pc_ * jnp.outer(self.pc_std, self.pc_std)  # (n_pc, n_pc)
             obs_cov_yn      = Wt @ obs_cov_pc_orig @ W                                     # (P, P)
             full_cov        = full_cov + (obs_cov_yn * Ys_outer)[None, :, :]
@@ -770,10 +861,10 @@ class PCASparseGPEmulator:
             else:
                 nugget_cov = jnp.zeros((1, P_size, P_size))
 
-            # Known observation noise from Y_err (always included when provided).
+            # Known observation noise from Y_err (optional, gated by include_obs_noise).
             # Uses the stored full (n_pc, n_pc) covariance — correct for both
             # diagonal (N,P) and full-covariance (N,P,P) Y_err inputs.
-            if self.mean_obs_cov_pc_ is not None:
+            if include_obs_noise and self.mean_obs_cov_pc_ is not None:
                 obs_cov_pc_orig = self.mean_obs_cov_pc_ * jnp.outer(self.pc_std, self.pc_std)
                 obs_cov_yn      = Wt @ obs_cov_pc_orig @ W
                 obs_noise_cov   = (obs_cov_yn * Ys_outer)[None, :, :]
@@ -863,7 +954,7 @@ class PCASparseGPEnsemble:
     """
 
     def __init__(self, n_ensemble=5, n_pc=0.999, M=200,
-                 base_key=jax.random.PRNGKey(42), init_strategy='maxmin',
+                 base_key=None, init_strategy='maxmin',
                  bootstrap=False):
         """
         Parameters
@@ -891,7 +982,7 @@ class PCASparseGPEnsemble:
         self.n_ensemble = n_ensemble
         self.n_pc = n_pc
         self.M = M
-        self.base_key = base_key
+        self.base_key = jax.random.PRNGKey(42) if base_key is None else base_key
         self.init_strategy = init_strategy
         self.bootstrap = bootstrap
         self.members = []
@@ -1006,8 +1097,9 @@ class PCASparseGPEnsemble:
             print(f"Ensemble of {self.n_ensemble} members trained.")
         return self
 
-    def predict(self, X_star, include_noise=True, include_truncation=True,
-                include_pca_sampling=True, return_var_decomposition=False):
+    def predict(self, X_star, include_noise=False, include_truncation=True,
+                include_pca_sampling=False, include_obs_noise=False,
+                return_var_decomposition=False):
         """
         Combined ensemble prediction via the law of total variance.
 
@@ -1017,6 +1109,7 @@ class PCASparseGPEnsemble:
         include_noise : bool
         include_truncation : bool
         include_pca_sampling : bool
+        include_obs_noise : bool
         return_var_decomposition : bool
             If True, also return a dict with 'aleatoric' and 'epistemic' covariances.
 
@@ -1038,6 +1131,7 @@ class PCASparseGPEnsemble:
             include_noise=include_noise,
             include_truncation=include_truncation,
             include_pca_sampling=include_pca_sampling,
+            include_obs_noise=include_obs_noise,
             return_var_decomposition=False,
         )
         all_means, all_covs = [], []
@@ -1104,7 +1198,7 @@ class EmulatorSparseGP:
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
                  n_pc=0.999, M=200, n_ensemble=1,
                  init_strategy='maxmin', bootstrap=False,
-                 logTrafo=False, max_rel_uncertainty_data=0.1):
+                 logTrafo=False, max_rel_uncertainty_data=None):
         """
         Parameters
         ----------
@@ -1125,9 +1219,9 @@ class EmulatorSparseGP:
         logTrafo : bool
             If True, log-transform outputs before training and inverse-transform
             predictions.
-        max_rel_uncertainty_data : float
+        max_rel_uncertainty_data : float or None
             Maximum relative statistical uncertainty; training points with
-            larger values are discarded.
+            larger values are discarded. Set to None to disable this filter.
         """
         self.n_pc_ = n_pc
         self.M_ = M
@@ -1168,14 +1262,15 @@ class EmulatorSparseGP:
         discarded_points = 0
         for event_id in sorted_event_ids:
             temp_data = dataDict[event_id]["obs"].transpose()
-            statErrMax = np.abs(
-                (temp_data[:, 1] / (temp_data[:, 0] + 1e-16))).max()
-            if statErrMax > self.max_rel_uncertainty_data_:
-                logging.info(
-                    "Discard Parameter {}, stat err = {:.2f}".format(
-                        event_id, statErrMax))
-                discarded_points += 1
-                continue
+            if self.max_rel_uncertainty_data_ is not None:
+                statErrMax = np.abs(
+                    (temp_data[:, 1] / (temp_data[:, 0] + 1e-16))).max()
+                if statErrMax > self.max_rel_uncertainty_data_:
+                    logging.info(
+                        "Discard Parameter {}, stat err = {:.2f}".format(
+                            event_id, statErrMax))
+                    discarded_points += 1
+                    continue
             self.design_points.append(dataDict[event_id]["parameter"])
             if not self.logTrafo_:
                 self.model_data.append(temp_data[:, 0])
@@ -1240,8 +1335,8 @@ class EmulatorSparseGP:
     # Prediction
     # -------------------------
     def predict(self, X, return_cov=True, extra_std=0.0,
-                include_noise=True, include_truncation=True,
-                include_pca_sampling=True):
+                include_noise=False, include_truncation=True,
+                include_pca_sampling=False, include_obs_noise=False):
         """
         Predict model output at parameter points ``X``.
 
@@ -1260,6 +1355,9 @@ class EmulatorSparseGP:
             Include PCA truncation covariance.
         include_pca_sampling : bool
             Include finite-data PCA sampling uncertainty.
+        include_obs_noise : bool
+            Include propagated statistical noise from Y_err in predictions.
+            For MCMC calibration against experimental means, keep this False.
 
         Returns
         -------
@@ -1276,6 +1374,7 @@ class EmulatorSparseGP:
             include_noise=include_noise,
             include_truncation=include_truncation,
             include_pca_sampling=include_pca_sampling,
+            include_obs_noise=include_obs_noise,
         )
 
         Y_pred = np.array(Y_pred)

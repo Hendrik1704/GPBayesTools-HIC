@@ -165,8 +165,8 @@ def test_t2():
         em_no .fit(_X_tr, _Y_tr,         **_FIT_KW)
         em_yes.fit(_X_tr, _Y_tr, _Y_err, **_FIT_KW)
 
-        _, cov_no  = em_no .predict(_X_te)
-        _, cov_yes = em_yes.predict(_X_te)
+        _, cov_no  = em_no .predict(_X_te, include_obs_noise=True)
+        _, cov_yes = em_yes.predict(_X_te, include_obs_noise=True)
         var_no  = float(jnp.diagonal(cov_no,  axis1=1, axis2=2).mean())
         var_yes = float(jnp.diagonal(cov_yes, axis1=1, axis2=2).mean())
         check("Y_err increases mean predictive variance",
@@ -196,8 +196,16 @@ def test_t3():
         ens_no .fit(_X_tr, _Y_tr,         **{**_FIT_KW, "verbose": False})
         ens_yes.fit(_X_tr, _Y_tr, _Y_err, **{**_FIT_KW, "verbose": False})
 
-        yp_no,  cov_no,  dec_no  = ens_no .predict(_X_te, return_var_decomposition=True)
-        yp_yes, cov_yes, dec_yes = ens_yes.predict(_X_te, return_var_decomposition=True)
+        yp_no,  cov_no,  dec_no  = ens_no .predict(
+            _X_te,
+            include_obs_noise=True,
+            return_var_decomposition=True,
+        )
+        yp_yes, cov_yes, dec_yes = ens_yes.predict(
+            _X_te,
+            include_obs_noise=True,
+            return_var_decomposition=True,
+        )
 
         N_te = _X_te.shape[0]
         check("Y_pred shape",    yp_yes.shape  == (N_te, _P))
