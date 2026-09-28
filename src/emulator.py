@@ -586,10 +586,11 @@ class Emulator:
                 )
                 cov += self._cov_trunc
             else:
-                # Create a covariance matrix for each sample point from gp_var
+                # Create a covariance matrix for each sample point from gp_var,
+                # transformed from standardized units back to observable units
                 cov = np.zeros((X.shape[0], self.nobs, self.nobs))
                 for i in range(X.shape[0]):
-                    cov[i] = np.diag(gp_var[i])
+                    cov[i] = np.diag(gp_var[i] * self.scaler.var_)
 
             if self.exp_and_cov_diagonal_:
                 # For each prediction set the off-diagonal elements of the
