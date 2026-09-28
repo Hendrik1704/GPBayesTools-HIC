@@ -73,8 +73,8 @@ class Emulator:
         self.nrestarts = nrestarts
         self.nev, self.nobs = self.model_data.shape
 
-        self.scaler = StandardScaler(copy=False)
-        self.pca = PCA(copy=False, whiten=True, svd_solver='full')
+        self.scaler = StandardScaler()
+        self.pca = PCA(whiten=True, svd_solver='full')
 
         if self.parameterTrafoPCA_:
             self.targetVariance = 0.99
