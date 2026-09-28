@@ -462,6 +462,76 @@ class Emulator:
         return(trainStatus)
 
 
+    def _transform_parameters(self, X):
+        """
+        Transform the model parameters `X` into the GP input parameters, i.e.,
+        replace the viscosity and yloss parameters by their PCA projections
+        if parameterTrafoPCA is used.
+        """
+        if not self.parameterTrafoPCA_:
+            return X
+
+        if np.ndim(X) == 1:
+            bulk_viscosity_parameters = X[self.indices_zeta_s_parameters]
+        else:
+            bulk_viscosity_parameters = X[:,self.indices_zeta_s_parameters]
+        T_range = np.linspace(0.0, 0.5, 100)
+        data_functions = []
+        for p in range(X.shape[0]):
+            parameter_function = [self.parametrization_zeta_over_s_vs_T(
+                bulk_viscosity_parameters[p, 0], bulk_viscosity_parameters[p, 1],
+                bulk_viscosity_parameters[p, 2], bulk_viscosity_parameters[p, 3],
+                T, 0.0) for T in T_range]
+            data_functions.append(parameter_function)
+        data_functions = np.array(data_functions)
+
+        scaled_data = self.paramTrafoScaler_bulk.transform(data_functions)
+        projected_parameters = self.paramTrafoPCA_bulk.transform(scaled_data)
+
+        new_theta = np.delete(X, self.indices_zeta_s_parameters, axis=1)
+        new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
+
+        if np.ndim(X) == 1:
+            shear_viscosity_parameters = X[self.indices_eta_s_parameters]
+        else:
+            shear_viscosity_parameters = X[:,self.indices_eta_s_parameters]
+        mu_B_range = np.linspace(0.0, 0.6, 100)
+        data_functions = []
+        for p in range(X.shape[0]):
+            parameter_function = [self.parametrization_eta_over_s_vs_mu_B(
+                shear_viscosity_parameters[p, 0], shear_viscosity_parameters[p, 1],
+                shear_viscosity_parameters[p, 2], mu_B) for mu_B in mu_B_range]
+            data_functions.append(parameter_function)
+        data_functions = np.array(data_functions)
+
+        scaled_data = self.paramTrafoScaler_shear.transform(data_functions)
+        projected_parameters = self.paramTrafoPCA_shear.transform(scaled_data)
+
+        new_theta = np.delete(new_theta, self.indices_eta_s_parameters, axis=1)
+        new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
+
+        if np.ndim(X) == 1:
+            yloss_viscosity_parameters = X[self.indices_yloss_parameters]
+        else:
+            yloss_viscosity_parameters = X[:,self.indices_yloss_parameters]
+        yinit_range = np.linspace(0.0, 6.2, 100)
+        data_functions = []
+        for p in range(X.shape[0]):
+            parameter_function = [self.parametrization_y_loss_vs_y_init(
+                yloss_viscosity_parameters[p, 0], yloss_viscosity_parameters[p, 1],
+                yloss_viscosity_parameters[p, 2], yinit) for yinit in yinit_range]
+            data_functions.append(parameter_function)
+        data_functions = np.array(data_functions)
+
+        scaled_data = self.paramTrafoScaler_yloss.transform(data_functions)
+        projected_parameters = self.paramTrafoPCA_yloss.transform(scaled_data)
+
+        new_theta = np.delete(new_theta, self.indices_yloss_parameters, axis=1)
+        new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
+
+        return new_theta
+
+
     def predict(self, X, return_cov=True, extra_std=0):
         """
         Predict model output at `X`.
@@ -489,68 +559,8 @@ class Emulator:
         It may either be a scalar or an array-like of length nsamples.
 
         """
-        if self.parameterTrafoPCA_:
-            if np.ndim(X) == 1:
-                bulk_viscosity_parameters = X[self.indices_zeta_s_parameters]
-            else:
-                bulk_viscosity_parameters = X[:,self.indices_zeta_s_parameters]
-            T_range = np.linspace(0.0, 0.5, 100)
-            data_functions = []
-            for p in range(X.shape[0]):
-                parameter_function = [self.parametrization_zeta_over_s_vs_T(
-                    bulk_viscosity_parameters[p, 0], bulk_viscosity_parameters[p, 1],
-                    bulk_viscosity_parameters[p, 2], bulk_viscosity_parameters[p, 3],
-                    T, 0.0) for T in T_range]
-                data_functions.append(parameter_function)
-            data_functions = np.array(data_functions)
-
-            scaled_data = self.paramTrafoScaler_bulk.transform(data_functions)
-            projected_parameters = self.paramTrafoPCA_bulk.transform(scaled_data)
-
-            new_theta = np.delete(X, self.indices_zeta_s_parameters, axis=1)
-            new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
-
-            if np.ndim(X) == 1:
-                shear_viscosity_parameters = X[self.indices_eta_s_parameters]
-            else:
-                shear_viscosity_parameters = X[:,self.indices_eta_s_parameters]
-            mu_B_range = np.linspace(0.0, 0.6, 100)
-            data_functions = []
-            for p in range(X.shape[0]):
-                parameter_function = [self.parametrization_eta_over_s_vs_mu_B(
-                    shear_viscosity_parameters[p, 0], shear_viscosity_parameters[p, 1],
-                    shear_viscosity_parameters[p, 2], mu_B) for mu_B in mu_B_range]
-                data_functions.append(parameter_function)
-            data_functions = np.array(data_functions)
-
-            scaled_data = self.paramTrafoScaler_shear.transform(data_functions)
-            projected_parameters = self.paramTrafoPCA_shear.transform(scaled_data)
-
-            new_theta = np.delete(new_theta, self.indices_eta_s_parameters, axis=1)
-            new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
-
-            if np.ndim(X) == 1:
-                yloss_viscosity_parameters = X[self.indices_yloss_parameters]
-            else:
-                yloss_viscosity_parameters = X[:,self.indices_yloss_parameters]
-            yinit_range = np.linspace(0.0, 6.2, 100)
-            data_functions = []
-            for p in range(X.shape[0]):
-                parameter_function = [self.parametrization_y_loss_vs_y_init(
-                    yloss_viscosity_parameters[p, 0], yloss_viscosity_parameters[p, 1],
-                    yloss_viscosity_parameters[p, 2], yinit) for yinit in yinit_range]
-                data_functions.append(parameter_function)
-            data_functions = np.array(data_functions)
-
-            scaled_data = self.paramTrafoScaler_yloss.transform(data_functions)
-            projected_parameters = self.paramTrafoPCA_yloss.transform(scaled_data)
-
-            new_theta = np.delete(new_theta, self.indices_yloss_parameters, axis=1)
-            new_theta = np.concatenate((new_theta, projected_parameters), axis=1)
-
-            gp_mean = [gp.predict(new_theta, return_cov=return_cov) for gp in self.gps]
-        else:
-            gp_mean = [gp.predict(X, return_cov=return_cov) for gp in self.gps]
+        gp_mean = [gp.predict(self._transform_parameters(X),
+                              return_cov=return_cov) for gp in self.gps]
 
         if return_cov:
             gp_mean, gp_cov = zip(*gp_mean)
@@ -615,20 +625,27 @@ class Emulator:
 
         """
         if not self.perform_no_PCA_:
-            # Sample the GP for each emulated PC.  The remaining components are
-            # assumed to have a standard normal distribution.
-            return self._inverse_transform(
+            rng = np.random.default_rng(random_state)
+            X_gp = self._transform_parameters(X)
+            # Sample the GP for each emulated PC, with independent random
+            # numbers for each GP.  The remaining components are assumed to
+            # have a standard normal distribution.
+            samples = self._inverse_transform(
                 np.concatenate([
                     gp.sample_y(
-                        X, n_samples=n_samples, random_state=random_state
+                        X_gp, n_samples=n_samples,
+                        random_state=int(rng.integers(2**32 - 1))
                     )[:, :, np.newaxis]
                     for gp in self.gps
                 ] + [
-                    np.random.standard_normal(
-                        (X.shape[0], n_samples, self.pca.n_components_ - self.npc)
+                    rng.standard_normal(
+                        (X_gp.shape[0], n_samples, self.pca.n_components_ - self.npc)
                     )
                 ], axis=2)
             )
+            if self.exp_and_cov_diagonal_:
+                samples = np.exp(samples)
+            return samples
         else:
             logging.warning("Sampling from raw data is not implemented.")
             return None
