@@ -552,6 +552,7 @@ class PCASparseGPEmulator:
         opt_state = tx.init(self.params)
 
         p = self.params
+        p_init = {k: np.array(v) for k, v in p.items()}
         elbos = []
         best_elbo = -np.inf
         best_params = None
@@ -582,8 +583,11 @@ class PCASparseGPEmulator:
             else:
                 Xb, Yb, obs_noise_b = Xn, Yp, obs_var_full
 
+            # step() evaluates the ELBO at p_eval and returns the updated
+            # parameters, so elbo_val belongs to p_eval, not to the new p
+            p_eval = p
             p, opt_state, elbo_val = step(
-                p, opt_state, Xb, Yb, obs_noise_b, jnp.array(jitter))
+                p_eval, opt_state, Xb, Yb, obs_noise_b, jnp.array(jitter))
 
             if not jnp.isfinite(elbo_val):
                 new_jitter = min(jitter * 10.0, jitter_max)
@@ -592,8 +596,10 @@ class PCASparseGPEmulator:
                           f"jitter {jitter:.1e} -> {new_jitter:.1e}")
                 jitter = new_jitter
                 self.jitter = jitter
-                if best_params is not None:
-                    p = {k: jnp.array(v) for k, v in best_params.items()}
+                # restart from the best parameters with a finite ELBO, or
+                # from the initial parameters if there are none yet
+                restart_params = best_params if best_params is not None else p_init
+                p = {k: jnp.array(v) for k, v in restart_params.items()}
                 opt_state = tx.init(p)
                 nan_count += 1
                 if nan_count > nan_patience:
@@ -631,7 +637,7 @@ class PCASparseGPEmulator:
 
             if elbo_val_f > best_elbo:
                 best_elbo = elbo_val_f
-                best_params = {k: np.array(v) for k, v in p.items()}
+                best_params = {k: np.array(v) for k, v in p_eval.items()}
 
             if early_stopping:
                 if ema is None:
