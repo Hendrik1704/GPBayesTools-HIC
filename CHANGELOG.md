@@ -1,5 +1,11 @@
 # Changelog for GPBayesTools-HIC
 
+## Unreleased
+
+- Update the surmise package requirement to version 1.0.0. Training now requires a global random number generator, which `EmulatorBAND` sets via `surmise.set_RNG` before each training. Use the new optional `seed` argument of `EmulatorBAND` for reproducible training. Emulators trained and saved with surmise 0.4.0 can still be loaded and give identical predictions.
+- Fix the `PCGPwM` option of `EmulatorBAND`, which previously trained a `PCGPwImpute` emulator.
+- Raise a `ValueError` in `EmulatorBAND` when an unknown emulator method is requested. Previously the error was never raised.
+
 ## v2.1.0
 Date: 2026-01-14
 
