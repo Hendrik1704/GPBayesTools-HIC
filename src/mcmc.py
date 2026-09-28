@@ -46,7 +46,7 @@ def mvn_loglike(y, cov):
             'lapack dpotrf error: '
             'the {}-th argument had an illegal value'.format(-info)
         )
-    elif info < 0:
+    elif info > 0:
         raise np.linalg.LinAlgError(
             'lapack dpotrf error: '
             'the leading minor of order {} is not positive definite'
