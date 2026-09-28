@@ -56,49 +56,35 @@ class EmulatorHETGPy:
     def __getstate__(self):
         """Prepare a pickleable state.
 
-        hetGP models may contain non-pickleable Fortran objects. To avoid
-        serialization issues, we do not attempt to serialize them. Instead
-        we extract the fitted hyperparameters (theta, Delta, k_theta_g,
-        theta_g, g) so that the GP models can be rapidly rebuilt via a
-        warm-start after unpickling.
+        The fitted hetgpy models can be serialized with the standard
+        ``pickle`` module, but not with ``dill``, which is used to save the
+        emulators. We therefore store the models as a ``pickle`` byte string,
+        which ``dill`` can serialize, so that the unpickled emulator contains
+        exactly the trained models.
         """
         state = self.__dict__.copy()
-        # Extract hyperparameters before discarding the models
-        if "emu_list" in state and state["emu_list"] is not None:
-            hyperparams = []
-            for model in state["emu_list"]:
-                is_hom = isinstance(model, homGP) and not isinstance(model, hetGP)
-                hp = {
-                    "model_type": "homGP" if is_hom else "hetGP",
-                    "theta": np.array(model.theta),
-                    "g": float(model.g),
-                }
-                if not is_hom:
-                    hp["Delta"] = np.array(model.Delta)
-                    hp["k_theta_g"] = float(model.k_theta_g)
-                    if model.theta_g is not None:
-                        hp["theta_g"] = np.array(model.theta_g)
-                hyperparams.append(hp)
-            state["_gp_hyperparams"] = hyperparams
-        else:
-            state["_gp_hyperparams"] = None
-        state["emu_list"] = None
+        emu_list = state.pop("emu_list", None)
+        if emu_list is not None:
+            state["_emu_list_pickle"] = pickle.dumps(emu_list)
         return state
 
     def __setstate__(self, state):
-        """Restore state after unpickling.
-
-        GP models are rebuilt using the saved hyperparameters as starting
-        values (warm-start), so re-training converges almost immediately.
-        """
+        """Restore state after unpickling."""
+        emu_list_pickle = state.pop("_emu_list_pickle", None)
+        hyperparams = state.pop("_gp_hyperparams", None)
         self.__dict__.update(state)
-        hyperparams = self.__dict__.pop("_gp_hyperparams", None)
-        if hyperparams is not None:
-            logging.info("Rebuilding GP models from saved hyperparameters "
-                         "(warm-start) ...")
+        if emu_list_pickle is not None:
+            self.emu_list = pickle.loads(emu_list_pickle)
+        elif hyperparams is not None:
+            # emulators saved with older versions only contain the
+            # hyperparameters of the GP models
+            logging.warning("Emulator saved with an older version: rebuilding "
+                            "GP models from saved hyperparameters. The "
+                            "predictions can differ from the trained models. "
+                            "Save the emulator again to avoid this.")
             self._rebuild_from_hyperparams(hyperparams)
         else:
-            logging.info("No saved hyperparameters found, performing full "
+            logging.info("No saved GP models found, performing full "
                          "re-training ...")
             self.trainEmulatorAutoMask()
 
@@ -116,7 +102,7 @@ class EmulatorHETGPy:
             'model_type' ('hetGP' or 'homGP'), 'theta', 'g', and for
             hetGP models also 'Delta' and 'k_theta_g'.
         maxit : int
-            Maximum optimizer iterations for the warm-start (default 2).
+            Maximum optimizer iterations for the warm-start (default 0).
         """
         event_mask = np.ones(self.nev, dtype=bool)
         design_points_masked = self.design_points[event_mask, :]
