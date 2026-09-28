@@ -1,32 +1,31 @@
 """
-Synthetic end-to-end test for the hetGPy emulator.
+Synthetic end-to-end tests for the hetGPy emulator.
 
-Steps:
-  1. Generate a Latin-Hypercube design in 3 parameters.
-  2. Evaluate a known analytical model (sum-of-sines + polynomial) to
-     produce 20 observables per design point, with small Gaussian noise
-     to mimic statistical errors.
-  3. Write the data in the pickle format expected by EmulatorHETGPy.
-  4. Train the emulator on the synthetic data.
-  5. Save the emulator to a .pkl file and reload it.
-  6. Call predict on the reloaded emulator and compare to the true model.
+A Latin-Hypercube design in 3 parameters is evaluated with a known
+analytical model (sum-of-sines + polynomial) that produces 20 observables
+per design point, with small Gaussian noise to mimic statistical errors.
+The emulator is trained on these data and tested for
+
+  - the accuracy of the predictions compared to the true model,
+  - identical predictions after saving and reloading the emulator,
+  - the covariance of the discarded PCs in the predicted covariance,
+  - the built-in validation (testEmulatorErrors).
+
+Run with ``python -m pytest tests/test_hetGPy.py``.
 """
 
-import logging
 import os
 import pickle
 import sys
 
 import dill
 import numpy as np
+import pytest
 
 # Resolve the project root (one level up from tests/)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 sys.path.insert(0, PROJECT_ROOT)
 from src.emulator_hetGPy import EmulatorHETGPy
-
-logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                    format="[%(levelname)s] %(message)s")
 
 # ── Configuration ────────────────────────────────────────────────────
 N_DESIGN = 80        # number of training design points
@@ -34,9 +33,8 @@ N_OBS = 20            # number of observables
 N_PARAMS = 3          # number of model parameters
 REL_NOISE = 0.01      # relative statistical noise on each observable
 SEED = 42
-MODEL_PAR_FILE = os.path.join(PROJECT_ROOT, "modelDesign_test_3par.txt")
-TRAINING_PKL = os.path.join(PROJECT_ROOT, "tests", "synthetic_training_data.pickle")
-EMULATOR_PKL = os.path.join(PROJECT_ROOT, "tests", "emulator_synthetic.pkl")
+N_TEST = 10           # number of test points for the predictions
+MAX_MEAN_REL_ERR = 0.05
 
 
 # ── Analytical ground-truth model ────────────────────────────────────
@@ -83,110 +81,107 @@ def latin_hypercube(n_samples, n_dim, rng):
     return result
 
 
-def main():
+# ── Fixtures ─────────────────────────────────────────────────────────
+@pytest.fixture(scope="module")
+def data_files(tmp_path_factory):
+    """Write the parameter file and synthetic training data."""
+    tmp = tmp_path_factory.mktemp("hetgpy")
+    par_file = tmp / "modelDesign_test_3par.txt"
+    par_file.write_text("alpha: alpha, 0.0, 1.0\n"
+                        "beta: beta, 0.0, 1.0\n"
+                        "gamma: gamma, 0.0, 1.0\n")
+
     rng = np.random.default_rng(SEED)
-
-    print("=" * 60)
-    print("  hetGPy emulator — synthetic end-to-end test")
-    print("=" * 60)
-
-    # ── Generate design & training data ──────────────────────────────
-    print(f"\n[1] Generating {N_DESIGN} design points with {N_PARAMS} "
-          f"parameters and {N_OBS} observables ...")
     design = latin_hypercube(N_DESIGN, N_PARAMS, rng)
-
     data_dict = {}
     for i in range(N_DESIGN):
         values = true_model(design[i])
-        errors = REL_NOISE * np.abs(values) * rng.standard_normal(N_OBS)
-        noisy_values = values + errors
-        abs_errors = np.abs(errors)
+        sigma = REL_NOISE * np.abs(values)
+        noisy_values = values + sigma * rng.standard_normal(N_OBS)
         # obs has shape (2, n_obs): row 0 = values, row 1 = stat errors
-        obs = np.vstack([noisy_values, abs_errors])
         data_dict[str(i)] = {
             "parameter": design[i],
-            "obs": obs,
+            "obs": np.vstack([noisy_values, sigma]),
         }
-
-    with open(TRAINING_PKL, "wb") as f:
+    training_file = tmp / "synthetic_training_data.pickle"
+    with open(training_file, "wb") as f:
         pickle.dump(data_dict, f)
-    print(f"    Training data saved to {TRAINING_PKL}")
+    return str(training_file), str(par_file)
 
-    # ── 2.  Create & train emulator ──────────────────────────────────
-    print(f"\n[2] Creating EmulatorHETGPy and training ...")
-    emu = EmulatorHETGPy(
-        training_set_path=TRAINING_PKL,
-        parameter_file=MODEL_PAR_FILE,
+
+def make_emulator(data_files):
+    training_file, par_file = data_files
+    return EmulatorHETGPy(
+        training_set_path=training_file,
+        parameter_file=par_file,
         logTrafo=False,
         max_rel_uncertainty_data=0.5,
     )
+
+
+@pytest.fixture(scope="module")
+def emulator(data_files):
+    emu = make_emulator(data_files)
     emu.trainEmulatorAutoMask()
-    print(f"    Training complete — {emu.npc} principal components retained.")
+    return emu
 
-    # ── 3.  Save emulator ────────────────────────────────────────────
-    print(f"\n[3] Saving emulator to {EMULATOR_PKL} ...")
-    with open(EMULATOR_PKL, "wb") as f:
-        dill.dump(emu, f)
-    print(f"    Saved ({os.path.getsize(EMULATOR_PKL) / 1024:.1f} KB).")
 
-    # ── 4.  Reload emulator ──────────────────────────────────────────
-    print(f"\n[4] Reloading emulator from {EMULATOR_PKL} ...")
-    with open(EMULATOR_PKL, "rb") as f:
-        emu_loaded = dill.load(f)
-    print("    Loaded successfully (GP models re-trained automatically).")
+@pytest.fixture(scope="module")
+def test_params():
+    return np.random.default_rng(SEED + 1).uniform(size=(N_TEST, N_PARAMS))
 
-    # ── 5.  Predict and compare ──────────────────────────────────────
-    print(f"\n[5] Predicting at 10 new random test points ...")
-    n_test = 10
-    test_params = rng.uniform(size=(n_test, N_PARAMS))
-    pred_mean, pred_cov = emu_loaded.predict(test_params, return_cov=True)
-    # pred_mean shape: (n_test, n_obs)
-    # pred_cov  shape: (n_test, n_obs, n_obs)
 
-    # Compute the true values at the test points
-    true_vals = np.array([true_model(p) for p in test_params])  # (n_test, n_obs)
+# ── Tests ────────────────────────────────────────────────────────────
+def test_prediction_accuracy(emulator, test_params):
+    pred_mean, pred_cov = emulator.predict(test_params, return_cov=True)
+    assert pred_mean.shape == (N_TEST, N_OBS)
+    assert pred_cov.shape == (N_TEST, N_OBS, N_OBS)
 
-    # Relative errors
+    true_vals = np.array([true_model(p) for p in test_params])
     rel_err = np.abs(pred_mean - true_vals) / np.abs(true_vals)
-    mean_rel_err = rel_err.mean()
-    max_rel_err = rel_err.max()
+    assert rel_err.mean() < MAX_MEAN_REL_ERR
 
-    print(f"    Mean relative error : {mean_rel_err:.4f}")
-    print(f"    Max  relative error : {max_rel_err:.4f}")
+    # predicted uncertainties must be positive and of a sensible size
+    pred_std = np.sqrt(np.diagonal(pred_cov, axis1=1, axis2=2))
+    assert np.all(pred_std > 0)
+    rms_pull = np.sqrt(np.mean(((pred_mean - true_vals) / pred_std)**2))
+    assert 0.1 < rms_pull < 10
 
-    # Check that predicted uncertainties are sensible
-    pred_std = np.array([np.sqrt(np.diag(pred_cov[k])) for k in range(n_test)])
-    pull = (pred_mean - true_vals) / (pred_std + 1e-30)
-    rms_pull = np.sqrt(np.mean(pull**2))
-    print(f"    RMS pull            : {rms_pull:.2f}  (ideal ≈ 1)")
 
-    # ── 6.  Also run the built-in validation ─────────────────────────
-    print(f"\n[6] Running built-in testEmulatorErrors (leave-last-5-out) ...")
-    emu_val = EmulatorHETGPy(
-        training_set_path=TRAINING_PKL,
-        parameter_file=MODEL_PAR_FILE,
-        logTrafo=False,
-        max_rel_uncertainty_data=0.5,
-    )
+def test_pickle_roundtrip_is_exact(emulator, test_params, tmp_path):
+    emulator_file = tmp_path / "emulator_synthetic.pkl"
+    with open(emulator_file, "wb") as f:
+        dill.dump(emulator, f)
+    with open(emulator_file, "rb") as f:
+        emu_loaded = dill.load(f)
+
+    mean, cov = emulator.predict(test_params)
+    mean_loaded, cov_loaded = emu_loaded.predict(test_params)
+    np.testing.assert_array_equal(mean, mean_loaded)
+    np.testing.assert_array_equal(cov, cov_loaded)
+
+
+def test_covariance_includes_truncation(emulator, test_params):
+    assert emulator.npc < N_OBS
+    _, pred_cov = emulator.predict(test_params)
+    for cov in pred_cov:
+        np.testing.assert_allclose(cov, cov.T)
+        # the truncation covariance is positive semi-definite, so it can
+        # only increase the predicted variances
+        assert np.all(np.diag(cov) >= np.diag(emulator._cov_trunc))
+        assert np.linalg.eigvalsh(cov).min() > -1e-10 * np.abs(cov).max()
+
+
+def test_validation(data_files):
+    emu = make_emulator(data_files)
+    n_test = 5
     emu_pred, emu_pred_err, vali_data, vali_data_err = \
-        emu_val.testEmulatorErrors(number_test_points=5)
-    val_rel_err = np.abs(emu_pred - vali_data) / (np.abs(vali_data) + 1e-30)
-    print(f"    Validation mean relative error: {val_rel_err.mean():.4f}")
-    print(f"    Validation max  relative error: {val_rel_err.max():.4f}")
-
-    # ── Summary ──────────────────────────────────────────────────────
-    print("\n" + "=" * 60)
-    if mean_rel_err < 0.05:
-        print("  PASS — emulator reproduces the synthetic model well.")
-    else:
-        print("  WARNING — mean relative error > 5%. Consider increasing "
-              "N_DESIGN or checking the implementation.")
-    print("=" * 60)
-
-    # Cleanup temporary files
-    os.remove(TRAINING_PKL)
-    os.remove(EMULATOR_PKL)
+        emu.testEmulatorErrors(number_test_points=n_test)
+    for arr in (emu_pred, emu_pred_err, vali_data, vali_data_err):
+        assert arr.shape == (n_test, N_OBS)
+    val_rel_err = np.abs(emu_pred - vali_data) / np.abs(vali_data)
+    assert val_rel_err.mean() < MAX_MEAN_REL_ERR
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(pytest.main([__file__, "-v"]))
