@@ -293,7 +293,7 @@ class EmulatorBAND:
         elif self.method_ == 'PCGPwM':
             self.emu = emulator(x=X,theta=design_points,
                                 f=self.model_data[event_mask, :].T,
-                                method='PCGPwImpute',
+                                method='PCGPwM',
                                 args={'warnings': True})
         else:
             ValueError("Requested method not implemented!")
