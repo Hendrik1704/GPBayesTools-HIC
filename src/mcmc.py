@@ -185,7 +185,7 @@ class Chain:
         return lp
 
 
-    def log_likelihood(self, X, extra_std_prior_scale=0.001, finite=False):
+    def log_likelihood(self, X, finite=False):
         """
         Evaluate the likelihood at `X`.
         """
@@ -196,8 +196,6 @@ class Chain:
             lp[~inside] = -np.inf
         elif finite:
             lp[~inside] = -1e300
-
-        extra_std = X[inside, -1]
 
         nsamples = np.count_nonzero(inside)
         if nsamples > 0:
@@ -215,14 +213,10 @@ class Chain:
 
             # compute log likelihood at each point
             lp[inside] += list(map(mvn_loglike, dY, cov))
-
-            # add prior for extra_std (model sys error)
-            lp[inside] += (2*np.log(extra_std + 1e-16)
-                           - extra_std/extra_std_prior_scale)
         return lp
 
 
-    def log_likelihood_point_by_point(self, X, extra_std_prior_scale=0.001):
+    def log_likelihood_point_by_point(self, X):
         """
         Evaluate the likelihood at `X` point by point.
         This is used for the log_likelihood computation when the chain is already
@@ -251,22 +245,12 @@ class Chain:
 
                 # compute log likelihood at each point
                 lp[k] += list(map(mvn_loglike, dY, cov))
-
-                # add prior for extra_std (model sys error)
-                lp[k] += (2*np.log(extra_std + 1e-16)
-                               - extra_std/extra_std_prior_scale)
         return lp
 
 
-    def log_posterior(self, X, extra_std_prior_scale=.05):
+    def log_posterior(self, X):
         """
         Evaluate the posterior at `X`.
-
-        `extra_std_prior_scale` is the scale parameter for the prior
-        distribution on the model sys error parameter:
-
-            prior ~ sigma^2 * exp(-sigma/scale)
-
         """
         X = np.atleast_2d(np.asarray(X))
 
@@ -291,10 +275,6 @@ class Chain:
 
             # compute log likelihood at each point
             lp[inside] += list(map(mvn_loglike, dY, cov))
-
-            # add prior for extra_std (model sys error)
-            lp[inside] += (2*np.log(extra_std + 1e-16)
-                           - extra_std/extra_std_prior_scale)
 
         return lp
 
