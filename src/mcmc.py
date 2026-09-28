@@ -171,7 +171,7 @@ class Chain:
         Evaluate the prior at `X`.
 
         """
-        X = np.array(X, copy=False, ndmin=2)
+        X = np.atleast_2d(np.asarray(X))
 
         #not normalized
         #lp = np.zeros(X.shape[0])
@@ -189,7 +189,7 @@ class Chain:
         """
         Evaluate the likelihood at `X`.
         """
-        X = np.array(X, copy=False, ndmin=2)
+        X = np.atleast_2d(np.asarray(X))
         lp = np.zeros(X.shape[0])
         inside = np.all( (X > self.min) & (X < self.max), axis=1)
         if not finite:
@@ -233,7 +233,7 @@ class Chain:
         for k in range(X.shape[0]):
             if k % 100 == 0:
                 logging.info("Evaluating log_likelihood at point {}".format(k))
-            Xk = np.array(X[k], copy=False, ndmin=2)
+            Xk = np.atleast_2d(np.asarray(X[k]))
             inside = np.all( (Xk > self.min) & (Xk < self.max))
             lp[k] = -np.inf if not inside else 0.0
 
@@ -268,7 +268,7 @@ class Chain:
             prior ~ sigma^2 * exp(-sigma/scale)
 
         """
-        X = np.array(X, copy=False, ndmin=2)
+        X = np.atleast_2d(np.asarray(X))
 
         lp = np.zeros(X.shape[0])
 

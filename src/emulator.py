@@ -575,7 +575,7 @@ class Emulator:
             ], axis=1)
 
             # Add extra uncertainty to predictive variance.
-            extra_std = np.array(extra_std, copy=False).reshape(-1, 1)
+            extra_std = np.asarray(extra_std).reshape(-1, 1)
             gp_var += extra_std**2
 
             if not self.perform_no_PCA_:
