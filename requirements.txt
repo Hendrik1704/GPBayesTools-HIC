@@ -1,4 +1,4 @@
-surmise==0.4.0
+surmise==1.0.0
 pocomc==1.2.6
 hetgpy==1.0.4
 

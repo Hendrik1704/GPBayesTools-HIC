@@ -9,6 +9,7 @@ collaboration.
 import logging
 import numpy as np
 import pickle
+import surmise
 from surmise.emulation import emulator
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
@@ -23,8 +24,11 @@ class EmulatorBAND:
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt", 
                  method='PCGP',logTrafo=False,parameterTrafoPCA=False,
-                 max_rel_uncertainty_data=0.1, exp_and_cov_diagonal=False):
+                 max_rel_uncertainty_data=0.1, exp_and_cov_diagonal=False,
+                 seed=None):
         self.method_ = method
+        # surmise (>=1.0.0) requires a global RNG to be set before training
+        self.rng_ = np.random.default_rng(seed)
         self.logTrafo_ = logTrafo 
         self.parameterTrafoPCA_ = parameterTrafoPCA
         self.max_rel_uncertainty_data_ = max_rel_uncertainty_data
@@ -266,6 +270,7 @@ class EmulatorBAND:
         if self.parameterTrafoPCA_:
             design_points = self.PCA_new_design_points[event_mask, :]
 
+        surmise.set_RNG(self.rng_)
         if self.method_ == 'PCGP':
             self.emu = emulator(x=X,theta=design_points,
                             f=self.model_data[event_mask, :].T,
