@@ -713,14 +713,16 @@ class Chain:
         in a new pkl file.
         """
         if self.chain is False:
-            logging.error('Load chain before computing log likelihood')
+            logging.info('Loading chain from {}'.format(self.mcmc_path))
             with open(self.mcmc_path, 'rb') as f:
                 chain_data = pickle.load(f)
             self.chain = chain_data['chain']
         logging.info('Computing log likelihood for the chain...')
         reshape_chain = self.chain.reshape(-1, self.ndim)
         likelihood = self.log_likelihood_point_by_point(reshape_chain)
-        likelihood = likelihood.reshape((self.chain.shape[0], self.chain.shape[1]))
+        # emcee/PTLMC chains have shape (nwalkers, nsteps, ndim),
+        # pocoMC samples have shape (nsamples, ndim)
+        likelihood = likelihood.reshape(self.chain.shape[:-1])
 
         # Write the log_likelihood to file
         logging.info('Writing log_likelihood for chains to file...')
@@ -795,6 +797,7 @@ class Chain:
         logging.info('Log evidence error: {}'.format(logz_err))
 
         logging.info('Writing pocoMC chains to file...')
+        self.chain = samples
         chain_data = {'chain': samples, 'logl': logl,
                         'logp': logp, 'logz': logz, 'logz_err': logz_err}
         with open(self.mcmc_path, 'wb') as file:
