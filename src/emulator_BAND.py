@@ -296,7 +296,7 @@ class EmulatorBAND:
                                 method='PCGPwM',
                                 args={'warnings': True})
         else:
-            ValueError("Requested method not implemented!")
+            raise ValueError("Requested method not implemented!")
 
 
     def predict_test_emu_errors(self,X,theta):
