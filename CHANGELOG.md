@@ -5,6 +5,18 @@
 - Update the surmise package requirement to version 1.0.0. Training now requires a global random number generator, which `EmulatorBAND` sets via `surmise.set_RNG` before each training. Use the new optional `seed` argument of `EmulatorBAND` for reproducible training. Emulators trained and saved with surmise 0.4.0 can still be loaded and give identical predictions.
 - Fix the `PCGPwM` option of `EmulatorBAND`, which previously trained a `PCGPwImpute` emulator.
 - Raise a `ValueError` in `EmulatorBAND` when an unknown emulator method is requested. Previously the error was never raised.
+- Fix `Emulator.predict` with `return_cov=True`, which failed with NumPy 2 (`np.array(..., copy=False)`). The same applies to the log prior, likelihood and posterior in `mcmc.py` for list inputs.
+- `Emulator.outputPCAvsParam()` and `Emulator.print_learning_curve()` no longer overwrite the training data with standardized values.
+- Fix the covariance of `Emulator` with `perform_no_PCA=True`, which was returned in standardized units instead of observable units.
+- Fix `Emulator.sample_y`: the PCs are sampled independently and reproducibly with `random_state`, the parameter PCA transformation is applied, and the samples are returned in physical space if `exp_and_cov_diagonal` is set.
+- Raise an error in the MCMC likelihood if the covariance matrix is not positive definite, instead of returning NaN.
+- Remove the constant prior term of the unused `extra_std` parameter from the log-likelihood and log-posterior. This is not backward compatible: the log-likelihood values and the pocoMC evidence (`logl`, `logz`) are shifted by +73.68 compared to older versions. Posterior samples are not affected.
+- `compute_log_likelihood_for_chain` now also works for chains from pocoMC.
+- Saved `EmulatorHETGPy` emulators now contain the trained GP models, so that loading gives exactly the same predictions. Previously the models were refitted from some of their hyperparameters after loading. Emulators saved with older versions can still be loaded, but their predictions can differ from the trained emulator.
+- Add the covariance of the PCs discarded by the output PCA to the `EmulatorHETGPy` covariance. This increases the predicted emulator uncertainty.
+- `EmulatorSparseGP.predict` accepts a scalar `extra_std` for several parameter points.
+- The SVGP training now keeps the parameters that belong to the best ELBO, and the NaN recovery restarts from parameters with a finite ELBO.
+- The tests in `tests/` are now pytest tests that fail on errors.
 
 ## v2.1.0
 Date: 2026-01-14
