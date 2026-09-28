@@ -1389,8 +1389,10 @@ class EmulatorSparseGP:
             Y_pred = Y_pred_exp
 
         # Add extra_std to diagonal
+        extra_std = np.asarray(extra_std, dtype=float)
         if np.any(extra_std != 0.0):
-            extra = np.atleast_1d(extra_std)
+            # a scalar extra_std applies to all parameter points
+            extra = np.broadcast_to(extra_std, (X.shape[0],))
             for i in range(X.shape[0]):
                 np.fill_diagonal(
                     full_cov[i],
