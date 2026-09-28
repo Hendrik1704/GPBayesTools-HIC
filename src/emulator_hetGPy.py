@@ -47,11 +47,23 @@ class EmulatorHETGPy:
         self.outputPCA = PCA(n_components=self.targetVariance)
         self.model_data_pca = self.outputPCA.fit_transform(standardized_outputs)
         self.npc = self.outputPCA.n_components_
+        self._compute_truncation_cov()
         logging.info(
             "Output PCA uses {} PCs to explain {:.1f}% of the variance ...".format(
                 self.npc, self.targetVariance * 100.0
             )
         )
+
+    def _compute_truncation_cov(self):
+        """Covariance of the PCs discarded by the output PCA in observable
+        units. It is added to the predicted covariance, since the emulator
+        cannot resolve this part of the variance."""
+        standardized_outputs = self.outputScaler.transform(self.model_data)
+        residuals = standardized_outputs - self.outputPCA.inverse_transform(
+            self.model_data_pca)
+        scales = self.outputScaler.scale_
+        self._cov_trunc = (np.cov(residuals, rowvar=False)
+                           * np.outer(scales, scales))
 
     def __getstate__(self):
         """Prepare a pickleable state.
@@ -73,6 +85,8 @@ class EmulatorHETGPy:
         emu_list_pickle = state.pop("_emu_list_pickle", None)
         hyperparams = state.pop("_gp_hyperparams", None)
         self.__dict__.update(state)
+        if "_cov_trunc" not in self.__dict__:
+            self._compute_truncation_cov()
         if emu_list_pickle is not None:
             self.emu_list = pickle.loads(emu_list_pickle)
         elif hyperparams is not None:
@@ -256,7 +270,7 @@ class EmulatorHETGPy:
             var_z = np.maximum(pc_vars[:, k], 0.0)
             Sigma_S = W @ np.diag(var_z) @ W.T
             Sigma_Y = D @ Sigma_S @ D
-            covs[k] = Sigma_Y
+            covs[k] = Sigma_Y + self._cov_trunc
 
         # By convention of this wrapper, fpredmean has shape (nobs, n_theta)
         fpredmean = Y_pred.T
@@ -315,7 +329,7 @@ class EmulatorHETGPy:
             var_z = np.maximum(pc_vars[:, k], 0.0)
             Sigma_S = W @ np.diag(var_z) @ W.T
             Sigma_Y = D @ Sigma_S @ D
-            covs[k] = Sigma_Y
+            covs[k] = Sigma_Y + self._cov_trunc
 
         fpredmean = Y_pred
         fpredcov = covs
