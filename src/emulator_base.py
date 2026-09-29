@@ -153,19 +153,6 @@ class EmulatorBase:
         logging.info("Training dataset size: {}, discarded points: {}".format(
             len(self.model_data), discarded_points))
 
-    def getAvgTrainingDataRelError(self):
-        """Average relative statistical error of each observable over the
-        training points. Observables that are exactly zero are counted with a
-        relative error of zero."""
-        if self.logTrafo_:
-            # the errors of log-transformed data are the relative errors
-            rel_err = self.model_data_err
-        else:
-            rel_err = np.divide(self.model_data_err, np.abs(self.model_data),
-                                out=np.zeros_like(self.model_data_err),
-                                where=self.model_data != 0)
-        return np.mean(rel_err, axis=0)
-
     def trainEmulatorAutoMask(self, **train_kwargs):
         """Train the emulator on all training points."""
         self.trainEmulator(np.ones(self.nev, dtype=bool), **train_kwargs)
