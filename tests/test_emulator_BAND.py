@@ -1,5 +1,5 @@
 """
-Tests for the wrapper of the surmise emulators (src/emulator_BAND.py).
+Tests for the wrapper of the surmise emulators (gpbayestools/emulator_BAND.py).
 
 The tests require surmise >= 1.0.0 and are skipped otherwise.
 Run with ``python -m pytest tests/test_emulator_BAND.py``.
@@ -13,7 +13,7 @@ if not hasattr(surmise, "set_RNG"):
     pytest.skip("requires surmise >= 1.0.0", allow_module_level=True)
 
 from conftest import N_OBS, true_model
-from src.emulator_BAND import EmulatorBAND
+from gpbayestools.emulator_BAND import EmulatorBAND
 
 METHODS = ['PCGP', 'PCSK', 'PCGPwImpute', 'PCGPwM']
 

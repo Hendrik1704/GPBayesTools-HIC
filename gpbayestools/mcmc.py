@@ -12,9 +12,8 @@ from pathlib import Path
 import emcee
 import numpy as np
 from scipy.linalg import lapack
-import dill
 
-from . import workdir, parse_model_parameter_file
+from . import load_emulator, parse_model_parameter_file
 import scipy.optimize as spo
 import pocomc
 from scipy.stats import uniform
@@ -166,10 +165,7 @@ class Chain:
         order of the observables in the experimental data, and their numbers
         of observables must add up to the number of experimental data points.
         """
-        emuList = []
-        for emuPath in emulatorPathList:
-            with open(emuPath, 'rb') as f:
-                emuList.append(dill.load(f))
+        emuList = [load_emulator(emuPath) for emuPath in emulatorPathList]
         nobs_emu = [emu.nobs for emu in emuList]
         if sum(nobs_emu) != self.nobs:
             raise ValueError(

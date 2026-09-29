@@ -25,7 +25,7 @@ import pytest
 # Resolve the project root (one level up from tests/)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 sys.path.insert(0, PROJECT_ROOT)
-from src.emulator_hetGPy import EmulatorHETGPy
+from gpbayestools.emulator_hetGPy import EmulatorHETGPy
 
 # ── Configuration ────────────────────────────────────────────────────
 N_DESIGN = 80        # number of training design points

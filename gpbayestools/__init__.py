@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sys
 
+import dill
 import numpy as np
 
 
@@ -41,6 +42,24 @@ def keep_trained_state(method):
             self.__dict__.clear()
             self.__dict__.update(state)
     return wrapper
+
+
+class _LegacyUnpickler(dill.Unpickler):
+    """Unpickler that maps the module names of versions < 3.0.0, in which
+    the package was called src, to gpbayestools."""
+    def find_class(self, module, name):
+        if module == 'src' or module.startswith('src.'):
+            module = __name__ + module[len('src'):]
+        return super().find_class(module, name)
+
+
+def load_emulator(path):
+    """
+    Load an emulator saved with dill. Emulators saved with versions < 3.0.0,
+    in which the package was called src, can be loaded as well.
+    """
+    with open(path, 'rb') as f:
+        return _LegacyUnpickler(f).load()
 
 
 def parse_model_parameter_file(parfile):

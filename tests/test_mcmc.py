@@ -1,5 +1,5 @@
 """
-Tests for the MCMC module (src/mcmc.py).
+Tests for the MCMC module (gpbayestools/mcmc.py).
 
 The emulators are linear models y = A x + b with a constant covariance, and
 the experimental data are the model at X_TRUE. The posterior is then a
@@ -18,7 +18,7 @@ import pytest
 from scipy.stats import multivariate_normal
 
 from conftest import LinearEmulator, write_param_file
-from src.mcmc import Chain, mvn_loglike
+from gpbayestools.mcmc import Chain, mvn_loglike
 
 A = np.array([[1., 0.], [0., 1.], [1., 1.], [1., -1.]])
 B = np.array([1., 2., 3., 4.])

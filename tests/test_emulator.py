@@ -1,6 +1,6 @@
 """
-Tests for the scikit-learn emulator (src/emulator.py) and the functionality
-of the emulator base class (src/emulator_base.py): loading and filtering the
+Tests for the scikit-learn emulator (gpbayestools/emulator.py) and the functionality
+of the emulator base class (gpbayestools/emulator_base.py): loading and filtering the
 training data, and the validation functions.
 
 Run with ``python -m pytest tests/test_emulator.py``.
@@ -14,8 +14,8 @@ import pytest
 
 from conftest import (N_OBS, true_model, write_param_file,
                       write_training_data)
-from src import parse_model_parameter_file
-from src.emulator import Emulator
+from gpbayestools import parse_model_parameter_file
+from gpbayestools.emulator import Emulator
 
 warnings.filterwarnings("ignore", module="sklearn")
 
@@ -243,3 +243,31 @@ def test_parse_model_parameter_file(tmp_path):
                     "beta: $\\beta$, -1, 2.5\n")
     assert parse_model_parameter_file(path) == {
         'alpha': ['a', 0.0, 1.0], 'beta': ['$\\beta$', -1.0, 2.5]}
+
+
+def test_load_emulator_saved_with_old_package_name(emulator, test_points,
+                                                    tmp_path):
+    # emulators saved with versions < 3.0.0 refer to the module src.emulator
+    import sys
+    import dill
+    import gpbayestools
+    import gpbayestools.emulator
+    from gpbayestools import load_emulator
+    path = tmp_path / "old_emulator.dill"
+    cls = gpbayestools.emulator.Emulator
+    sys.modules['src'] = gpbayestools
+    sys.modules['src.emulator'] = gpbayestools.emulator
+    cls.__module__ = 'src.emulator'
+    try:
+        with open(path, 'wb') as f:
+            dill.dump(emulator, f)
+    finally:
+        cls.__module__ = 'gpbayestools.emulator'
+        del sys.modules['src'], sys.modules['src.emulator']
+    with pytest.raises(ModuleNotFoundError):
+        with open(path, 'rb') as f:
+            dill.load(f)
+    loaded = load_emulator(path)
+    assert type(loaded) is cls
+    for a, b in zip(loaded.predict(test_points), emulator.predict(test_points)):
+        np.testing.assert_array_equal(a, b)

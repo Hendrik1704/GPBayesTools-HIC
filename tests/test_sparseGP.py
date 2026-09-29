@@ -33,7 +33,7 @@ import pytest
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 sys.path.insert(0, PROJECT_ROOT)
 
-from src.emulator_sparseGP import (
+from gpbayestools.emulator_sparseGP import (
     PCASparseGPEmulator,
     PCASparseGPEnsemble,
     EmulatorSparseGP,
