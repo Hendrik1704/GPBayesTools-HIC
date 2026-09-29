@@ -504,29 +504,6 @@ class BayesianAnalysis:
         """
         return np.random.uniform(self.param_min, self.param_max, (n, self.ndim))
 
-    @staticmethod
-    def map(f, args):
-        """
-        Apply `f` to `args` in a single call.
-
-        Dummy function so that this object can be used as a 'pool' for
-        :class:`emcee.EnsembleSampler`, which then evaluates the vectorized
-        log posterior once for all walkers.
-
-        Parameters
-        ----------
-        f : callable
-            Function to apply.
-        args : object
-            Argument passed to `f`.
-
-        Returns
-        -------
-        object
-            The result of ``f(args)``.
-        """
-        return f(args)
-
     def chain_path(self, sampler):
         """
         Return the path of the chain file of a sampler.
@@ -700,7 +677,7 @@ class BayesianAnalysis:
                 f"walkers for {n_steps} steps ..."
             )
         sampler = LoggingEnsembleSampler(
-            n_walkers, self.ndim, self.log_posterior, pool=self
+            n_walkers, self.ndim, self.log_posterior, vectorize=True
         )
 
         if burn_in:
