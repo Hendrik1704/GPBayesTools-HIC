@@ -17,6 +17,9 @@ Changes that are not backward compatible:
 - Remove the constant prior term of the unused `extra_std` parameter from the log-likelihood and log-posterior. The log-likelihood values and the pocoMC evidence (`logl`, `logz`) are shifted by +73.68 compared to older versions. Posterior samples are not affected.
 - Raise an error in the MCMC likelihood if the covariance matrix is not positive definite, instead of returning NaN.
 - Each sampler writes its chain to its own file derived from `mcmc_path`, e.g. `./mcmc/chain_emcee.pkl`, `./mcmc/chain_pocoMC.pkl` and `./mcmc/chain_PTLMC.pkl` (`Chain.chain_path(sampler)`), instead of all samplers overwriting `./mcmc/chain.pkl`. `compute_log_likelihood_for_chain` takes the sampler of the chain as first argument (default: the last sampler run) and writes the result next to the chain file by default.
+- Remove the `extra_std` option from the `predict` functions of all emulators and from the MCMC. It was always 0 in the MCMC and ignored or treated differently by the emulators.
+- `EmulatorSparseGP` handles `logTrafo` like the other emulators: by default, `predict` returns the mean and covariance in log space. The new option `exp_and_cov_diagonal=True` returns the predictions in the original scale, keeping the correlations between the observables. Previously, the predictions were always transformed back. Emulators saved with older versions keep the old behavior.
+- The validation functions `testEmulatorErrors` and `testEmulatorErrorsWithTrainingPoints` no longer change the trained emulator. Previously, the emulator was left trained on the reduced training set. The argument `nTestPoints` of `Emulator` is renamed to `number_test_points` as in the other emulators, and `EmulatorSparseGP` also has `testEmulatorErrorsWithTrainingPoints`.
 - All emulators raise a `ValueError` for negative observables with `logTrafo=True`. Previously `log(|x|)` was used, so the sign was lost.
 - The sparse GP emulator computes in 64-bit floats. Importing `src.emulator_sparseGP` enables `jax_enable_x64` for the whole Python process.
 - With mini-batches, the SVGP training returns the parameters with the best exponential moving average of the ELBO instead of the best single-batch ELBO, which selected the parameters of the luckiest batch.
@@ -30,8 +33,8 @@ Bug fixes:
 - Raise a `ValueError` in `EmulatorBAND` when an unknown emulator method is requested. Previously the error was never raised.
 - `compute_log_likelihood_for_chain` now also works for chains from pocoMC.
 - Saved `EmulatorHETGPy` emulators now contain the trained GP models, so that loading gives exactly the same predictions. Previously the models were refitted from some of their hyperparameters after loading. Emulators saved with the older format can still be loaded, but their predictions can differ from the trained emulator.
+- The output standardization and PCA of `EmulatorHETGPy` are fitted to the training points only. Previously, they included the points held out in the validation.
 - Add the covariance of the PCs discarded by the output PCA to the `EmulatorHETGPy` covariance. This increases the predicted emulator uncertainty.
-- `EmulatorSparseGP.predict` accepts a scalar `extra_std` for several parameter points.
 - The SVGP training now keeps the parameters that belong to the best ELBO, and the NaN recovery restarts from parameters with a finite ELBO.
 - Add the variance of the PCs discarded by surmise to the `EmulatorBAND` covariance. surmise's `covx()` does not contain it, which underestimated the emulator uncertainty, strongly for PCGP with `logTrafo=True`.
 - `EmulatorBAND.predict` with `exp_and_cov_diagonal=True` works for a single 1D parameter vector.
@@ -47,6 +50,9 @@ Bug fixes:
 - Empty lines in parameter files are skipped, and keys are stripped.
 - The default seed of `Design` is an integer from the current time (stored in `Design.seed`). The float timestamp was truncated by R, so the printed seed was not the one used.
 - Fix the chain loading and the error bars in the `ClosureTest` notebook, and the log-likelihood output in the `RunBayesianAnalysis` notebook.
+
+Documentation:
+- Document in the README and the docstrings that emulators trained with `logTrafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
 
 Tests:
 - Add tests for the hetGP and sparse GP emulators in `tests/`, which can be run with pytest.
