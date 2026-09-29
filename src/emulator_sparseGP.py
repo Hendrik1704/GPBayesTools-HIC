@@ -244,8 +244,6 @@ class PCASparseGPEmulator:
             When ``None``, no extra observation noise is added.  Default None.
         steps : int
             Number of ADAM steps to take (default 25000)
-        batch_size : int or None
-            Mini-batch size for stochastic ELBO. None = full dataset (default).
         kernel_lr : float
             Learning rate for kernel parameters (default 1e-3)
         variational_lr : float
@@ -277,8 +275,9 @@ class PCASparseGPEmulator:
             Print training progress (default True)
         early_stopping : bool
             Enable EMA-based early stopping (default False).
-            Stops when the EMA fails to improve by more than `es_rel_tol`
-            over a recent sliding window for `patience` consecutive checks.
+            The EMA gain over a sliding window of about 1/(1 - ema_alpha)
+            steps is checked at every step. Training stops when it stays below
+            `es_rel_tol` for `patience` consecutive steps.
         patience : int
             Consecutive steps without meaningful EMA improvement before stopping (default 20)
         es_rel_tol : float
@@ -698,7 +697,7 @@ class PCASparseGPEmulator:
                               f"(EMA={ema:.3f})")
                         print(
                             f"\nEarly stopping: EMA gain over {es_check_interval} steps "
-                            f"stayed below {es_rel_tol:.1e} for {patience} checks at step {i+1}")
+                            f"stayed below {es_rel_tol:.1e} for {patience} steps at step {i+1}")
                     break
 
             if verbose and (i % print_every == 0 or i == steps - 1):
@@ -766,9 +765,9 @@ class PCASparseGPEmulator:
               - Y_err provided AND emulation RMSE ≈ obs noise (well-converged
                 emulator with M → N): use include_noise=False to avoid
                 double-counting the observation noise term.
-              - Y_err not provided: keep include_noise=True (default); the
-                nugget is the only noise floor estimate available.
-                Default False.
+              - Y_err not provided: use include_noise=True; the nugget is the
+                only noise floor estimate available.
+            Default False.
         include_truncation : bool
             Add exact PCA truncation uncertainty: the covariance contribution
             from all discarded PCA components, computed in fit() as
@@ -837,7 +836,7 @@ class PCASparseGPEmulator:
         # 1. Learned nugget / homoscedastic noise.
         # For deterministic simulators this is a training regularizer, NOT real
         # observation noise -> set include_noise=False to exclude it from predictions.
-        # For stochastic simulators / experiments without Y_err, keep True (default).
+        # For stochastic simulators / experiments without Y_err, use True.
         noise = jax.nn.softplus(p["log_noise"]) + 1e-6  # (n_pc,)
         if include_noise:
             vars_total = vars_total + noise[None, :]
