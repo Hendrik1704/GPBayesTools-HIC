@@ -116,8 +116,8 @@ class Design:
     with the given number of points.
     Creates the main (training) design if `validation` is false (default);
     creates the validation design if `validation` is true.
-    If `seed` is not given, a default random seed is used
-    (different defaults for the main and validation designs).
+    If `seed` is not given, a random seed is generated from the current time.
+    It is printed and stored in ``seed`` to be able to reproduce the design.
     `method` selects the Latin-hypercube design: 'maxpro' (maximum
     projection design, R package MaxPro, default) or 'maximin' (maximin
     design, R package lhs).
@@ -130,6 +130,7 @@ class Design:
     - ``ndim``: number of parameters (i.e. dimensions)
     - ``points``: list of design point names (formatted numbers)
     - ``array``: the actual design array
+    - ``seed``: the random seed used to generate the design
 
     The class also implicitly converts to a numpy array.
 
@@ -150,9 +151,11 @@ class Design:
 
         # set default seeds
         if seed is None:
-            #seed = 751783496 if validation else 450829120
-            seed = datetime.now().timestamp()
+            # R's set.seed() requires an integer, positive 32-bit seeds are
+            # used here
+            seed = int(datetime.now().timestamp() * 1000) % (2**31 - 1)
             print("seed = {}".format(seed))
+        self.seed = seed
 
         self.min = []
         self.max = []
