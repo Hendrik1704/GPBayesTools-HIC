@@ -131,7 +131,7 @@ def test_exp_data_with_several_sets(files, tmp_path):
 
 # ── Samplers ─────────────────────────────────────────────────────────
 def test_emcee(chain):
-    chain.run_emcee(nsteps=2000, nburnsteps=400, nwalkers=16, nthin=5, seed=1)
+    chain.run_emcee(n_steps=2000, n_burn_steps=400, n_walkers=16, n_thin=5, seed=1)
     assert chain.chain.shape == (16, 400, 2)
     check_posterior(chain.chain)
 
@@ -141,10 +141,10 @@ def test_emcee(chain):
     assert saved["last_position"].shape == (16, 2)
 
     # continue the chain
-    chain.run_emcee(nsteps=100, nthin=5, seed=2)
+    chain.run_emcee(n_steps=100, n_thin=5, seed=2)
     assert chain.chain.shape == (16, 420, 2)
     with pytest.raises(ValueError):
-        chain.run_emcee(nsteps=100, nwalkers=8)
+        chain.run_emcee(n_steps=100, n_walkers=8)
 
 
 def test_emcee_seed(files):
@@ -156,20 +156,30 @@ def test_emcee_seed(files):
             model_parafile=files["par"],
         )
         c.load_emulators(files["emus"])
-        c.run_emcee(nsteps=50, nburnsteps=20, nwalkers=8, nthin=1, seed=3)
+        c.run_emcee(n_steps=50, n_burn_steps=20, n_walkers=8, n_thin=1, seed=3)
         chains.append(c.chain)
     np.testing.assert_array_equal(*chains)
 
 
 def test_ptlmc(chain):
     chain.run_ptlmc(
-        nsteps=1000, nwalkers=8, ntemps=6, maxtemp=10, nstartparameters=200, seed=1
+        n_steps=1000,
+        n_walkers=8,
+        n_temps=6,
+        max_temp=10,
+        n_start_parameters=200,
+        seed=1,
     )
     assert chain.chain.shape == (8, 1000, 2)
     check_posterior(chain.chain)
     first = chain.chain.copy()
     chain.run_ptlmc(
-        nsteps=1000, nwalkers=8, ntemps=6, maxtemp=10, nstartparameters=200, seed=1
+        n_steps=1000,
+        n_walkers=8,
+        n_temps=6,
+        max_temp=10,
+        n_start_parameters=200,
+        seed=1,
     )
     np.testing.assert_array_equal(first, chain.chain)
 
@@ -210,9 +220,9 @@ def test_log_likelihood_of_chain_requires_chain(chain):
 
 
 def test_samplers_write_separate_files(chain):
-    chain.run_emcee(nsteps=20, nburnsteps=10, nwalkers=8, nthin=1, seed=1)
+    chain.run_emcee(n_steps=20, n_burn_steps=10, n_walkers=8, n_thin=1, seed=1)
     chain.run_ptlmc(
-        nsteps=20, nwalkers=4, ntemps=4, maxtemp=10, nstartparameters=50, seed=1
+        n_steps=20, n_walkers=4, n_temps=4, max_temp=10, n_start_parameters=50, seed=1
     )
     for sampler, shape in (("emcee", (8, 20, 2)), ("ptlmc", (4, 20, 2))):
         with open(chain.chain_path(sampler), "rb") as f:

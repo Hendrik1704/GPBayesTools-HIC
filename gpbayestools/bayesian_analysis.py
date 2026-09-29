@@ -522,11 +522,11 @@ class BayesianAnalysis:
 
     def run_emcee(
         self,
-        nsteps=500,
-        nburnsteps=None,
-        nwalkers=None,
+        n_steps=500,
+        n_burn_steps=None,
+        n_walkers=None,
         status=None,
-        nthin=10,
+        n_thin=10,
         skip_initial_state_check=False,
         seed=None,
     ):
@@ -541,24 +541,24 @@ class BayesianAnalysis:
         start a new chain. The burn-in is run in two halves: after the first
         half, the walkers are moved to the most likely distinct points found
         so far. The thinned chain is appended to the chain file and stored in
-        ``self.chain`` with shape (nwalkers, nsteps, ndim).
+        ``self.chain`` with shape (n_walkers, n_steps, ndim).
 
         Parameters
         ----------
-        nsteps : int, default=500
+        n_steps : int, default=500
             Number of production steps.
-        nburnsteps : int or None, default=None
+        n_burn_steps : int or None, default=None
             Number of burn-in steps. Must be at least 2. Required to start a
             new chain, ignored when continuing an existing chain.
-        nwalkers : int or None, default=None
+        n_walkers : int or None, default=None
             Number of walkers. Required to start a new chain. When continuing
             an existing chain, it defaults to the number of walkers of that
             chain and must match it.
         status : int or None, default=None
             Number of steps between progress log messages (see
             :meth:`LoggingEnsembleSampler.run_mcmc`).
-        nthin : int, default=10
-            Thinning of the production chain, only every `nthin`-th step is
+        n_thin : int, default=10
+            Thinning of the production chain, only every `n_thin`-th step is
             stored.
         skip_initial_state_check : bool, default=False
             Passed to emcee. If True, do not check that the initial walker
@@ -570,9 +570,9 @@ class BayesianAnalysis:
         Raises
         ------
         ValueError
-            If `nburnsteps` or `nwalkers` is missing for a new chain, if
-            `nburnsteps` is smaller than 2, if the existing chain was not
-            generated with emcee, or if `nwalkers` does not match the existing
+            If `n_burn_steps` or `n_walkers` is missing for a new chain, if
+            `n_burn_steps` is smaller than 2, if the existing chain was not
+            generated with emcee, or if `n_walkers` does not match the existing
             chain.
         """
         if seed is not None:
@@ -593,41 +593,43 @@ class BayesianAnalysis:
             burn_in = False
 
         if burn_in:
-            if nburnsteps is None or nwalkers is None:
-                raise ValueError("must specify nburnsteps and nwalkers to start chain")
+            if n_burn_steps is None or n_walkers is None:
+                raise ValueError(
+                    "must specify n_burn_steps and n_walkers to start chain"
+                )
         else:
-            # emcee chains have shape (nwalkers, nsteps, ndim), pocoMC samples
+            # emcee chains have shape (n_walkers, n_steps, ndim), pocoMC samples
             # (nsamples, ndim)
             if chain_data["chain"].ndim != 3:
                 raise ValueError(
                     f"the chain in {chain_file} was not generated with emcee and "
                     "cannot be continued, use a different mcmc_path"
                 )
-            if nwalkers is None:
-                nwalkers = chain_data["chain"].shape[0]
-            elif nwalkers != chain_data["chain"].shape[0]:
+            if n_walkers is None:
+                n_walkers = chain_data["chain"].shape[0]
+            elif n_walkers != chain_data["chain"].shape[0]:
                 raise ValueError(
-                    "the existing chain has {} walkers, but nwalkers = {}".format(
-                        chain_data["chain"].shape[0], nwalkers
+                    "the existing chain has {} walkers, but n_walkers = {}".format(
+                        chain_data["chain"].shape[0], n_walkers
                     )
                 )
 
         logger.info("Starting MCMC ...")
         sampler = LoggingEnsembleSampler(
-            nwalkers, self.ndim, self.log_posterior, pool=self
+            n_walkers, self.ndim, self.log_posterior, pool=self
         )
 
         if burn_in:
             logger.info("no existing chain found, starting initial burn-in")
-            if nburnsteps < 2:
+            if n_burn_steps < 2:
                 raise ValueError(
-                    "nburnsteps must be >= 2, the burn-in is run in two halves"
+                    "n_burn_steps must be >= 2, the burn-in is run in two halves"
                 )
 
             # Run first half of burn-in starting from random positions.
-            nburn0 = nburnsteps // 2
+            nburn0 = n_burn_steps // 2
             state = sampler.run_mcmc(
-                self.random_pos(nwalkers),
+                self.random_pos(n_walkers),
                 nburn0,
                 status=status,
                 skip_initial_state_check=skip_initial_state_check,
@@ -640,8 +642,8 @@ class BayesianAnalysis:
             # indices of the distinct log-probabilities in ascending order
             idx = np.unique(lnprob, return_index=True)[1]
             idx = idx[np.isfinite(lnprob[idx])]
-            if len(idx) >= nwalkers:
-                X0 = sampler.flatchain[idx[-nwalkers:]]
+            if len(idx) >= n_walkers:
+                X0 = sampler.flatchain[idx[-n_walkers:]]
             else:
                 logger.warning(
                     f"only {len(idx)} distinct points with finite probability in the "
@@ -652,7 +654,7 @@ class BayesianAnalysis:
             sampler.reset()
             X0 = sampler.run_mcmc(
                 X0,
-                nburnsteps - nburn0,
+                n_burn_steps - nburn0,
                 status=status,
                 skip_initial_state_check=skip_initial_state_check,
             )
@@ -665,11 +667,14 @@ class BayesianAnalysis:
             X0 = chain_data.get("last_position", chain_data["chain"][:, -1, :])
 
         state = sampler.run_mcmc(
-            X0, nsteps, status=status, skip_initial_state_check=skip_initial_state_check
+            X0,
+            n_steps,
+            status=status,
+            skip_initial_state_check=skip_initial_state_check,
         )
         chain_data["last_position"] = state.coords
 
-        thinned_chain = sampler.chain[:, ::nthin, :]
+        thinned_chain = sampler.chain[:, ::n_thin, :]
         if "chain" in chain_data:
             chain_data["chain"] = np.concatenate(
                 (chain_data["chain"], thinned_chain), axis=1
@@ -1028,11 +1033,11 @@ class BayesianAnalysis:
 
     def run_ptlmc(
         self,
-        nsteps=500,
-        nwalkers=16,
-        ntemps=50,
-        maxtemp=100,
-        nstartparameters=1000,
+        n_steps=500,
+        n_walkers=16,
+        n_temps=50,
+        max_temp=100,
+        n_start_parameters=1000,
         seed=None,
     ):
         """
@@ -1041,20 +1046,20 @@ class BayesianAnalysis:
         This function wraps the PTLMC sampler (adapted from surmise, see
         :meth:`_sampler_ptlmc`). The initial points are drawn uniformly within
         the parameter ranges. The samples of the temperature-1 chains are
-        stored in ``self.chain`` with shape (nwalkers, nsteps, ndim) and
+        stored in ``self.chain`` with shape (n_walkers, n_steps, ndim) and
         written to ``chain_path("ptlmc")``, overwriting an existing file.
 
         Parameters
         ----------
-        nsteps : int, default=500
+        n_steps : int, default=500
             Number of samples per chain.
-        nwalkers : int, default=16
+        n_walkers : int, default=16
             Number of chains of temperature 1.
-        ntemps : int, default=50
+        n_temps : int, default=50
             Number of chains of varying temperature.
-        maxtemp : float, default=100
+        max_temp : float, default=100
             Maximum temperature used in parallel tempering.
-        nstartparameters : int, default=1000
+        n_start_parameters : int, default=1000
             Number of initial random draws from the parameter space.
         seed : int or None, default=None
             Seed of the random number generator of the sampler, which makes
@@ -1072,21 +1077,21 @@ class BayesianAnalysis:
             draw_func=draw_func,
             rng=rng,
             theta0=None,
-            numtemps=ntemps,
-            numchain=nwalkers,
-            sampperchain=nsteps,
-            maxtemp=maxtemp,
-            nstartparameters=nstartparameters,
+            numtemps=n_temps,
+            numchain=n_walkers,
+            sampperchain=n_steps,
+            maxtemp=max_temp,
+            nstartparameters=n_start_parameters,
         )
 
         self.chain = result_dict["theta"]
         # This reshape should not be necessary, it is just done to match the
         # format of the other MCMC samplers
-        self.chain = self.chain.reshape((nwalkers, nsteps, self.ndim))
+        self.chain = self.chain.reshape((n_walkers, n_steps, self.ndim))
 
         self.chain_sampler = "ptlmc"
 
-        # Write the chain to file (nwalkers, nsteps, self.ndim)
+        # Write the chain to file (n_walkers, n_steps, self.ndim)
         chain_data["chain"] = self.chain
         logger.info("Writing MCMC chains to {}".format(self.chain_path("ptlmc")))
         with open(self.chain_path("ptlmc"), "wb") as file:
