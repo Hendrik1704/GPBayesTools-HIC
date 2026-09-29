@@ -190,7 +190,7 @@ class EmulatorSparseGP(EmulatorBase):
         include_noise=False,
         include_truncation=True,
         include_pca_sampling=False,
-        include_obs_noise=False,
+        include_obs_noise=None,
     ):
         """
         Predict the model output at the parameter points ``X``.
@@ -203,15 +203,17 @@ class EmulatorSparseGP(EmulatorBase):
             If True, also return the covariance matrices (default True).
         include_noise : bool
             Include the learned nugget in the predictive variance (default
-            False).
+            False). Together with the default of `include_obs_noise`, the
+            covariance is then the uncertainty of a new noisy simulation, as
+            in the other emulators.
         include_truncation : bool
             Include the PCA truncation covariance (default True).
         include_pca_sampling : bool
             Include the finite-data PCA sampling uncertainty (default False).
-        include_obs_noise : bool
+        include_obs_noise : bool or None
             Include the statistical noise propagated from Y_err in the
-            predictions (default False). For MCMC calibration against
-            experimental means, keep this False.
+            predictions. None (default) uses the value of `include_noise`.
+            For MCMC calibration against experimental means, keep this False.
 
         Returns
         -------
@@ -229,6 +231,8 @@ class EmulatorSparseGP(EmulatorBase):
         if not hasattr(self, "emu_"):
             raise RuntimeError("Call train_emulator() before predict().")
 
+        if include_obs_noise is None:
+            include_obs_noise = include_noise
         X = np.atleast_2d(X)
         mean, cov = self.emu_.predict(
             X,

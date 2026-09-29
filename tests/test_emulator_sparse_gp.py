@@ -415,6 +415,13 @@ def test_t10(tmp_path):
         bool(np.all(np.diagonal(pred_cov, axis1=1, axis2=2) >= 0)),
     )
 
+    # include_obs_noise follows include_noise by default
+    _, cov_noise = emu.predict(test_par, include_noise=True)
+    _, cov_all = emu.predict(test_par, include_noise=True, include_obs_noise=True)
+    _, cov_off = emu.predict(test_par, include_obs_noise=False)
+    check("include_obs_noise follows include_noise", np.allclose(cov_noise, cov_all))
+    check("include_obs_noise=False by default", np.allclose(pred_cov, cov_off))
+
     # 4. test_emulator_errors
     emu_pred, emu_pred_err, vali_data, vali_data_err = emu.test_emulator_errors(
         n_test_points=2, **fit_kwargs

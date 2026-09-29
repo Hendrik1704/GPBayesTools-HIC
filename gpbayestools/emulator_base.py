@@ -134,7 +134,8 @@ class EmulatorBase:
     exp_and_cov_diagonal : bool, default=False
         Only with ``log_trafo=True``: predict() returns the predictions
         transformed back to the original scale of the observables, with
-        diagonal covariance matrices.
+        diagonal covariance matrices (EmulatorSparseGP keeps the correlations
+        between the observables).
 
     Raises
     ------
