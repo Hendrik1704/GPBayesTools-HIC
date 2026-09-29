@@ -145,3 +145,15 @@ def test_sample_y_with_noise(trained, test_points):
         np.testing.assert_allclose(
             samples.var(axis=1), np.diagonal(cov, axis1=1, axis2=2), rtol=0.15
         )
+
+
+def test_emulator_calibration(noisy_training_file, param_file):
+    # with noisy training data, the predicted uncertainty of the model
+    # function matches the actual errors (it was overestimated with the
+    # alpha = 0.1 of versions < 3.0.0)
+    emu = Emulator(noisy_training_file, param_file, npc=6, nrestarts=2, seed=1)
+    emu.trainEmulatorAutoMask()
+    X = np.random.default_rng(3).uniform(0.2, 0.8, size=(200, 3))
+    mean, cov = emu.predict(X)
+    z = (mean - true_model(X)) / np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
+    assert 0.5 < np.sqrt(np.mean(z**2)) < 2

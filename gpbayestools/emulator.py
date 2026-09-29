@@ -52,6 +52,13 @@ class Emulator(EmulatorBase):
 
     `seed` sets the random state of the restarts of the GP hyperparameter
     optimization (with nrestarts > 0), for reproducible training.
+
+    `alpha` is added to the diagonal of the GP kernel matrices in the
+    training. It is only meant for numerical stability (default 1e-8), the
+    noise of the training data is fitted by the WhiteKernel of the GPs.
+    Versions < 3.0.0 used alpha = 0.1, which treats a fixed 10% of the
+    variance of each (whitened) PC as noise and overestimates the emulator
+    uncertainty.
     """
 
     def __init__(
@@ -65,6 +72,7 @@ class Emulator(EmulatorBase):
         exp_and_cov_diagonal=False,
         perform_no_PCA=False,
         seed=None,
+        alpha=1e-8,
     ):
         super().__init__(
             training_set_path,
@@ -81,6 +89,9 @@ class Emulator(EmulatorBase):
         self.nrestarts = nrestarts
         # random state of the restarts of the GP hyperparameter optimizer
         self.seed_ = seed
+        # value added to the diagonal of the GP kernel matrices in the
+        # training, for numerical stability
+        self.alpha_ = alpha
 
         self.scaler = StandardScaler()
         self.pca = PCA(whiten=True, svd_solver="full")
@@ -157,7 +168,7 @@ class Emulator(EmulatorBase):
 
         # homoscedastic noise kernel
         hom_white_kern = kernels.WhiteKernel(
-            noise_level=0.05, noise_level_bounds=(1e-2, 1e2)
+            noise_level=0.05, noise_level_bounds=(1e-6, 1e2)
         )
         kernel = rbf_kern + hom_white_kern
 
@@ -165,7 +176,7 @@ class Emulator(EmulatorBase):
         self.gps = [
             GPR(
                 kernel=kernel,
-                alpha=0.1,
+                alpha=getattr(self, "alpha_", 0.1),
                 n_restarts_optimizer=self.nrestarts,
                 copy_X_train=False,
                 random_state=getattr(self, "seed_", None),

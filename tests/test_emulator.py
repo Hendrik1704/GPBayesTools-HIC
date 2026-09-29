@@ -12,7 +12,7 @@ import warnings
 import numpy as np
 import pytest
 
-from conftest import N_OBS, true_model, write_param_file, write_training_data
+from conftest import N_OBS, OBS_SCALE, true_model, write_param_file, write_training_data
 from gpbayestools import parse_model_parameter_file
 from gpbayestools.emulator import Emulator
 
@@ -41,15 +41,14 @@ def test_prediction_accuracy_and_shapes(emulator, test_points):
 
 def test_no_pca_covariance_in_observable_units(training_file, param_file, test_points):
     # the observables differ by a factor 2e4 in scale, the predicted
-    # standard deviations must scale accordingly with and without PCA
-    std = {}
+    # standard deviations must scale accordingly with and without PCA, i.e.
+    # relative to the scale of the observables they are of similar size
     for no_pca in (False, True):
         emu = Emulator(training_file, param_file, npc=4, perform_no_PCA=no_pca)
         emu.trainEmulatorAutoMask()
         _, cov = emu.predict(test_points)
-        std[no_pca] = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
-    ratio = std[True] / std[False]
-    assert np.all((ratio > 0.1) & (ratio < 10))
+        rel_std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2)).mean(axis=0) / OBS_SCALE
+        assert rel_std.max() / rel_std.min() < 10
 
 
 @pytest.mark.parametrize("npc, expected", [(2, 2), (0.99, None), (50, N_OBS)])
