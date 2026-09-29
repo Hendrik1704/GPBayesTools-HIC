@@ -282,9 +282,9 @@ class PCASparseGPEmulator:
             Maximum number of learning-rate backoff retries after NaN bursts
             (default 3).
         nan_patience : int
-            Number of NaN-triggered jitter escalations allowed before either
-            triggering LR backoff (if enabled) or raising RuntimeError
-            (default 10).
+            Number of consecutive NaN-triggered jitter escalations allowed
+            before either triggering LR backoff (if enabled) or raising
+            RuntimeError (default 10).
 
         Returns
         -------
@@ -647,6 +647,8 @@ class PCASparseGPEmulator:
 
             elbo_val_f = float(elbo_val)
             elbos.append(elbo_val_f)
+            # nan_patience counts consecutive non-finite steps
+            nan_count = 0
 
             if elbo_val_f > best_elbo:
                 best_elbo = elbo_val_f
