@@ -214,10 +214,15 @@ class EmulatorHETGPy(EmulatorBase):
             )
             self.emu_list.append(model)
 
-    def predict(self, X, return_cov=True):
+    def predict(self, X, return_cov=True, include_noise=False):
         """
         Predict model output. Here X is the parameter vector at the prediction
         point.
+
+        By default, the covariance is the uncertainty of the emulated model
+        function. With `include_noise`, the noise variance estimated by the
+        hetGP models (nugs) is included, i.e. the uncertainty of a new noisy
+        simulation.
         """
         X = np.atleast_2d(X)
         n_theta = X.shape[0]
@@ -230,7 +235,7 @@ class EmulatorHETGPy(EmulatorBase):
             pred = model.predict(x=X)
             mean_j = np.asarray(pred["mean"]).reshape(-1)
             var_j = np.asarray(pred["sd2"]).reshape(-1)
-            if "nugs" in pred:
+            if include_noise and "nugs" in pred:
                 var_j = var_j + np.asarray(pred["nugs"]).reshape(-1)
             pc_means[j, :] = mean_j
             pc_vars[j, :] = var_j

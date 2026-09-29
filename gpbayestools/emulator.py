@@ -237,28 +237,27 @@ class Emulator(EmulatorBase):
         Y += self.scaler.mean_
         return Y
 
-    def predict(self, X, return_cov=True):
+    @staticmethod
+    def _gp_noise(kernel):
+        """Noise variance of the WhiteKernel terms of a fitted kernel."""
+        if isinstance(kernel, kernels.WhiteKernel):
+            return kernel.noise_level
+        if isinstance(kernel, kernels.Sum):
+            return Emulator._gp_noise(kernel.k1) + Emulator._gp_noise(kernel.k2)
+        return 0.0
+
+    def predict(self, X, return_cov=True, include_noise=False):
         """
-        Predict model output at `X`.
+        Predict model output at `X`, a 2D array with shape
+        ``(nsamples, ndim)``.
 
-        X must be a 2D array-like with shape ``(nsamples, ndim)``. It is passed
-        directly to sklearn :meth:`GaussianProcessRegressor.predict`.
+        Returns the mean with shape ``(nsamples, nobs)`` and, if `return_cov`
+        is true, the covariance between the observables with shape
+        ``(nsamples, nobs, nobs)``.
 
-        If `return_cov` is true, return a tuple ``(mean, cov)``, otherwise only
-        return the mean.
-
-        The mean is returned as a nested dict of observable arrays, each with
-        shape ``(nsamples, n_cent_bins)``.
-
-        The covariance is returned as a proxy object which extracts observable
-        sub-blocks using a dict-like interface:
-
-        The shape of the extracted covariance blocks are
-        ``(nsamples, n_cent_bins_1, n_cent_bins_2)``.
-
-        NB: the covariance is only computed between observables
-            not between sample points.
-
+        By default, the covariance is the uncertainty of the emulated model
+        function. With `include_noise`, the noise fitted by the GPs (WhiteKernel)
+        is included, i.e. the uncertainty of a new noisy simulation.
         """
         gp_mean = [gp.predict(X, return_cov=return_cov) for gp in self.gps]
 
@@ -283,6 +282,10 @@ class Emulator(EmulatorBase):
             gp_var = np.concatenate(
                 [c.diagonal()[:, np.newaxis] for c in gp_cov], axis=1
             )
+            if not include_noise:
+                # the predictive variance of sklearn includes the WhiteKernel
+                noise = np.array([self._gp_noise(gp.kernel_) for gp in self.gps])
+                gp_var = np.maximum(gp_var - noise, 0.0)
 
             if not self.perform_no_PCA_:
                 # Compute the covariance at each sample point using the
@@ -311,13 +314,18 @@ class Emulator(EmulatorBase):
         else:
             return mean
 
-    def sample_y(self, X, n_samples=1, random_state=None):
+    def _sample_gp(self, gp, X, n_samples, rng, include_noise):
+        """Samples of a PC GP at X with shape (len(X), n_samples)."""
+        mean, cov = gp.predict(X, return_cov=True)
+        if not include_noise:
+            cov = cov - self._gp_noise(gp.kernel_) * np.eye(len(X))
+        return rng.multivariate_normal(mean, cov, size=n_samples, method="eigh").T
+
+    def sample_y(self, X, n_samples=1, random_state=None, include_noise=False):
         """
-        Sample model output at `X`.
+        Sample model output at `X`, with the same uncertainty as predict().
 
-        Returns a nested dict of observable arrays, each with shape
-        ``(n_samples_X, n_samples, n_cent_bins)``.
-
+        Returns an array with shape ``(nsamples_X, n_samples, nobs)``.
         """
         if not self.perform_no_PCA_:
             rng = np.random.default_rng(random_state)
@@ -327,11 +335,9 @@ class Emulator(EmulatorBase):
             samples = self._inverse_transform(
                 np.concatenate(
                     [
-                        gp.sample_y(
-                            X,
-                            n_samples=n_samples,
-                            random_state=int(rng.integers(2**32 - 1)),
-                        )[:, :, np.newaxis]
+                        self._sample_gp(gp, X, n_samples, rng, include_noise)[
+                            :, :, np.newaxis
+                        ]
                         for gp in self.gps
                     ]
                     + [

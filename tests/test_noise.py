@@ -1,0 +1,119 @@
+"""
+Tests of the include_noise option of the emulators: by default, predict()
+returns the uncertainty of the emulated model function, with
+include_noise=True the noise fitted by the GPs is included. The validation
+functions compare with noisy simulations and include the noise.
+
+Run with ``python -m pytest tests/test_noise.py``.
+"""
+
+import warnings
+
+import numpy as np
+import pytest
+
+from conftest import latin_hypercube, true_model, write_training_data
+from gpbayestools.emulator import Emulator
+from gpbayestools.emulator_hetGPy import EmulatorHETGPy
+from gpbayestools.emulator_sparseGP import EmulatorSparseGP
+
+warnings.filterwarnings("ignore", module="sklearn")
+
+
+def band_emulator(*args, **kwargs):
+    surmise = pytest.importorskip("surmise")
+    if not hasattr(surmise, "set_RNG"):
+        pytest.skip("requires surmise >= 1.0.0")
+    from gpbayestools.emulator_BAND import EmulatorBAND
+
+    return EmulatorBAND(*args, seed=1, **kwargs)
+
+
+EMULATORS = {
+    "Emulator": (lambda *a: Emulator(*a, npc=4), {}),
+    "PCGP": (lambda *a: band_emulator(*a, method="PCGP"), {}),
+    "PCSK": (lambda *a: band_emulator(*a, method="PCSK"), {}),
+    "hetGPy": (lambda *a: EmulatorHETGPy(*a), {}),
+    "SparseGP": (
+        lambda *a: EmulatorSparseGP(*a, npc=0.999, M=30),
+        {"steps": 1000, "verbose": False},
+    ),
+}
+
+
+@pytest.fixture(scope="module")
+def noisy_training_file(data_dir):
+    """Training data with 3% statistical noise."""
+    rng = np.random.default_rng(1)
+    design = latin_hypercube(80, 3, rng)
+    values = true_model(design)
+    noisy = values * (1 + 0.03 * rng.standard_normal(values.shape))
+    return write_training_data(data_dir / "noisy.pkl", design, noisy, rel_err=0.03)
+
+
+@pytest.fixture(scope="module", params=list(EMULATORS))
+def trained(request, noisy_training_file, param_file):
+    make, train_kwargs = EMULATORS[request.param]
+    emu = make(noisy_training_file, param_file)
+    emu.trainEmulatorAutoMask(**train_kwargs)
+    return request.param, emu, train_kwargs
+
+
+def test_noise_covariance(trained, test_points):
+    name, emu, _ = trained
+    mean_latent, cov_latent = emu.predict(test_points)
+    mean_noise, cov_noise = emu.predict(test_points, include_noise=True)
+    np.testing.assert_array_equal(mean_latent, mean_noise)
+    noise = cov_noise - cov_latent
+    for n, c in zip(noise, cov_noise):
+        # the noise covariance is positive semi-definite
+        assert np.linalg.eigvalsh(n).min() > -1e-8 * np.abs(c).max()
+    if name in ("Emulator", "hetGPy", "PCGP"):
+        # these emulators fit a noise term to the noisy training data
+        assert np.all(np.diagonal(noise, axis1=1, axis2=2) > 0)
+
+
+def test_emulator_noise_is_the_white_kernel(trained, test_points):
+    name, emu, _ = trained
+    if name != "Emulator":
+        pytest.skip("only for Emulator")
+    _, cov_latent = emu.predict(test_points)
+    _, cov_noise = emu.predict(test_points, include_noise=True)
+    noise_pc = np.array([emu._gp_noise(gp.kernel_) for gp in emu.gps])
+    A = emu._trans_matrix[: emu.npc]
+    np.testing.assert_allclose(
+        np.diagonal(cov_noise - cov_latent, axis1=1, axis2=2),
+        np.tile(noise_pc @ A**2, (len(test_points), 1)),
+        rtol=1e-8,
+    )
+
+
+def test_validation_includes_noise(trained):
+    name, emu, train_kwargs = trained
+    if name not in ("Emulator", "hetGPy"):
+        pytest.skip("deterministic training needed to compare")
+    pred, pred_err, data, _ = emu.testEmulatorErrors(10, **train_kwargs)
+    # the same emulator trained without the test points
+    mask = np.ones(emu.nev, dtype=bool)
+    mask[-10:] = False
+    emu_copy = type(emu).__new__(type(emu))
+    emu_copy.__dict__.update(emu.__dict__)
+    emu_copy.trainEmulator(mask)
+    _, cov = emu_copy.predict(emu.design_points[~mask], include_noise=True)
+    np.testing.assert_allclose(pred_err, np.sqrt(np.diagonal(cov, axis1=1, axis2=2)))
+
+
+def test_sample_y_with_noise(trained, test_points):
+    name, emu, _ = trained
+    if name != "Emulator":
+        pytest.skip("only for Emulator")
+    for include_noise in (False, True):
+        samples = emu.sample_y(
+            test_points, n_samples=4000, random_state=1, include_noise=include_noise
+        )
+        _, cov = emu.predict(test_points, include_noise=include_noise)
+        # the prediction contains a small additional term for numerical
+        # stability
+        np.testing.assert_allclose(
+            samples.var(axis=1), np.diagonal(cov, axis1=1, axis2=2), rtol=0.15
+        )

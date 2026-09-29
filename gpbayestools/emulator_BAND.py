@@ -107,10 +107,31 @@ class EmulatorBAND(EmulatorBase):
         cov[:, idx, idx] += np.clip(missing_var, 0.0, None)
         return cov
 
-    def predict(self, X, return_cov=True):
+    def _noise_covariance(self):
+        """
+        Covariance of the noise (nugget) of the GPs of the PCs in the space of
+        the observables, which is contained in the predictive covariance of
+        surmise: sigma2hat * exp(hypnug) for PCGP, sig2 * nug for the other
+        methods (PCSK, PCGPwM, PCGPwImpute).
+        """
+        info = self.emu._info
+        infos = info["emulist"]
+        if self.method_ == "PCGP":
+            noise = np.array([i["sigma2hat"] * np.exp(i["hypnug"]) for i in infos])
+            pctscale = (info["pct"].T * info["scale"]).T
+        else:
+            noise = np.array([i["sig2"] * i["nug"] for i in infos])
+            pctscale = (info["pcti"].T * info["standardpcinfo"]["scale"]).T
+        return (pctscale * noise) @ pctscale.T
+
+    def predict(self, X, return_cov=True, include_noise=False):
         """
         Predict model output. Here X is the parameter vector at the prediction
         point.
+
+        By default, the covariance is the uncertainty of the emulated model
+        function. With `include_noise`, the noise (nugget) of the GPs is
+        included, i.e. the uncertainty of a new noisy simulation.
         """
         x = np.arange(self.nobs).reshape(-1, 1)
 
@@ -124,6 +145,8 @@ class EmulatorBAND(EmulatorBase):
             fpredmean = gp.mean().T
 
         fpredcov = self._full_covariance(gp)
+        if not include_noise:
+            fpredcov = fpredcov - self._noise_covariance()[None, :, :]
 
         if self.exp_and_cov_diagonal_:
             fcov = np.zeros_like(fpredcov)

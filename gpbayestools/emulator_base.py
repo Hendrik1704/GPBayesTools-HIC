@@ -204,7 +204,11 @@ class EmulatorBase:
         """Emulator predictions and their standard deviations, and the
         training data and their errors at the points in mask, all in the
         original scale of the observables."""
-        pred_mean, pred_cov = self.predict(self.design_points[mask, :], return_cov=True)
+        # the test points are noisy simulations, so the noise of the emulator
+        # is included in the predicted errors
+        pred_mean, pred_cov = self.predict(
+            self.design_points[mask, :], return_cov=True, include_noise=True
+        )
         pred_mean = np.asarray(pred_mean)
         pred_std = np.sqrt(np.diagonal(np.asarray(pred_cov), axis1=1, axis2=2))
 
