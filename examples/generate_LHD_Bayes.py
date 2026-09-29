@@ -1,13 +1,15 @@
 import sys
 from os import path
+
 # Add the parent directory to sys.path
-sys.path.insert(0, path.abspath('../'))
+sys.path.insert(0, path.abspath("../"))
 from gpbayestools.design import Design
 from pathlib import Path
 
 # Create a LHD with 100 points
 # method: 'maxpro' (maximum projection design, R package MaxPro) or
 #         'maximin' (maximin design, R package lhs)
-design = Design('./modelDesign_example.txt', npoints=100, validation=False, seed=42,
-                method='maxpro')
-design.write_files(Path('./designs'))
+design = Design(
+    "./modelDesign_example.txt", npoints=100, validation=False, seed=42, method="maxpro"
+)
+design.write_files(Path("./designs"))

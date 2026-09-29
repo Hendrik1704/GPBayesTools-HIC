@@ -13,6 +13,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from .emulator_base import EmulatorBase, check_npc
 
+
 class EmulatorHETGPy(EmulatorBase):
     """
     Emulator with heteroskedastic GPs of the hetgpy package for the principal
@@ -26,11 +27,23 @@ class EmulatorHETGPy(EmulatorBase):
     well. With `exp_and_cov_diagonal` set to True, predict() returns exp(mean)
     and a diagonal covariance in the original scale of the observables.
     """
-    def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
-                 logTrafo=False, max_rel_uncertainty_data=None, 
-                 exp_and_cov_diagonal=False, npc=0.99):
-        super().__init__(training_set_path, parameter_file, logTrafo,
-                         max_rel_uncertainty_data, exp_and_cov_diagonal)
+
+    def __init__(
+        self,
+        training_set_path=".",
+        parameter_file="ABCD.txt",
+        logTrafo=False,
+        max_rel_uncertainty_data=None,
+        exp_and_cov_diagonal=False,
+        npc=0.99,
+    ):
+        super().__init__(
+            training_set_path,
+            parameter_file,
+            logTrafo,
+            max_rel_uncertainty_data,
+            exp_and_cov_diagonal,
+        )
 
         # The outputs are standardized and transformed with a PCA in
         # trainEmulator(), keeping npc PCs (int) or the PCs explaining the
@@ -46,10 +59,13 @@ class EmulatorHETGPy(EmulatorBase):
         self.outputScaler = StandardScaler()
         standardized_outputs = self.outputScaler.fit_transform(data)
         # emulators saved with older versions had a fixed targetVariance
-        npc = getattr(self, 'npc_requested_', getattr(self, 'targetVariance', 0.99))
+        npc = getattr(self, "npc_requested_", getattr(self, "targetVariance", 0.99))
         if isinstance(npc, (int, np.integer)) and npc > min(data.shape):
-            logging.warning('Only {} PCs available, using npc = {}'.format(
-                min(data.shape), min(data.shape)))
+            logging.warning(
+                "Only {} PCs available, using npc = {}".format(
+                    min(data.shape), min(data.shape)
+                )
+            )
             npc = min(data.shape)
         self.outputPCA = PCA(n_components=npc)
         self.model_data_pca = self.outputPCA.fit_transform(standardized_outputs)
@@ -67,11 +83,9 @@ class EmulatorHETGPy(EmulatorBase):
         cannot resolve this part of the variance. `data` are the training
         data and `data_pca` their principal components."""
         standardized_outputs = self.outputScaler.transform(data)
-        residuals = standardized_outputs - self.outputPCA.inverse_transform(
-            data_pca)
+        residuals = standardized_outputs - self.outputPCA.inverse_transform(data_pca)
         scales = self.outputScaler.scale_
-        self._cov_trunc = (np.cov(residuals, rowvar=False)
-                           * np.outer(scales, scales))
+        self._cov_trunc = np.cov(residuals, rowvar=False) * np.outer(scales, scales)
 
     def __getstate__(self):
         """Prepare a pickleable state.
@@ -93,8 +107,7 @@ class EmulatorHETGPy(EmulatorBase):
         emu_list_pickle = state.pop("_emu_list_pickle", None)
         hyperparams = state.pop("_gp_hyperparams", None)
         self.__dict__.update(state)
-        if ("_cov_trunc" not in self.__dict__
-                and "model_data_pca" in self.__dict__):
+        if "_cov_trunc" not in self.__dict__ and "model_data_pca" in self.__dict__:
             # older versions fitted the output PCA to all training data
             self._compute_truncation_cov(self.model_data, self.model_data_pca)
         if emu_list_pickle is not None:
@@ -102,10 +115,12 @@ class EmulatorHETGPy(EmulatorBase):
         elif hyperparams is not None:
             # emulators saved with older versions only contain the
             # hyperparameters of the GP models
-            logging.warning("Emulator saved with an older version: rebuilding "
-                            "GP models from saved hyperparameters. The "
-                            "predictions can differ from the trained models. "
-                            "Save the emulator again to avoid this.")
+            logging.warning(
+                "Emulator saved with an older version: rebuilding "
+                "GP models from saved hyperparameters. The "
+                "predictions can differ from the trained models. "
+                "Save the emulator again to avoid this."
+            )
             self._rebuild_from_hyperparams(hyperparams)
         # otherwise the emulator was not trained and stays untrained
 
@@ -166,13 +181,11 @@ class EmulatorHETGPy(EmulatorBase):
             self.emu_list.append(model)
 
         logging.info(
-            "Rebuilt {} GP models via warm-start (maxit={}).".format(
-                self.npc, maxit
-            )
+            "Rebuilt {} GP models via warm-start (maxit={}).".format(self.npc, maxit)
         )
 
     def trainEmulator(self, event_mask):
-        logging.info('Performing emulator training ...')
+        logging.info("Performing emulator training ...")
         # Subselect training data
         event_mask = np.asarray(event_mask, dtype=bool)
         design_points_masked = self.design_points[event_mask, :]
@@ -182,7 +195,7 @@ class EmulatorHETGPy(EmulatorBase):
 
         nev_train = design_points_masked.shape[0]
         logging.info(
-            'Train hetGP emulators for {} training points and {} PCs ...'.format(
+            "Train hetGP emulators for {} training points and {} PCs ...".format(
                 nev_train, self.npc
             )
         )
@@ -195,13 +208,13 @@ class EmulatorHETGPy(EmulatorBase):
             model.mleHetGP(
                 X=design_points_masked,
                 Z=Z_train,
-                settings={'return_matrices': True},
+                settings={"return_matrices": True},
                 covtype="Matern3_2",
                 maxit=100,
             )
             self.emu_list.append(model)
 
-    def predict(self,X,return_cov=True):
+    def predict(self, X, return_cov=True):
         """
         Predict model output. Here X is the parameter vector at the prediction
         point.
@@ -225,7 +238,9 @@ class EmulatorHETGPy(EmulatorBase):
         # Reconstruct observables from PCs
         Z_pred = pc_means.T  # (n_theta, npc)
         standardized_pred = self.outputPCA.inverse_transform(Z_pred)
-        Y_pred = self.outputScaler.inverse_transform(standardized_pred)  # (n_theta, nobs)
+        Y_pred = self.outputScaler.inverse_transform(
+            standardized_pred
+        )  # (n_theta, nobs)
 
         # Build covariance matrices in observable space
         components = self.outputPCA.components_  # (npc, nobs)
@@ -252,7 +267,7 @@ class EmulatorHETGPy(EmulatorBase):
             for i in range(n_theta):
                 diagonal_cov = np.zeros((self.nobs, self.nobs))
                 fstd = np.sqrt(np.diag(fpredcov[i]))
-                np.fill_diagonal(diagonal_cov, (fstd * fpredmean[i])**2)
+                np.fill_diagonal(diagonal_cov, (fstd * fpredmean[i]) ** 2)
                 fcov[i] = diagonal_cov
             fpredcov = fcov
 
@@ -260,4 +275,3 @@ class EmulatorHETGPy(EmulatorBase):
             return (fpredmean, fpredcov)
         else:
             return fpredmean
-        

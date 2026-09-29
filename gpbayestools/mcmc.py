@@ -5,6 +5,7 @@ Markov chain Monte Carlo model calibration. The following methods are available
 - run_MCMC_PTLMC: run MCMC model calibration with PTLMC sampler
 - run_pocoMC: run MCMC model calibration with pocoMC sampler (recommended)
 """
+
 import logging
 import pickle
 
@@ -42,14 +43,12 @@ def mvn_loglike(y, cov):
 
     if info < 0:
         raise ValueError(
-            'lapack dpotrf error: '
-            'the {}-th argument had an illegal value'.format(-info)
+            "lapack dpotrf error: the {}-th argument had an illegal value".format(-info)
         )
     elif info > 0:
         raise np.linalg.LinAlgError(
-            'lapack dpotrf error: '
-            'the leading minor of order {} is not positive definite'
-            .format(info)
+            "lapack dpotrf error: "
+            "the leading minor of order {} is not positive definite".format(info)
         )
 
     # Solve for alpha = cov^-1.y using the Cholesky decomp.
@@ -57,11 +56,10 @@ def mvn_loglike(y, cov):
 
     if info != 0:
         raise ValueError(
-            'lapack dpotrs error: '
-            'the {}-th argument had an illegal value'.format(-info)
+            "lapack dpotrs error: the {}-th argument had an illegal value".format(-info)
         )
 
-    return -.5*np.dot(y, alpha) - np.log(L.diagonal()).sum()
+    return -0.5 * np.dot(y, alpha) - np.log(L.diagonal()).sum()
 
 
 class LoggingEnsembleSampler(emcee.EnsembleSampler):
@@ -71,23 +69,26 @@ class LoggingEnsembleSampler(emcee.EnsembleSampler):
         nsteps).
 
         """
-        logging.info('running %d walkers for %d steps', self.nwalkers, nsteps)
+        logging.info("running %d walkers for %d steps", self.nwalkers, nsteps)
 
         if nsteps < 1:
-            raise ValueError('nsteps must be >= 1')
+            raise ValueError("nsteps must be >= 1")
         if status is None:
             status = max(nsteps // 10, 1)
 
         for n, result in enumerate(
-                self.sample(X0, iterations=nsteps, **kwargs),
-                start=1
+            self.sample(X0, iterations=nsteps, **kwargs), start=1
         ):
             if n % status == 0 or n == nsteps:
                 af = self.acceptance_fraction
                 logging.info(
-                    'step %d: acceptance fraction: '
-                    'mean %.4f, std %.4f, min %.4f, max %.4f',
-                    n, af.mean(), af.std(), af.min(), af.max()
+                    "step %d: acceptance fraction: "
+                    "mean %.4f, std %.4f, min %.4f, max %.4f",
+                    n,
+                    af.mean(),
+                    af.std(),
+                    af.min(),
+                    af.max(),
                 )
 
         return result
@@ -113,22 +114,27 @@ class Chain:
     (see :meth:`chain_path`).
 
     """
-    samplers = ('emcee', 'pocoMC', 'PTLMC')
 
-    def __init__(self, mcmc_path="./mcmc/chain.pkl",
-                 expdata_path="./exp_data.dat",
-                 model_parafile="./model.dat"
+    samplers = ("emcee", "pocoMC", "PTLMC")
+
+    def __init__(
+        self,
+        mcmc_path="./mcmc/chain.pkl",
+        expdata_path="./exp_data.dat",
+        model_parafile="./model.dat",
     ):
-        logging.info('Initializing MCMC ...')
+        logging.info("Initializing MCMC ...")
         self.mcmc_path = Path(mcmc_path)
         self.mcmc_path.parent.mkdir(parents=True, exist_ok=True)
-        logging.info('Final Markov Chain results will be saved in {}'.format(
-            ', '.join(str(self.chain_path(s)) for s in self.samplers))
+        logging.info(
+            "Final Markov Chain results will be saved in {}".format(
+                ", ".join(str(self.chain_path(s)) for s in self.samplers)
+            )
         )
 
         # load the model parameter file
-        logging.info('Loading the model parameters space from {} ...'.format(
-            model_parafile)
+        logging.info(
+            "Loading the model parameters space from {} ...".format(model_parafile)
         )
         self.pardict = parse_model_parameter_file(model_parafile)
         self.ndim = len(self.pardict.keys())
@@ -142,21 +148,19 @@ class Chain:
         self.min = np.array(self.min)
         self.max = np.array(self.max)
 
-        #the volume of the uniform prior
-        diff =  self.max - self.min
-        self.prior_volume_ = np.prod( diff )
+        # the volume of the uniform prior
+        diff = self.max - self.min
+        self.prior_volume_ = np.prod(diff)
 
         logging.info("Run MCMC with emcee...")
         # load the experimental data to be fit
-        logging.info(
-            'Loading the experiment data from {} ...'.format(expdata_path))
+        logging.info("Loading the experiment data from {} ...".format(expdata_path))
         self.expdata, self.expdata_cov = self._read_in_exp_data_pickle(expdata_path)
         self.nobs = self.expdata.shape[1]
         self.emuList = []
         self.chain = False
         # sampler that generated self.chain
         self.chain_sampler = None
-
 
     def loadEmulator(self, emulatorPathList):
         """
@@ -169,12 +173,13 @@ class Chain:
         nobs_emu = [emu.nobs for emu in emuList]
         if sum(nobs_emu) != self.nobs:
             raise ValueError(
-                'The emulators have {} observables in total ({}), but the '
-                'experimental data have {} data points'.format(
-                    sum(nobs_emu), ', '.join(map(str, nobs_emu)), self.nobs))
+                "The emulators have {} observables in total ({}), but the "
+                "experimental data have {} data points".format(
+                    sum(nobs_emu), ", ".join(map(str, nobs_emu)), self.nobs
+                )
+            )
         self.emuList = emuList
         logging.info("Number of Emulators: {}".format(len(self.emuList)))
-
 
     def _predict(self, X):
         nPreds = X.shape[0]
@@ -184,21 +189,22 @@ class Chain:
         for i, emu_i in enumerate(self.emuList):
             model_Y, model_cov = emu_i.predict(X, return_cov=True)
             nobs_i = model_Y.shape[1]
-            modelPred[:, currIdx:currIdx+nobs_i] = model_Y
-            modelPredCov[:, currIdx:currIdx+nobs_i, currIdx:currIdx+nobs_i] = model_cov
+            modelPred[:, currIdx : currIdx + nobs_i] = model_Y
+            modelPredCov[:, currIdx : currIdx + nobs_i, currIdx : currIdx + nobs_i] = (
+                model_cov
+            )
             currIdx += nobs_i
         if currIdx != self.nobs:
             raise ValueError(
-                'The emulators predict {} observables, but the experimental '
-                'data have {} data points'.format(currIdx, self.nobs))
+                "The emulators predict {} observables, but the experimental "
+                "data have {} data points".format(currIdx, self.nobs)
+            )
         return modelPred, modelPredCov
-
 
     def _inside(self, X):
         """True for the points in X inside the parameter ranges (including
         the boundaries, as the uniform prior of pocoMC)."""
         return np.all((X >= self.min) & (X <= self.max), axis=-1)
-
 
     def log_prior(self, X):
         """
@@ -206,10 +212,9 @@ class Chain:
 
         """
         X = np.atleast_2d(np.asarray(X))
-        lp = np.log( np.ones(X.shape[0]) / self.prior_volume_ )
+        lp = np.log(np.ones(X.shape[0]) / self.prior_volume_)
         lp[~self._inside(X)] = -np.inf
         return lp
-
 
     def log_likelihood(self, X, finite=False):
         """
@@ -238,7 +243,6 @@ class Chain:
             lp[inside] += list(map(mvn_loglike, dY, cov))
         return lp
 
-
     def log_likelihood_point_by_point(self, X):
         """
         Evaluate the likelihood at `X` point by point.
@@ -246,7 +250,7 @@ class Chain:
         generated and the likelihood is computed for each point in the chain.
         """
         lp = np.zeros(X.shape[0])
-        
+
         for k in range(X.shape[0]):
             if k % 100 == 0:
                 logging.info("Evaluating log_likelihood at point {}".format(k))
@@ -269,7 +273,6 @@ class Chain:
                 lp[k] += mvn_loglike(dY[0], cov[0])
         return lp
 
-
     def log_posterior(self, X):
         """
         Evaluate the posterior at `X`, the sum of the log prior and the log
@@ -277,18 +280,18 @@ class Chain:
         """
         return self.log_prior(X) + self.log_likelihood(X)
 
-
     def _read_in_exp_data_pickle(self, filepath):
         """This function reads in exp data and compute the covariance matrix"""
         model_data = []
         model_data_err = []
-        
+
         with open(filepath, "rb") as fp:
             dataDict = pickle.load(fp)
         if len(dataDict) != 1:
             raise ValueError(
-                'The experimental data file {} must contain exactly one data '
-                'set, but contains {}'.format(filepath, len(dataDict)))
+                "The experimental data file {} must contain exactly one data "
+                "set, but contains {}".format(filepath, len(dataDict))
+            )
 
         for event_id in dataDict.keys():
             temp_data = dataDict[event_id]["obs"].transpose()
@@ -296,16 +299,14 @@ class Chain:
             model_data_err.append(temp_data[:, 1])
         logging.info("Experimental dataset size: {}".format(model_data[0].shape[0]))
         model_data = np.array(model_data)
-        model_data_err = np.nan_to_num(
-                np.abs(np.array(model_data_err)))
+        model_data_err = np.nan_to_num(np.abs(np.array(model_data_err)))
         nobs = model_data.shape[1]
-        
+
         data_cov = np.zeros((nobs, nobs))
         model_data_err = model_data_err.flatten()
-        np.fill_diagonal(data_cov, (model_data_err)** 2)
-      
-        return model_data, data_cov
+        np.fill_diagonal(data_cov, (model_data_err) ** 2)
 
+        return model_data, data_cov
 
     def random_pos(self, n=1):
         """
@@ -313,7 +314,6 @@ class Chain:
 
         """
         return np.random.uniform(self.min, self.max, (n, self.ndim))
-
 
     @staticmethod
     def map(f, args):
@@ -324,25 +324,32 @@ class Chain:
         """
         return f(args)
 
-
     def chain_path(self, sampler):
         """
         Path of the chain file of `sampler` ('emcee', 'pocoMC' or 'PTLMC').
         """
         if sampler not in self.samplers:
-            raise ValueError("Unknown sampler '{}', use one of {}".format(
-                sampler, self.samplers))
-        return self.mcmc_path.with_name('{}_{}{}'.format(
-            self.mcmc_path.stem, sampler, self.mcmc_path.suffix))
+            raise ValueError(
+                "Unknown sampler '{}', use one of {}".format(sampler, self.samplers)
+            )
+        return self.mcmc_path.with_name(
+            "{}_{}{}".format(self.mcmc_path.stem, sampler, self.mcmc_path.suffix)
+        )
 
-
-    def run_mcmc(self, nsteps=500, nburnsteps=None, nwalkers=None,
-                 status=None, nthin=10, skip_initial_state_check=False,
-                 seed=None):
+    def run_mcmc(
+        self,
+        nsteps=500,
+        nburnsteps=None,
+        nwalkers=None,
+        status=None,
+        nthin=10,
+        skip_initial_state_check=False,
+        seed=None,
+    ):
         """
-        Markov chain Monte Carlo model calibration using the `affine-invariant 
+        Markov chain Monte Carlo model calibration using the `affine-invariant
         ensemble sampler (emcee) <http://dfm.io/emcee>`_.
-        
+
         Run MCMC model calibration. If the chain already exists, continue from
         the last point, otherwise burn-in and start the chain.
 
@@ -353,49 +360,50 @@ class Chain:
             # emcee initializes its random number generator from numpy's
             # global state
             np.random.seed(seed)
-        chain_file = self.chain_path('emcee')
+        chain_file = self.chain_path("emcee")
         chain_data = {}
         try:
-            with open(chain_file, 'rb') as f:
+            with open(chain_file, "rb") as f:
                 chain_data = pickle.load(f)
         except FileNotFoundError:
             pass
 
-        if 'chain' not in chain_data:
+        if "chain" not in chain_data:
             burnFlag = True
         else:
             burnFlag = False
 
         if burnFlag:
             if nburnsteps is None or nwalkers is None:
-                raise ValueError(
-                    'must specify nburnsteps and nwalkers to start chain')
+                raise ValueError("must specify nburnsteps and nwalkers to start chain")
         else:
             # emcee chains have shape (nwalkers, nsteps, ndim), pocoMC samples
             # (nsamples, ndim)
-            if chain_data['chain'].ndim != 3:
+            if chain_data["chain"].ndim != 3:
                 raise ValueError(
-                    'the chain in {} was not generated with emcee and cannot '
-                    'be continued, use a different mcmc_path'.format(
-                        chain_file))
+                    "the chain in {} was not generated with emcee and cannot "
+                    "be continued, use a different mcmc_path".format(chain_file)
+                )
             if nwalkers is None:
-                nwalkers = chain_data['chain'].shape[0]
-            elif nwalkers != chain_data['chain'].shape[0]:
+                nwalkers = chain_data["chain"].shape[0]
+            elif nwalkers != chain_data["chain"].shape[0]:
                 raise ValueError(
-                    'the existing chain has {} walkers, but nwalkers = {}'
-                    .format(chain_data['chain'].shape[0], nwalkers))
+                    "the existing chain has {} walkers, but nwalkers = {}".format(
+                        chain_data["chain"].shape[0], nwalkers
+                    )
+                )
 
-        logging.info('Starting MCMC ...')
+        logging.info("Starting MCMC ...")
         sampler = LoggingEnsembleSampler(
             nwalkers, self.ndim, self.log_posterior, pool=self
         )
 
         if burnFlag:
-            logging.info(
-                    'no existing chain found, starting initial burn-in')
+            logging.info("no existing chain found, starting initial burn-in")
             if nburnsteps < 2:
-                raise ValueError('nburnsteps must be >= 2, the burn-in is '
-                                 'run in two halves')
+                raise ValueError(
+                    "nburnsteps must be >= 2, the burn-in is run in two halves"
+                )
 
             # Run first half of burn-in starting from random positions.
             nburn0 = nburnsteps // 2
@@ -403,9 +411,9 @@ class Chain:
                 self.random_pos(nwalkers),
                 nburn0,
                 status=status,
-                skip_initial_state_check=skip_initial_state_check
+                skip_initial_state_check=skip_initial_state_check,
             )
-            logging.info('resampling walker positions')
+            logging.info("resampling walker positions")
             # Reposition walkers to the most likely points in the chain,
             # then run the second half of burn-in.  This significantly
             # accelerates burn-in and helps prevent stuck walkers.
@@ -417,59 +425,64 @@ class Chain:
                 X0 = sampler.flatchain[idx[-nwalkers:]]
             else:
                 logging.warning(
-                    'only {} distinct points with finite probability in the '
-                    'first half of the burn-in, continuing from the current '
-                    'walker positions'.format(len(idx)))
+                    "only {} distinct points with finite probability in the "
+                    "first half of the burn-in, continuing from the current "
+                    "walker positions".format(len(idx))
+                )
                 X0 = state.coords
             sampler.reset()
             X0 = sampler.run_mcmc(
                 X0,
                 nburnsteps - nburn0,
                 status=status,
-                skip_initial_state_check=skip_initial_state_check
+                skip_initial_state_check=skip_initial_state_check,
             )
             sampler.reset()
-            logging.info('burn-in complete, starting production')
+            logging.info("burn-in complete, starting production")
         else:
-            logging.info('restarting from last point of existing chain')
+            logging.info("restarting from last point of existing chain")
             # the last walker positions of the previous run, or for chains
             # saved with older versions, the last thinned sample
-            X0 = chain_data.get('last_position', chain_data['chain'][:, -1, :])
+            X0 = chain_data.get("last_position", chain_data["chain"][:, -1, :])
 
-        state = sampler.run_mcmc(X0, nsteps, status=status,
-                                 skip_initial_state_check=skip_initial_state_check)
-        chain_data['last_position'] = state.coords
+        state = sampler.run_mcmc(
+            X0, nsteps, status=status, skip_initial_state_check=skip_initial_state_check
+        )
+        chain_data["last_position"] = state.coords
 
         thinedChain = sampler.chain[:, ::nthin, :]
-        if 'chain' in chain_data:
-            chain_data['chain'] = np.concatenate((chain_data['chain'], 
-                                                  thinedChain), axis=1)
-            self.chain = chain_data['chain']
+        if "chain" in chain_data:
+            chain_data["chain"] = np.concatenate(
+                (chain_data["chain"], thinedChain), axis=1
+            )
+            self.chain = chain_data["chain"]
         else:
-            chain_data['chain'] = thinedChain
+            chain_data["chain"] = thinedChain
             self.chain = thinedChain
 
-        self.chain_sampler = 'emcee'
+        self.chain_sampler = "emcee"
 
         # Append the new data to the existing file
-        logging.info('writing chain to {}'.format(chain_file))
-        with open(chain_file, 'wb') as file:
+        logging.info("writing chain to {}".format(chain_file))
+        with open(chain_file, "wb") as file:
             pickle.dump(chain_data, file)
-
 
     # This function is taken from the surmise package (version 1.0.0) and
     # modified: the number of initial draws is set by nstartparameters, the
     # tuning phase is longer (fractunning = 2), progress is logged, and the
     # unflattened chains of the temperature-1 walkers are returned.
-    def samplerPTLMC(self, logpostfunc,
-                     draw_func,
-                     rng,
-                     theta0=None,
-                     numtemps=32,
-                     numchain=16,
-                     sampperchain=400,
-                     maxtemp=30,
-                     nstartparameters=1000):
+    def samplerPTLMC(
+        self,
+        logpostfunc,
+        draw_func,
+        rng,
+        theta0=None,
+        numtemps=32,
+        numchain=16,
+        sampperchain=400,
+        maxtemp=30,
+        nstartparameters=1000,
+    ):
         """
         Parallel-Tempering Ensemble MCMC based on Langevin Monte Carlo.
 
@@ -524,15 +537,21 @@ class Chain:
         # Setting up some default parameters
         fractunning = 2.0  # number of samples spent tunning the sampler
         # define the number of samples for tunning
-        samptunning = np.ceil(sampperchain*fractunning).astype('int')
+        samptunning = np.ceil(sampperchain * fractunning).astype("int")
         # defining the total number of chains
-        totnumchain = numtemps+numchain
+        totnumchain = numtemps + numchain
         # spacing out the temperature vector to go from maxtemp to 1, and  then replacating 1 the number of
         # non-temperatured chains
-        temps = np.concatenate((np.exp(np.linspace(np.log(maxtemp),
-                                                   np.log(maxtemp)/(numtemps+1),
-                                                   numtemps)),
-                                np.ones(numchain)))  # ratio idea tend from emcee
+        temps = np.concatenate(
+            (
+                np.exp(
+                    np.linspace(
+                        np.log(maxtemp), np.log(maxtemp) / (numtemps + 1), numtemps
+                    )
+                ),
+                np.ones(numchain),
+            )
+        )  # ratio idea tend from emcee
         tempsc = temps[:, np.newaxis]  # for broadcasting against (chain, p) arrays
 
         # number of optimization at each chain before starting
@@ -541,9 +560,9 @@ class Chain:
         testout = logpostfunc(theta0[0:2, :])
         if type(testout) is tuple:
             if len(testout) > 2:
-                raise ValueError('log density does not return 1 or 2 elements')
+                raise ValueError("log density does not return 1 or 2 elements")
             if testout[1].shape[1] != theta0.shape[1]:
-                raise ValueError('derivative appears to be the wrong shape')
+                raise ValueError("derivative appears to be the wrong shape")
 
             def logpostf(thetain):  # canonical shapes: (m,) and (m, p)
                 f, df = logpostfunc(thetain)
@@ -553,15 +572,20 @@ class Chain:
 
             def logpostf_grad(thetain):
                 return logpostf(thetain)[1]
+
             try:
                 testout = logpostfunc(theta0[10, :], return_grad=False)
-                if type(testout) is tuple:  # make sure that return_grad functionality works
-                    raise ValueError('Cannot stop returning a grad')
+                if (
+                    type(testout) is tuple
+                ):  # make sure that return_grad functionality works
+                    raise ValueError("Cannot stop returning a grad")
 
                 def logpostf_nograd(theta):
-                    return np.asarray(logpostfunc(theta, return_grad=False),
-                                      dtype=float).ravel()
+                    return np.asarray(
+                        logpostfunc(theta, return_grad=False), dtype=float
+                    ).ravel()
             except Exception:
+
                 def logpostf_nograd(theta):  # if not, do not use return_grad key
                     return np.asarray(logpostfunc(theta)[0], dtype=float).ravel()
         else:
@@ -569,6 +593,7 @@ class Chain:
 
             def logpostf_nograd(theta):
                 return np.asarray(logpostfunc(theta), dtype=float).ravel()
+
             logpostf = logpostf_nograd
 
         if logpostf_grad is None:  # these are standard parameters if there is
@@ -576,11 +601,12 @@ class Chain:
         else:
             taracc = 0.60  # close to theoretical result in LMC paper
         # begin preoptimizer
-        logging.info('Begin PTLMC pre-optimization ...')
+        logging.info("Begin PTLMC pre-optimization ...")
         # order the existing initial theta's by log pdf
-        ord1 = np.argsort(-logpostf_nograd(theta0) +
-                          (theta0.shape[1] *
-                           rng.standard_normal(size=theta0.shape[0])**2))
+        ord1 = np.argsort(
+            -logpostf_nograd(theta0)
+            + (theta0.shape[1] * rng.standard_normal(size=theta0.shape[0]) ** 2)
+        )
         theta0 = theta0[ord1[0:totnumchain], :]
         # begin optimizing at each chain
         thetacen = np.mean(theta0, 0)
@@ -590,33 +616,42 @@ class Chain:
         def neglogpostf_nograd(thetap):
             theta = thetacen + thetas * thetap
             return -logpostf_nograd(theta.reshape((1, len(theta))))[0]
+
         if logpostf_grad is not None:
+
             def neglogpostf_grad(thetap):
                 theta = thetacen + thetas * thetap
                 return -thetas * logpostf_grad(theta.reshape((1, len(theta)))).ravel()
-        boundL = np.maximum(-10*np.ones(theta0.shape[1]),
-                            np.min((theta0 - thetacen)/thetas, 0))
-        boundU = np.minimum(10*np.ones(theta0.shape[1]),
-                            np.max((theta0 - thetacen)/thetas, 0))
+
+        boundL = np.maximum(
+            -10 * np.ones(theta0.shape[1]), np.min((theta0 - thetacen) / thetas, 0)
+        )
+        boundU = np.minimum(
+            10 * np.ones(theta0.shape[1]), np.max((theta0 - thetacen) / thetas, 0)
+        )
         bounds = spo.Bounds(boundL, boundU)
         thetaop = theta0
         # now we are ready to optimize for each chain
-        logging.info('Begin PTLMC chain optimization ...')
+        logging.info("Begin PTLMC chain optimization ...")
         for k in range(0, numopt):
             if k % 10 == 0:
                 logging.info(f"Currently working on optimization of k = {k}")
             if logpostf_grad is None:
-                opval = spo.minimize(neglogpostf_nograd,
-                                     (thetaop[k, :] - thetacen) / thetas,
-                                     method='L-BFGS-B',
-                                     bounds=bounds)
+                opval = spo.minimize(
+                    neglogpostf_nograd,
+                    (thetaop[k, :] - thetacen) / thetas,
+                    method="L-BFGS-B",
+                    bounds=bounds,
+                )
                 thetaop[k, :] = thetacen + thetas * opval.x
             else:
-                opval = spo.minimize(neglogpostf_nograd,
-                                     (thetaop[k, :] - thetacen) / thetas,
-                                     method='L-BFGS-B',
-                                     jac=neglogpostf_grad,
-                                     bounds=bounds)
+                opval = spo.minimize(
+                    neglogpostf_nograd,
+                    (thetaop[k, :] - thetacen) / thetas,
+                    method="L-BFGS-B",
+                    jac=neglogpostf_grad,
+                    bounds=bounds,
+                )
                 thetaop[k, :] = thetacen + thetas * opval.x
             # use these as starting locations
             # try to move off optimized value to stop it from devolving
@@ -628,23 +663,26 @@ class Chain:
             l0 = neglogpostf_nograd(opval.x)
             while notmoved:
                 if (W > 0).all():
-                    r = (V.T*np.sqrt(W)) @ (V @ rng.standard_normal(size=thetacen.shape[0]))
+                    r = (V.T * np.sqrt(W)) @ (
+                        V @ rng.standard_normal(size=thetacen.shape[0])
+                    )
                 else:
                     stepadj /= 2
-                    if stepadj < 1/16:
+                    if stepadj < 1 / 16:
                         thetaop[k, :] = thetacen + thetas * opval.x
                         notmoved = False
                     continue
 
-                if (neglogpostf_nograd(stepadj * r + opval.x) -
-                        l0) < 3*thetacen.shape[0]:
+                if (
+                    neglogpostf_nograd(stepadj * r + opval.x) - l0
+                ) < 3 * thetacen.shape[0]:
                     thetaop[k, :] = thetacen + thetas * (stepadj * r + opval.x)
                     notmoved = False
                 else:
                     stepadj /= 2
         # end preoptimizer
         # initialize the starting point
-        logging.info('Initialize PTLMC starting point ...')
+        logging.info("Initialize PTLMC starting point ...")
         thetac = thetaop
         if logpostf_grad is not None:
             fval, dfval = logpostf(thetac)
@@ -654,13 +692,13 @@ class Chain:
             fval = logpostf_nograd(thetac) / temps
 
         # preallocate the saving matrix
-        thetasave = np.zeros((numchain,
-                              sampperchain,
-                              thetac.shape[1]))
+        thetasave = np.zeros((numchain, sampperchain, thetac.shape[1]))
         # try to start the covariance matrix
         covmat0 = np.cov(thetac.T)
         if thetac.shape[1] > 1:
-            covmat0 = 0.9*covmat0 + 0.1*np.diag(np.diag(covmat0))  # add a diagonal part to prevent any non-moving issues
+            covmat0 = 0.9 * covmat0 + 0.1 * np.diag(
+                np.diag(covmat0)
+            )  # add a diagonal part to prevent any non-moving issues
             W, V = np.linalg.eigh(covmat0)
             hc = V @ np.diag(np.sqrt(W)) @ V.T
         else:
@@ -670,11 +708,13 @@ class Chain:
         # Parameter initilzation
         tau = -1
         rho = 2 * (1 + (np.exp(2 * tau) - 1) / (np.exp(2 * tau) + 1))
-        adjrho = rho*temps**(1/3)  # this adjusts rho across different temperatures
+        adjrho = rho * temps ** (
+            1 / 3
+        )  # this adjusts rho across different temperatures
         adjrhoc = adjrho[:, np.newaxis]
         numtimes = 0  # number of times we reject, just to star
-        logging.info('Run over all PTLMC chains and tune ...')
-        for k in range(0, samptunning+sampperchain):  # loop over all chains
+        logging.info("Run over all PTLMC chains and tune ...")
+        for k in range(0, samptunning + sampperchain):  # loop over all chains
             if k % 100 == 0:
                 logging.info(f"Currently working on {k}")
             rvalo = rng.standard_normal(size=thetac.shape)
@@ -685,7 +725,7 @@ class Chain:
                 thetap = thetac + rval[:, np.newaxis]
             if logpostf_grad is not None:
                 # calculate the elements to move if there is a gradiant
-                diffval = (adjrhoc ** 2) * (dfval @ covmat0)
+                diffval = (adjrhoc**2) * (dfval @ covmat0)
                 thetap += diffval
                 fvalp, dfvalp = logpostf(thetap)  # thetap : no chain x dimension
                 fvalp = fvalp / temps  # to flatten the posterior
@@ -698,11 +738,11 @@ class Chain:
                 fvalp = logpostf_nograd(thetap) / temps  # thetap : no chain x dimension
                 qadj = np.zeros(fvalp.shape)
             swaprnd = np.log(rng.uniform(size=fval.shape[0]))
-            whereswap = np.where(np.squeeze(swaprnd)
-                                 < np.squeeze(fvalp - fval)
-                                 + np.squeeze(qadj))[0]  # MH step to find which of the chains to swap
+            whereswap = np.where(
+                np.squeeze(swaprnd) < np.squeeze(fvalp - fval) + np.squeeze(qadj)
+            )[0]  # MH step to find which of the chains to swap
             if whereswap.shape[0] > 0:  # if we swap, do it where needed
-                numtimes = numtimes + np.sum(whereswap > -1)/totnumchain
+                numtimes = numtimes + np.sum(whereswap > -1) / totnumchain
                 thetac[whereswap] = np.copy(thetap[whereswap])
                 fval[whereswap] = np.copy(fvalp[whereswap])
                 if logpostf_grad is not None:
@@ -718,18 +758,16 @@ class Chain:
                 dfval = (1 / tempsc) * dfvaln[orderprop, :]
             # if we have to tune, let's move tau up or down which gives bigger or smaller jumps
             if (k < samptunning) and (k % 10 == 0):  # if not done with tuning
-                tau = tau + 1 / np.sqrt(1 + k/10) * \
-                      ((numtimes / 10) - taracc)
+                tau = tau + 1 / np.sqrt(1 + k / 10) * ((numtimes / 10) - taracc)
                 rho = 2 * (1 + (np.exp(2 * tau) - 1) / (np.exp(2 * tau) + 1))
-                adjrho = rho*(temps**(1/3))  # adjusting rho across the chain
+                adjrho = rho * (temps ** (1 / 3))  # adjusting rho across the chain
                 adjrhoc = adjrho[:, np.newaxis]
                 numtimes = 0
             elif k >= samptunning:  # if done with tuning
-                thetasave[:, k-samptunning, :] = 1 * thetac[numtemps:, ]
+                thetasave[:, k - samptunning, :] = 1 * thetac[numtemps:,]
         # return the unflattened values of the temp=1 chains
-        sampler_info = {'theta': thetasave}
+        sampler_info = {"theta": thetasave}
         return sampler_info
-
 
     # This function is taken from the surmise package (version 1.0.0) and
     # modified to skip swaps between chains with the same temperature
@@ -744,24 +782,31 @@ class Chain:
             # choose random values to check for swapping
             rtv = rng.choice(range(1, lpostf.shape[0]), lpostf.shape[0])
             for rt in rtv:
-                rhoh = (1/temps[rt-1] - 1 / temps[rt])
+                rhoh = 1 / temps[rt - 1] - 1 / temps[rt]
                 if rhoh == 0:
                     # chains with the same temperature (e.g. the temperature-1
                     # chains) would always be swapped, which only mixes up the
                     # walkers without changing the sampled distribution
                     continue
-                if ((lpostf[order[rt]]-lpostf[order[rt - 1]]) * rhoh >
-                        np.log(rng.uniform())):  # swap via the PT rule
+                if (lpostf[order[rt]] - lpostf[order[rt - 1]]) * rhoh > np.log(
+                    rng.uniform()
+                ):  # swap via the PT rule
                     temporder = order[rt - 1]
-                    order[rt-1] = 1*order[rt]
+                    order[rt - 1] = 1 * order[rt]
                     order[rt] = 1 * temporder
         return order
 
-
-    def run_MCMC_PTLMC(self, nsteps=500, nwalkers=16, ntemps=50, maxtemp=100, 
-                       nstartparameters=1000, seed=None):
+    def run_MCMC_PTLMC(
+        self,
+        nsteps=500,
+        nwalkers=16,
+        ntemps=50,
+        maxtemp=100,
+        nstartparameters=1000,
+        seed=None,
+    ):
         """
-        This function wrapps the PTLMC package to run the parallel tempering 
+        This function wrapps the PTLMC package to run the parallel tempering
         ensemble MCMC with Langevin Monte Carlo
 
         `seed` is the seed of the random number generator of the sampler,
@@ -773,30 +818,30 @@ class Chain:
         def draw_func(n):
             return rng.uniform(self.min, self.max, (n, self.ndim))
 
-        logging.info('Starting MCMC ...')
-        result_dict = self.samplerPTLMC(logpostfunc=self.log_posterior,
-                                   draw_func=draw_func,
-                                   rng=rng,
-                                   theta0=None,
-                                   numtemps=ntemps,
-                                   numchain=nwalkers,
-                                   sampperchain=nsteps,
-                                   maxtemp=maxtemp,
-                                   nstartparameters=nstartparameters
-                                   )
+        logging.info("Starting MCMC ...")
+        result_dict = self.samplerPTLMC(
+            logpostfunc=self.log_posterior,
+            draw_func=draw_func,
+            rng=rng,
+            theta0=None,
+            numtemps=ntemps,
+            numchain=nwalkers,
+            sampperchain=nsteps,
+            maxtemp=maxtemp,
+            nstartparameters=nstartparameters,
+        )
 
-        self.chain = result_dict['theta']
+        self.chain = result_dict["theta"]
         # This reshape should not be necessary, just done to match the format of the other MCMC
         self.chain = self.chain.reshape((nwalkers, nsteps, self.ndim))
 
-        self.chain_sampler = 'PTLMC'
+        self.chain_sampler = "PTLMC"
 
         # Write the chain to file (nwalkers, nsteps, self.ndim)
-        chain_data['chain'] = self.chain
-        logging.info('Writing MCMC chains to {}'.format(self.chain_path('PTLMC')))
-        with open(self.chain_path('PTLMC'), 'wb') as file:
+        chain_data["chain"] = self.chain
+        logging.info("Writing MCMC chains to {}".format(self.chain_path("PTLMC")))
+        with open(self.chain_path("PTLMC"), "wb") as file:
             pickle.dump(chain_data, file)
-
 
     def compute_log_likelihood_for_chain(self, sampler=None, output_path=None):
         """
@@ -810,21 +855,24 @@ class Chain:
         ``./mcmc/chain_emcee_log_likelihood.pkl``.
         """
         if sampler is not None:
-            logging.info('Loading chain from {}'.format(self.chain_path(sampler)))
-            with open(self.chain_path(sampler), 'rb') as f:
+            logging.info("Loading chain from {}".format(self.chain_path(sampler)))
+            with open(self.chain_path(sampler), "rb") as f:
                 chain_data = pickle.load(f)
-            self.chain = chain_data['chain']
+            self.chain = chain_data["chain"]
             self.chain_sampler = sampler
         elif self.chain is False:
-            raise ValueError('No chain has been run with this object, specify '
-                             'the sampler of the chain to load')
+            raise ValueError(
+                "No chain has been run with this object, specify "
+                "the sampler of the chain to load"
+            )
         if output_path is None:
             chain_file = self.chain_path(self.chain_sampler)
             output_path = chain_file.with_name(
-                chain_file.stem + '_log_likelihood' + chain_file.suffix)
+                chain_file.stem + "_log_likelihood" + chain_file.suffix
+            )
         # create the output directory before the (expensive) computation
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        logging.info('Computing log likelihood for the chain...')
+        logging.info("Computing log likelihood for the chain...")
         reshape_chain = self.chain.reshape(-1, self.ndim)
         likelihood = self.log_likelihood_point_by_point(reshape_chain)
         # emcee/PTLMC chains have shape (nwalkers, nsteps, ndim),
@@ -832,81 +880,103 @@ class Chain:
         likelihood = likelihood.reshape(self.chain.shape[:-1])
 
         # Write the log_likelihood to file
-        logging.info('Writing log_likelihood for chains to {}'.format(output_path))
-        likelihood_data = {'log_likelihood': likelihood}
-        with open(output_path, 'wb') as file:
+        logging.info("Writing log_likelihood for chains to {}".format(output_path))
+        likelihood_data = {"log_likelihood": likelihood}
+        with open(output_path, "wb") as file:
             pickle.dump(likelihood_data, file)
 
-
-    def run_pocoMC(self,n_effective=1000,n_active=250,n_prior=2000,
-                   sample="tpcn",n_max_steps=200,random_state=42,
-                   n_total=5000,n_evidence=5000,n_ndim_steps=2,pool=None,prior=None):
+    def run_pocoMC(
+        self,
+        n_effective=1000,
+        n_active=250,
+        n_prior=2000,
+        sample="tpcn",
+        n_max_steps=200,
+        random_state=42,
+        n_total=5000,
+        n_evidence=5000,
+        n_ndim_steps=2,
+        pool=None,
+        prior=None,
+    ):
         """
         This function is based on PocoMC package (version 1.2.6).
         It works with versions of pocomc >= 1.2.2 and is tested up to 1.2.6.
-        pocoMC is a Preconditioned Monte Carlo (PMC) sampler that uses 
+        pocoMC is a Preconditioned Monte Carlo (PMC) sampler that uses
         normalizing flows to precondition the target distribution.
 
         n_effective (int) – The effective sample size maintained during the run (default is n_ess=1000).
         n_active (int) – The number of active particles (default is n_active=250). It must be smaller than n_ess.
         n_prior (int) – Number of prior samples to draw (default is n_prior=2*(n_effective//n_active)*n_active).
-        sample (str) – Type of MCMC sampler to use (default is sample="pcn"). 
+        sample (str) – Type of MCMC sampler to use (default is sample="pcn").
             Options are ``"pcn"`` (t-preconditioned Crank-Nicolson) or ``"rwm"`` (Random-walk Metropolis).
             t-preconditioned Crank-Nicolson is the default and recommended sampler for PMC as it is more efficient and scales better with the number of parameters.
         n_max_steps (int) – Maximum number of MCMC steps (default is max_steps=10*n_dim).
         random_state (int or None) – Initial random seed.
 
         n_total (int) – The total number of effectively independent samples to be collected (default is n_total=5000).
-        n_evidence (int) – The number of importance samples used to estimate the evidence (default is n_evidence=5000). 
-                            If n_evidence=0, the evidence is not estimated using importance sampling and the SMC estimate is used instead. 
+        n_evidence (int) – The number of importance samples used to estimate the evidence (default is n_evidence=5000).
+                            If n_evidence=0, the evidence is not estimated using importance sampling and the SMC estimate is used instead.
                             If preconditioned=False, the evidence is estimated using SMC and n_evidence is ignored.
         n_ndim_steps (int) – Number of MCMC steps in beta per dimension (default is n_ndim_steps=2).
 
-        pool (int) – Number of processes to use for parallelisation (default is ``pool=None``). 
+        pool (int) – Number of processes to use for parallelisation (default is ``pool=None``).
             If ``pool`` is an integer greater than 1, a ``multiprocessing`` pool is created with the specified number of processes.
         prior (class) – Prior distribution class implementing logpdf, rvs functions and dim, bounds attributes (default is None).
 
         When experiencing issues with the fork() function, set the environment variable ``export RDMAV_FORK_SAFE=1``.
         For more information on customizing the prior, see the PocoMC documentation.
         """
-        logging.info('Generate the prior class for pocoMC ...')
+        logging.info("Generate the prior class for pocoMC ...")
         if prior is None:
-            logging.info('Using uniform prior for all parameters ...')
+            logging.info("Using uniform prior for all parameters ...")
             prior_distributions = []
             for i in range(self.ndim):
-                prior_distributions.append(uniform(self.min[i], 
-                                               self.max[i] - self.min[i]))
+                prior_distributions.append(
+                    uniform(self.min[i], self.max[i] - self.min[i])
+                )
             prior = pocomc.Prior(prior_distributions)
         else:
-            logging.info('Using custom prior ...')
+            logging.info("Using custom prior ...")
             # Check the dimensions of the prior
             if self.ndim != prior.dim:
-                logging.error('prior.dim does not match the model parameter space')
-                raise ValueError('prior.dim does not match the model parameter space')
+                logging.error("prior.dim does not match the model parameter space")
+                raise ValueError("prior.dim does not match the model parameter space")
 
-        logging.info('Starting pocoMC ...')
-        sampler = pocomc.Sampler(prior=prior, likelihood=self.log_likelihood, 
-                                likelihood_kwargs={'finite': True}, 
-                                n_effective=n_effective, n_active=n_active, 
-                                n_prior=n_prior, sample=sample, 
-                                n_max_steps=n_max_steps, 
-                                n_steps=n_ndim_steps*self.ndim,
-                                random_state=random_state, vectorize=True, 
-                                pool=pool)
+        logging.info("Starting pocoMC ...")
+        sampler = pocomc.Sampler(
+            prior=prior,
+            likelihood=self.log_likelihood,
+            likelihood_kwargs={"finite": True},
+            n_effective=n_effective,
+            n_active=n_active,
+            n_prior=n_prior,
+            sample=sample,
+            n_max_steps=n_max_steps,
+            n_steps=n_ndim_steps * self.ndim,
+            random_state=random_state,
+            vectorize=True,
+            pool=pool,
+        )
         sampler.run(n_total=n_total, n_evidence=n_evidence)
 
-        logging.info('Generate the posterior samples ...')
+        logging.info("Generate the posterior samples ...")
         samples, logl, logp = sampler.posterior(resample=True)
 
-        logging.info('Generate the evidence ...')
+        logging.info("Generate the evidence ...")
         logz, logz_err = sampler.evidence()
-        logging.info('Log evidence: {}'.format(logz))
-        logging.info('Log evidence error: {}'.format(logz_err))
+        logging.info("Log evidence: {}".format(logz))
+        logging.info("Log evidence error: {}".format(logz_err))
 
         self.chain = samples
-        self.chain_sampler = 'pocoMC'
-        chain_data = {'chain': samples, 'logl': logl,
-                        'logp': logp, 'logz': logz, 'logz_err': logz_err}
-        logging.info('Writing pocoMC chains to {}'.format(self.chain_path('pocoMC')))
-        with open(self.chain_path('pocoMC'), 'wb') as file:
+        self.chain_sampler = "pocoMC"
+        chain_data = {
+            "chain": samples,
+            "logl": logl,
+            "logp": logp,
+            "logz": logz,
+            "logz_err": logz_err,
+        }
+        logging.info("Writing pocoMC chains to {}".format(self.chain_path("pocoMC")))
+        with open(self.chain_path("pocoMC"), "wb") as file:
             pickle.dump(chain_data, file)

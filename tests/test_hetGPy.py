@@ -28,12 +28,12 @@ sys.path.insert(0, PROJECT_ROOT)
 from gpbayestools.emulator_hetGPy import EmulatorHETGPy
 
 # ── Configuration ────────────────────────────────────────────────────
-N_DESIGN = 80        # number of training design points
-N_OBS = 20            # number of observables
-N_PARAMS = 3          # number of model parameters
-REL_NOISE = 0.01      # relative statistical noise on each observable
+N_DESIGN = 80  # number of training design points
+N_OBS = 20  # number of observables
+N_PARAMS = 3  # number of model parameters
+REL_NOISE = 0.01  # relative statistical noise on each observable
 SEED = 42
-N_TEST = 10           # number of test points for the predictions
+N_TEST = 10  # number of test points for the predictions
 MAX_MEAN_REL_ERR = 0.05
 
 
@@ -87,9 +87,9 @@ def data_files(tmp_path_factory):
     """Write the parameter file and synthetic training data."""
     tmp = tmp_path_factory.mktemp("hetgpy")
     par_file = tmp / "modelDesign_test_3par.txt"
-    par_file.write_text("alpha: alpha, 0.0, 1.0\n"
-                        "beta: beta, 0.0, 1.0\n"
-                        "gamma: gamma, 0.0, 1.0\n")
+    par_file.write_text(
+        "alpha: alpha, 0.0, 1.0\nbeta: beta, 0.0, 1.0\ngamma: gamma, 0.0, 1.0\n"
+    )
 
     rng = np.random.default_rng(SEED)
     design = latin_hypercube(N_DESIGN, N_PARAMS, rng)
@@ -144,7 +144,7 @@ def test_prediction_accuracy(emulator, test_params):
     # predicted uncertainties must be positive and of a sensible size
     pred_std = np.sqrt(np.diagonal(pred_cov, axis1=1, axis2=2))
     assert np.all(pred_std > 0)
-    rms_pull = np.sqrt(np.mean(((pred_mean - true_vals) / pred_std)**2))
+    rms_pull = np.sqrt(np.mean(((pred_mean - true_vals) / pred_std) ** 2))
     assert 0.1 < rms_pull < 10
 
 
@@ -175,8 +175,9 @@ def test_covariance_includes_truncation(emulator, test_params):
 def test_validation(data_files):
     emu = make_emulator(data_files)
     n_test = 5
-    emu_pred, emu_pred_err, vali_data, vali_data_err = \
-        emu.testEmulatorErrors(number_test_points=n_test)
+    emu_pred, emu_pred_err, vali_data, vali_data_err = emu.testEmulatorErrors(
+        number_test_points=n_test
+    )
     for arr in (emu_pred, emu_pred_err, vali_data, vali_data_err):
         assert arr.shape == (n_test, N_OBS)
     val_rel_err = np.abs(emu_pred - vali_data) / np.abs(vali_data)

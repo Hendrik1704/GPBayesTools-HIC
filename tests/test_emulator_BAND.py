@@ -15,7 +15,7 @@ if not hasattr(surmise, "set_RNG"):
 from conftest import N_OBS, true_model
 from gpbayestools.emulator_BAND import EmulatorBAND
 
-METHODS = ['PCGP', 'PCSK', 'PCGPwImpute', 'PCGPwM']
+METHODS = ["PCGP", "PCSK", "PCGPwImpute", "PCGPwM"]
 
 
 @pytest.fixture(scope="module", params=METHODS)
@@ -36,19 +36,17 @@ def test_prediction_accuracy_and_shapes(emulator, test_points):
 
 
 @pytest.mark.parametrize("method", METHODS)
-def test_covariance_contains_variance_of_discarded_pcs(training_file,
-                                                       param_file, test_points,
-                                                       method):
+def test_covariance_contains_variance_of_discarded_pcs(
+    training_file, param_file, test_points, method
+):
     # with logTrafo, PCGP discards PCs; the diagonal of the covariance must
     # still be the full predictive variance of surmise
-    emu = EmulatorBAND(training_file, param_file, method=method, seed=1,
-                       logTrafo=True)
+    emu = EmulatorBAND(training_file, param_file, method=method, seed=1, logTrafo=True)
     emu.trainEmulatorAutoMask()
     _, cov = emu.predict(test_points)
     x = np.arange(emu.nobs).reshape(-1, 1)
     var = emu.emu.predict(x=x, theta=test_points).var().T
-    np.testing.assert_allclose(np.diagonal(cov, axis1=1, axis2=2), var,
-                               rtol=1e-10)
+    np.testing.assert_allclose(np.diagonal(cov, axis1=1, axis2=2), var, rtol=1e-10)
 
 
 def test_log_transformation(training_file, param_file, test_points):
@@ -57,8 +55,9 @@ def test_log_transformation(training_file, param_file, test_points):
     mean_log, cov_log = emu_log.predict(test_points)
     assert np.abs(np.exp(mean_log) / true_model(test_points) - 1).mean() < 0.05
 
-    emu_exp = EmulatorBAND(training_file, param_file, seed=1, logTrafo=True,
-                           exp_and_cov_diagonal=True)
+    emu_exp = EmulatorBAND(
+        training_file, param_file, seed=1, logTrafo=True, exp_and_cov_diagonal=True
+    )
     emu_exp.trainEmulatorAutoMask()
     mean_exp, cov_exp = emu_exp.predict(test_points)
     np.testing.assert_allclose(mean_exp, np.exp(mean_log))
@@ -78,6 +77,7 @@ def test_seed(training_file, param_file, test_points):
         emu = EmulatorBAND(training_file, param_file, seed=seed)
         emu.trainEmulatorAutoMask()
         return emu.predict(test_points)[0]
+
     np.testing.assert_array_equal(predict(3), predict(3))
 
 
@@ -98,11 +98,12 @@ def test_validation(training_file, param_file, test_points):
     ref = EmulatorBAND(training_file, param_file, seed=1)
     ref.trainEmulatorAutoMask()
     ref.trainEmulatorAutoMask()
-    np.testing.assert_array_equal(emu.predict(test_points)[0],
-                                  ref.predict(test_points)[0])
+    np.testing.assert_array_equal(
+        emu.predict(test_points)[0], ref.predict(test_points)[0]
+    )
 
 
 def test_unknown_method(training_file, param_file):
-    emu = EmulatorBAND(training_file, param_file, method='GP')
+    emu = EmulatorBAND(training_file, param_file, method="GP")
     with pytest.raises(ValueError):
         emu.trainEmulatorAutoMask()

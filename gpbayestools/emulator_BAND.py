@@ -2,7 +2,7 @@
 Training for Gaussian process emulators.
 
 Uses the `Gaussian process regression
-<https://surmise.readthedocs.io/en/latest/index.html>`_ implemented by the BAND 
+<https://surmise.readthedocs.io/en/latest/index.html>`_ implemented by the BAND
 collaboration.
 """
 
@@ -13,9 +13,10 @@ from surmise.emulation import emulator
 
 from .emulator_base import EmulatorBase
 
+
 class EmulatorBAND(EmulatorBase):
     """
-    Multidimensional Gaussian Process emulator wrapper for the GP emulators of 
+    Multidimensional Gaussian Process emulator wrapper for the GP emulators of
     the BAND collaboration. The number of principal components is chosen by
     surmise, so there is no npc argument.
 
@@ -26,54 +27,72 @@ class EmulatorBAND(EmulatorBase):
     and a diagonal covariance in the original scale of the observables.
     """
 
-    def __init__(self, training_set_path=".", parameter_file="ABCD.txt", 
-                 method='PCGP',logTrafo=False,
-                 max_rel_uncertainty_data=None, exp_and_cov_diagonal=False,
-                 seed=None):
+    def __init__(
+        self,
+        training_set_path=".",
+        parameter_file="ABCD.txt",
+        method="PCGP",
+        logTrafo=False,
+        max_rel_uncertainty_data=None,
+        exp_and_cov_diagonal=False,
+        seed=None,
+    ):
         self.method_ = method
         # surmise (>=1.0.0) requires a global RNG to be set before training
         self.rng_ = np.random.default_rng(seed)
-        super().__init__(training_set_path, parameter_file, logTrafo,
-                         max_rel_uncertainty_data, exp_and_cov_diagonal)
-
+        super().__init__(
+            training_set_path,
+            parameter_file,
+            logTrafo,
+            max_rel_uncertainty_data,
+            exp_and_cov_diagonal,
+        )
 
     def trainEmulator(self, event_mask):
-        logging.info('Performing emulator training ...')
+        logging.info("Performing emulator training ...")
         nev, nobs = self.model_data[event_mask, :].shape
-        logging.info(
-            'Train GP emulators with {} training points ...'.format(nev))
+        logging.info("Train GP emulators with {} training points ...".format(nev))
         X = np.arange(nobs).reshape(-1, 1)
 
         design_points = self.design_points[event_mask, :]
 
         surmise.set_RNG(self.rng_)
-        if self.method_ == 'PCGP':
-            self.emu = emulator(x=X,theta=design_points,
-                            f=self.model_data[event_mask, :].T,
-                            method='PCGP',
-                            args={'warnings': True}
-                            )
-        elif self.method_ == 'PCSK':
+        if self.method_ == "PCGP":
+            self.emu = emulator(
+                x=X,
+                theta=design_points,
+                f=self.model_data[event_mask, :].T,
+                method="PCGP",
+                args={"warnings": True},
+            )
+        elif self.method_ == "PCSK":
             sim_sdev = self.model_data_err[event_mask, :].T
 
-            self.emu = emulator(x=X,theta=design_points,
-                                f=self.model_data[event_mask, :].T,
-                                method='PCSK',
-                                args={'warnings': True, 'simsd': sim_sdev}
-                                )
-        elif self.method_ == 'PCGPwImpute':
-            self.emu = emulator(x=X,theta=design_points,
-                                f=self.model_data[event_mask, :].T,
-                                method='PCGPwImpute',
-                                args={'warnings': True})
-        elif self.method_ == 'PCGPwM':
-            self.emu = emulator(x=X,theta=design_points,
-                                f=self.model_data[event_mask, :].T,
-                                method='PCGPwM',
-                                args={'warnings': True})
+            self.emu = emulator(
+                x=X,
+                theta=design_points,
+                f=self.model_data[event_mask, :].T,
+                method="PCSK",
+                args={"warnings": True, "simsd": sim_sdev},
+            )
+        elif self.method_ == "PCGPwImpute":
+            self.emu = emulator(
+                x=X,
+                theta=design_points,
+                f=self.model_data[event_mask, :].T,
+                method="PCGPwImpute",
+                args={"warnings": True},
+            )
+        elif self.method_ == "PCGPwM":
+            self.emu = emulator(
+                x=X,
+                theta=design_points,
+                f=self.model_data[event_mask, :].T,
+                method="PCGPwM",
+                args={"warnings": True},
+            )
         else:
             raise ValueError("Requested method not implemented!")
-
 
     def _full_covariance(self, gp):
         """
@@ -88,15 +107,14 @@ class EmulatorBAND(EmulatorBase):
         cov[:, idx, idx] += np.clip(missing_var, 0.0, None)
         return cov
 
-
-    def predict(self,X,return_cov=True):
+    def predict(self, X, return_cov=True):
         """
         Predict model output. Here X is the parameter vector at the prediction
         point.
         """
         x = np.arange(self.nobs).reshape(-1, 1)
 
-        gp = self.emu.predict(x=x,theta=X)
+        gp = self.emu.predict(x=x, theta=X)
 
         if self.exp_and_cov_diagonal_:
             # If the emulator is trained on the log of the data, we return the
@@ -113,7 +131,7 @@ class EmulatorBAND(EmulatorBase):
             for i in range(fpredcov.shape[0]):
                 diagonal_cov = np.zeros((self.nobs, self.nobs))
                 fstd = np.sqrt(np.diag(fpredcov[i]))
-                np.fill_diagonal(diagonal_cov, (fstd * fpredmean[i])**2)
+                np.fill_diagonal(diagonal_cov, (fstd * fpredmean[i]) ** 2)
                 fcov[i] = diagonal_cov
             fpredcov = fcov
 

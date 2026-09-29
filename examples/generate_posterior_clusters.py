@@ -5,6 +5,7 @@ from pathlib import Path
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 
+
 def read_pkl_file_chain_pocoMC(PATH_pklfile_chain):
     """
     Reads a pickle file containing the chain data from pocoMC.
@@ -16,15 +17,17 @@ def read_pkl_file_chain_pocoMC(PATH_pklfile_chain):
     - 'logz_err'
     This function returns the data as a dictionary.
     """
-    with open(PATH_pklfile_chain, 'rb') as pf:
+    with open(PATH_pklfile_chain, "rb") as pf:
         data = pickle.load(pf)
 
     return data
 
+
 def sorted_chain_path(PATH_pklfile_chain):
     # e.g. chain.pkl -> chain_sorted.pkl, never equal to the input file
     path = Path(PATH_pklfile_chain)
-    return str(path.with_name(path.stem + '_sorted' + path.suffix))
+    return str(path.with_name(path.stem + "_sorted" + path.suffix))
+
 
 def sort_chain_likelihood(PATH_pklfile_chain):
     """
@@ -32,11 +35,11 @@ def sort_chain_likelihood(PATH_pklfile_chain):
     The sorted data is saved to a new pickle file with '_sorted' appended to the original filename.
     """
     run_chain = read_pkl_file_chain_pocoMC(PATH_pklfile_chain)
-    array_chain = run_chain['chain']
-    array_logl = run_chain['logl']
-    array_logp = run_chain['logp']
-    array_logz = run_chain['logz']
-    array_logz_err = run_chain['logz_err']
+    array_chain = run_chain["chain"]
+    array_logl = run_chain["logl"]
+    array_logp = run_chain["logp"]
+    array_logz = run_chain["logz"]
+    array_logz_err = run_chain["logz_err"]
 
     # sort the array_logl with decreasing order and get the indices
     sorted_indices = np.argsort(array_logl)[::-1]
@@ -47,22 +50,26 @@ def sort_chain_likelihood(PATH_pklfile_chain):
     sorted_array_logp = array_logp[sorted_indices]
 
     # write a new file with the same content and the sorted data
-    data = {'chain': sorted_array_chain,
-            'logl': sorted_array_logl,
-            'logp': sorted_array_logp,
-            'logz': array_logz,
-            'logz_err': array_logz_err
-            }
-    
-    with open(sorted_chain_path(PATH_pklfile_chain), 'wb') as f:
+    data = {
+        "chain": sorted_array_chain,
+        "logl": sorted_array_logl,
+        "logp": sorted_array_logp,
+        "logz": array_logz,
+        "logz_err": array_logz_err,
+    }
+
+    with open(sorted_chain_path(PATH_pklfile_chain), "wb") as f:
         pickle.dump(data, f)
 
-def generate_posterior_clusters(PATH_pklfile_chain_sorted, num_samples=None, num_clusters=10):
+
+def generate_posterior_clusters(
+    PATH_pklfile_chain_sorted, num_samples=None, num_clusters=10
+):
     """
     Generate posterior clusters from the sorted chain file.
     """
     run_chain = read_pkl_file_chain_pocoMC(PATH_pklfile_chain_sorted)
-    array_chain = run_chain['chain']
+    array_chain = run_chain["chain"]
     if num_samples is not None:
         array_chain = array_chain[:num_samples]
 
@@ -75,19 +82,26 @@ def generate_posterior_clusters(PATH_pklfile_chain_sorted, num_samples=None, num
     kmeans_clustered_centers = scaler.inverse_transform(kmeans.cluster_centers_)
 
     # Save the cluster centers to a txt file
-    np.savetxt("cluster_centers.txt", kmeans_clustered_centers.T, fmt='%.6f')
+    np.savetxt("cluster_centers.txt", kmeans_clustered_centers.T, fmt="%.6f")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print("Usage: python generate_posterior_clusters.py <path_to_chain_file> <number_of_most_likely_samples_considered> <number_of_clusters>")
+        print(
+            "Usage: python generate_posterior_clusters.py <path_to_chain_file> <number_of_most_likely_samples_considered> <number_of_clusters>"
+        )
         print("Arguments:")
-        print("  <path_to_chain_file>: Path to the pickle file containing the chain data from pocoMC.")
-        print("  <number_of_most_likely_samples_considered>: Number of most likely samples to consider for clustering. Use 'None' to consider all samples.")
+        print(
+            "  <path_to_chain_file>: Path to the pickle file containing the chain data from pocoMC."
+        )
+        print(
+            "  <number_of_most_likely_samples_considered>: Number of most likely samples to consider for clustering. Use 'None' to consider all samples."
+        )
         print("  <number_of_clusters>: Number of clusters to generate.")
         sys.exit(1)
     PATH_pklfile_chain = sys.argv[1]
     num_samples_str = sys.argv[2]
-    num_samples = None if num_samples_str == 'None' else int(num_samples_str)
+    num_samples = None if num_samples_str == "None" else int(num_samples_str)
     num_clusters = int(sys.argv[3])
     sort_chain_likelihood(PATH_pklfile_chain)
     PATH_pklfile_chain_sorted = sorted_chain_path(PATH_pklfile_chain)

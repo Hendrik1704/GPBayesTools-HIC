@@ -37,25 +37,21 @@ def _generate_with_R(method, r_code, npoints, ndim, seed):
 
     """
     cachefile = (
-        cachedir / 'lhs' / method /
-        'npoints{}_ndim{}_seed{}.npy'.format(npoints, ndim, seed)
+        cachedir
+        / "lhs"
+        / method
+        / "npoints{}_ndim{}_seed{}.npy".format(npoints, ndim, seed)
     )
 
     if cachefile.exists():
-        logging.debug('loading from cache')
+        logging.debug("loading from cache")
         return np.load(cachefile)
 
-    logging.debug('not found in cache, generating using R')
+    logging.debug("not found in cache, generating using R")
     proc = subprocess.run(
-        ['R', '--slave'],
-        input=r_code.encode(),
-        stdout=subprocess.PIPE,
-        check=True
+        ["R", "--slave"], input=r_code.encode(), stdout=subprocess.PIPE, check=True
     )
-    lhs = np.array(
-        [l.split() for l in proc.stdout.decode().splitlines()],
-        dtype=float
-    )
+    lhs = np.array([l.split() for l in proc.stdout.decode().splitlines()], dtype=float)
 
     cachefile.parent.mkdir(parents=True, exist_ok=True)
     np.save(cachefile, lhs)
@@ -70,15 +66,22 @@ def generate_maximin_lhs(npoints, ndim, seed):
 
     """
     logging.debug(
-        'generating maximin LHS: '
-        'npoints = %d, ndim = %d, seed = %d',
-        npoints, ndim, seed
+        "generating maximin LHS: npoints = %d, ndim = %d, seed = %d",
+        npoints,
+        ndim,
+        seed,
     )
-    return _generate_with_R('maximin', """
+    return _generate_with_R(
+        "maximin",
+        """
         library('lhs')
         set.seed({})
         write.table(maximinLHS({}, {}), col.names=FALSE, row.names=FALSE)
-        """.format(seed, npoints, ndim), npoints, ndim, seed)
+        """.format(seed, npoints, ndim),
+        npoints,
+        ndim,
+        seed,
+    )
 
 
 def generate_maxpro_lhs(npoints, ndim, seed):
@@ -89,23 +92,30 @@ def generate_maxpro_lhs(npoints, ndim, seed):
 
     """
     logging.debug(
-        'generating maximum projection LHS: '
-        'npoints = %d, ndim = %d, seed = %d',
-        npoints, ndim, seed
+        "generating maximum projection LHS: npoints = %d, ndim = %d, seed = %d",
+        npoints,
+        ndim,
+        seed,
     )
-    lhs = _generate_with_R('maxpro', """
+    lhs = _generate_with_R(
+        "maxpro",
+        """
         library(MaxPro)
         set.seed({})
         write.table(MaxProRunOrder(MaxProLHD({}, {})$Design)$Design, col.names=FALSE, row.names=FALSE)
-        """.format(seed, npoints, ndim), npoints, ndim, seed)
+        """.format(seed, npoints, ndim),
+        npoints,
+        ndim,
+        seed,
+    )
     # the first column of MaxProRunOrder is the run order
     return lhs[:, 1:]
 
 
 # available design methods for the Design class
 design_generators = {
-    'maxpro': generate_maxpro_lhs,
-    'maximin': generate_maximin_lhs,
+    "maxpro": generate_maxpro_lhs,
+    "maximin": generate_maximin_lhs,
 }
 
 
@@ -136,18 +146,23 @@ class Design:
     The class also implicitly converts to a numpy array.
 
     """
-    def __init__(self, parfile, npoints=500, validation=False, seed=None,
-                 method='maxpro'):
+
+    def __init__(
+        self, parfile, npoints=500, validation=False, seed=None, method="maxpro"
+    ):
         if method not in design_generators:
-            raise ValueError("Unknown design method '{}', use one of {}".format(
-                method, list(design_generators)))
+            raise ValueError(
+                "Unknown design method '{}', use one of {}".format(
+                    method, list(design_generators)
+                )
+            )
         self.pardict = parse_model_parameter_file(parfile)
-        self.type = 'validation' if validation else 'main'
+        self.type = "validation" if validation else "main"
 
         self.ndim = len(self.pardict.keys())
 
         # use padded numbers for design point names
-        fmt = 'parameter_{:0' + str(len(str(npoints - 1))) + 'd}'
+        fmt = "parameter_{:0" + str(len(str(npoints - 1))) + "d}"
         self.points = [fmt.format(i) for i in range(npoints)]
 
         # set default seeds
@@ -167,7 +182,7 @@ class Design:
         self.max = np.array(self.max)
 
         # generate the Latin-Hypercube samples
-        self.array = self.min + (self.max - self.min)*design_generators[method](
+        self.array = self.min + (self.max - self.min) * design_generators[method](
             npoints, self.ndim, seed
         )
 
@@ -185,10 +200,9 @@ class Design:
 
         for point, row in zip(self.points, self.array):
             filepath = outdir / point
-            with filepath.open('w') as f:
+            with filepath.open("w") as f:
                 idx = 0
                 for ikey in self.pardict.keys():
                     f.write("{} {}\n".format(ikey, row[idx]))
                     idx += 1
-                logging.debug('wrote %s', filepath)
-
+                logging.debug("wrote %s", filepath)

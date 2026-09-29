@@ -19,6 +19,7 @@ import logging
 import numpy as np
 
 import jax
+
 # must be set before any JAX arrays are created
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
@@ -32,6 +33,7 @@ from .emulator_base import EmulatorBase, check_npc
 # =============================================================================
 # Kernel functions
 # =============================================================================
+
 
 def rbf_kernel(x1, x2, ls, var):
     x1 = x1 / ls
@@ -51,6 +53,7 @@ def matern32_kernel(x1, x2, ls, var):
 # =============================================================================
 # PCASparseGPEmulator
 # =============================================================================
+
 
 class PCASparseGPEmulator:
     """
@@ -101,7 +104,7 @@ class PCASparseGPEmulator:
     predictive distribution (e.g. rare-event probabilities, tight design margins).
     """
 
-    def __init__(self, n_pc=0.999, M=200, key=None, init_strategy='maxmin'):
+    def __init__(self, n_pc=0.999, M=200, key=None, init_strategy="maxmin"):
         """
         Initialize the emulator.
 
@@ -126,7 +129,9 @@ class PCASparseGPEmulator:
         self.key = jax.random.PRNGKey(0) if key is None else key
         self.init_strategy = init_strategy
         self.training_history = None
-        self.trunc_cov_yn_ = None   # set in fit(); exact PCA truncation covariance in Yn space
+        self.trunc_cov_yn_ = (
+            None  # set in fit(); exact PCA truncation covariance in Yn space
+        )
         self.mean_obs_cov_pc_ = None  # set in fit(); mean obs-noise covariance (n_pc, n_pc) in standardized PC space
 
     # -------------------------
@@ -172,7 +177,7 @@ class PCASparseGPEmulator:
     def init_Z_maxmin(self, X):
         N, _ = X.shape
         idx = jax.random.randint(self.key, (), 0, N)
-        Z = X[idx:idx + 1]
+        Z = X[idx : idx + 1]
         min_dists = jnp.sum((X - Z[0]) ** 2, axis=-1)
         for _ in range(1, self.M):
             idx = jnp.argmax(min_dists)
@@ -182,15 +187,17 @@ class PCASparseGPEmulator:
         return Z
 
     def init_Z_kmeans(self, X):
-        kmeans = KMeans(self.M, n_init=10,
-                        random_state=self._numpy_seed()).fit(np.array(X))
+        kmeans = KMeans(self.M, n_init=10, random_state=self._numpy_seed()).fit(
+            np.array(X)
+        )
         Z = jnp.array(kmeans.cluster_centers_)
         Z += 0.01 * jax.random.normal(self.key, Z.shape)
         return Z
 
     def init_Z_kmeans_pp(self, X):
-        kmeans = KMeans(self.M, init='k-means++', n_init=1,
-                        random_state=self._numpy_seed()).fit(np.array(X))
+        kmeans = KMeans(
+            self.M, init="k-means++", n_init=1, random_state=self._numpy_seed()
+        ).fit(np.array(X))
         return jnp.array(kmeans.cluster_centers_)
 
     def init_Z_random(self, X):
@@ -200,8 +207,8 @@ class PCASparseGPEmulator:
 
     def init_Z_sobol(self, X):
         from scipy.stats import qmc
-        sampler = qmc.Sobol(d=X.shape[1], scramble=True,
-                            seed=self._numpy_seed())
+
+        sampler = qmc.Sobol(d=X.shape[1], scramble=True, seed=self._numpy_seed())
         sample = sampler.random(self.M)
         X_min = jnp.min(X, axis=0)
         X_max = jnp.max(X, axis=0)
@@ -210,14 +217,30 @@ class PCASparseGPEmulator:
     # -------------------------
     # Fit
     # -------------------------
-    def fit(self, X, Y, Y_err=None, steps=25000, batch_size=None,
-            kernel_lr=1e-3, variational_lr=1e-3, inducing_lr=3e-4,
-            _fixed_pca_state=None,
-            print_every=200, jitter_init=1e-5, jitter_max=1e-1,
-            verbose=True, early_stopping=False, patience=20,
-            es_rel_tol=1e-4, ema_alpha=0.95,
-            auto_lr_backoff=True, lr_backoff_factor=0.3,
-            max_lr_backoff_retries=3, nan_patience=10):
+    def fit(
+        self,
+        X,
+        Y,
+        Y_err=None,
+        steps=25000,
+        batch_size=None,
+        kernel_lr=1e-3,
+        variational_lr=1e-3,
+        inducing_lr=3e-4,
+        _fixed_pca_state=None,
+        print_every=200,
+        jitter_init=1e-5,
+        jitter_max=1e-1,
+        verbose=True,
+        early_stopping=False,
+        patience=20,
+        es_rel_tol=1e-4,
+        ema_alpha=0.95,
+        auto_lr_backoff=True,
+        lr_backoff_factor=0.3,
+        max_lr_backoff_retries=3,
+        nan_patience=10,
+    ):
         """
         Fit the emulator to training data.
 
@@ -322,16 +345,20 @@ class PCASparseGPEmulator:
 
             if verbose:
                 print(f"Input shape: {X.shape}, Output shape: {Y.shape}")
-                print(f"Output stats - mean: [{self.Ym.min():.3f}, {self.Ym.max():.3f}], "
-                      f"std: [{self.Ys.min():.3f}, {self.Ys.max():.3f}]")
+                print(
+                    f"Output stats - mean: [{self.Ym.min():.3f}, {self.Ym.max():.3f}], "
+                    f"std: [{self.Ys.min():.3f}, {self.Ys.max():.3f}]"
+                )
 
-            self.pca = PCA(n_components=getattr(self, 'n_pc_requested', self.n_pc))
+            self.pca = PCA(n_components=getattr(self, "n_pc_requested", self.n_pc))
             Yp = self.pca.fit_transform(np.array(Yn))
             self.n_pc = self.pca.n_components_
             explained_var = np.sum(self.pca.explained_variance_ratio_)
 
             if verbose:
-                print(f"PCA: {self.n_pc} components, explained variance: {explained_var:.4f}")
+                print(
+                    f"PCA: {self.n_pc} components, explained variance: {explained_var:.4f}"
+                )
 
             self.pc_mean = jnp.mean(Yp, axis=0)
             self.pc_std = jnp.std(Yp, axis=0) + 1e-8
@@ -351,22 +378,24 @@ class PCASparseGPEmulator:
                 if verbose:
                     ppca_approx = float(self.pca.noise_variance_) * (P_out - self.n_pc)
                     exact_trace = float(np.sum(vals))
-                    print(f"Truncation covariance: exact trace={exact_trace:.4f} "
-                          f"(PPCA approx trace={ppca_approx:.4f})")
+                    print(
+                        f"Truncation covariance: exact trace={exact_trace:.4f} "
+                        f"(PPCA approx trace={ppca_approx:.4f})"
+                    )
             else:
                 self.trunc_cov_yn_ = jnp.zeros((P_out, P_out))
                 if verbose:
                     print("Truncation covariance: zero (all PCA components retained)")
         else:
-            self.Xm = _fixed_pca_state['Xm']
-            self.Xs = _fixed_pca_state['Xs']
-            self.Ym = _fixed_pca_state['Ym']
-            self.Ys = _fixed_pca_state['Ys']
-            self.pca = _fixed_pca_state['pca']
-            self.n_pc = _fixed_pca_state['n_pc']
-            self.pc_mean = _fixed_pca_state['pc_mean']
-            self.pc_std = _fixed_pca_state['pc_std']
-            self.trunc_cov_yn_ = _fixed_pca_state['trunc_cov_yn_']
+            self.Xm = _fixed_pca_state["Xm"]
+            self.Xs = _fixed_pca_state["Xs"]
+            self.Ym = _fixed_pca_state["Ym"]
+            self.Ys = _fixed_pca_state["Ys"]
+            self.pca = _fixed_pca_state["pca"]
+            self.n_pc = _fixed_pca_state["n_pc"]
+            self.pc_mean = _fixed_pca_state["pc_mean"]
+            self.pc_std = _fixed_pca_state["pc_std"]
+            self.trunc_cov_yn_ = _fixed_pca_state["trunc_cov_yn_"]
 
             Xn = (X - self.Xm) / self.Xs
             Yn = (Y - self.Ym) / self.Ys
@@ -391,43 +420,57 @@ class PCASparseGPEmulator:
                 if _yerr.shape != np.array(Y).shape:
                     raise ValueError(
                         f"Y_err shape {_yerr.shape} must match Y shape "
-                        f"{np.array(Y).shape} for the (N, P) diagonal-error format.")
+                        f"{np.array(Y).shape} for the (N, P) diagonal-error format."
+                    )
                 _yerr_max = np.sqrt(max_obs_var) * _Ys_np
                 n_capped = int(np.sum(_yerr > _yerr_max[None, :]))
                 if n_capped > 0:
                     logging.warning(
                         f"{n_capped} entries of Y_err are larger than 1e5 times the "
-                        f"standard deviation of the training data and are capped.")
+                        f"standard deviation of the training data and are capped."
+                    )
                     _yerr = np.minimum(_yerr, _yerr_max[None, :])
-                obs_var_full = jnp.array(np.minimum(
-                    (_yerr ** 2) @ (_W_scaled ** 2).T, max_obs_var))
-                _mean_C_Y = np.diag(np.mean(_yerr ** 2, axis=0))
+                obs_var_full = jnp.array(
+                    np.minimum((_yerr**2) @ (_W_scaled**2).T, max_obs_var)
+                )
+                _mean_C_Y = np.diag(np.mean(_yerr**2, axis=0))
                 _mean_obs_cov_pc = _W_scaled @ _mean_C_Y @ _W_scaled.T
                 if verbose:
-                    print(f"Y_err (N,P): mean obs std = "
-                          f"{float(np.sqrt(np.mean(_yerr**2))):.4g} (original Y units)")
+                    print(
+                        f"Y_err (N,P): mean obs std = "
+                        f"{float(np.sqrt(np.mean(_yerr**2))):.4g} (original Y units)"
+                    )
             elif _yerr.ndim == 3:
                 _P = np.array(Y).shape[1]
                 if _yerr.shape != (N_full, _P, _P):
                     raise ValueError(
                         f"Y_err shape {_yerr.shape} expected ({N_full}, {_P}, {_P}) "
-                        f"for the (N, P, P) full-covariance format.")
+                        f"for the (N, P, P) full-covariance format."
+                    )
                 _diags = np.array([np.diag(c) for c in _yerr])
                 if np.any(_diags < 0):
                     raise ValueError(
                         "Y_err contains covariance matrices with negative diagonal "
-                        "entries. Check your input.")
-                obs_var_full = jnp.array(np.clip(
-                    np.einsum('ij,njk,ik->ni', _W_scaled, _yerr, _W_scaled),
-                    0.0, max_obs_var))
+                        "entries. Check your input."
+                    )
+                obs_var_full = jnp.array(
+                    np.clip(
+                        np.einsum("ij,njk,ik->ni", _W_scaled, _yerr, _W_scaled),
+                        0.0,
+                        max_obs_var,
+                    )
+                )
                 _mean_C_Y = np.mean(_yerr, axis=0)
                 _mean_obs_cov_pc = _W_scaled @ _mean_C_Y @ _W_scaled.T
                 _mean_obs_cov_pc = 0.5 * (_mean_obs_cov_pc + _mean_obs_cov_pc.T)
                 _evals, _evecs = np.linalg.eigh(_mean_obs_cov_pc)
-                _mean_obs_cov_pc = _evecs @ (np.maximum(_evals, 0.0)[:, None] * _evecs.T)
+                _mean_obs_cov_pc = _evecs @ (
+                    np.maximum(_evals, 0.0)[:, None] * _evecs.T
+                )
             else:
                 raise ValueError(
-                    f"Y_err must be shape (N, P) or (N, P, P); got {_yerr.shape}.")
+                    f"Y_err must be shape (N, P) or (N, P, P); got {_yerr.shape}."
+                )
             self.mean_obs_cov_pc_ = jnp.array(_mean_obs_cov_pc)
         else:
             obs_var_full = jnp.zeros((N_full, self.n_pc))
@@ -437,25 +480,28 @@ class PCASparseGPEmulator:
 
         if verbose:
             if B < N_full:
-                print(f"Mini-batching: batch_size={B} "
-                      f"(N={N_full}, scale={N_full/B:.1f}x per step)")
+                print(
+                    f"Mini-batching: batch_size={B} "
+                    f"(N={N_full}, scale={N_full / B:.1f}x per step)"
+                )
             else:
                 print(f"Full-batch training (N={N_full})")
 
         if self.M > N_full:
             raise ValueError(
                 f"M={self.M} inducing points cannot exceed N={N_full} training "
-                f"points. Reduce M or provide more training data.")
+                f"points. Reduce M or provide more training data."
+            )
 
-        if self.init_strategy == 'maxmin':
+        if self.init_strategy == "maxmin":
             Z = self.init_Z_maxmin(Xn)
-        elif self.init_strategy == 'kmeans':
+        elif self.init_strategy == "kmeans":
             Z = self.init_Z_kmeans(Xn)
-        elif self.init_strategy == 'kmeans_pp':
+        elif self.init_strategy == "kmeans_pp":
             Z = self.init_Z_kmeans_pp(Xn)
-        elif self.init_strategy == 'random':
+        elif self.init_strategy == "random":
             Z = self.init_Z_random(Xn)
-        elif self.init_strategy == 'sobol':
+        elif self.init_strategy == "sobol":
             Z = self.init_Z_sobol(Xn)
         else:
             raise ValueError(f"Unknown init_strategy: {self.init_strategy}")
@@ -463,8 +509,8 @@ class PCASparseGPEmulator:
         self.params = {
             "Z": Z,
             "log_lengthscale": jnp.full(
-                (X.shape[1],),
-                float(np.log(np.expm1(float(np.sqrt(X.shape[1])))))),
+                (X.shape[1],), float(np.log(np.expm1(float(np.sqrt(X.shape[1])))))
+            ),
             "log_var_rbf": jnp.array(0.0),
             "log_var_mat": jnp.array(-0.5),
             "log_noise": jnp.full((self.n_pc,), -2.0),
@@ -474,11 +520,12 @@ class PCASparseGPEmulator:
 
         jitter = jitter_init
         if verbose:
-            print(f"\nChecking Kzz stability "
-                  f"(range: {jitter_init:.1e} - {jitter_max:.1e})")
+            print(
+                f"\nChecking Kzz stability "
+                f"(range: {jitter_init:.1e} - {jitter_max:.1e})"
+            )
         while True:
-            Kzz_test = (self.kernel(Z, Z, self.params)
-                        + jitter * jnp.eye(self.M))
+            Kzz_test = self.kernel(Z, Z, self.params) + jitter * jnp.eye(self.M)
             Lz_test = jnp.linalg.cholesky(Kzz_test)
             if not bool(jnp.any(~jnp.isfinite(Lz_test))):
                 break
@@ -486,7 +533,8 @@ class PCASparseGPEmulator:
             if jitter > jitter_max:
                 raise RuntimeError(
                     f"Kzz Cholesky failed at jitter={jitter_max:.1e}. "
-                    f"Try reducing M or using a different init_strategy.")
+                    f"Try reducing M or using a different init_strategy."
+                )
         if verbose:
             if jitter > jitter_init:
                 print(f"  Increased jitter to {jitter:.1e} for stable Cholesky")
@@ -506,7 +554,7 @@ class PCASparseGPEmulator:
             m = p["m"]
             L = self.build_L(p["L_unconstrained"])
             base_var = self.kernel_diag(Xb, p)
-            qdiag = jnp.sum(A_half ** 2, axis=0)
+            qdiag = jnp.sum(A_half**2, axis=0)
 
             def pc_term(i):
                 y_i = Yb[:, i]
@@ -515,22 +563,25 @@ class PCASparseGPEmulator:
                 noise_i = noise[i]
                 f_mean_i = A_half.T @ m_i
                 B_i = A_half.T @ L_i
-                f_var_i = jnp.clip(base_var - qdiag + jnp.sum(B_i ** 2, axis=1),
-                                   1e-7, None)
+                f_var_i = jnp.clip(
+                    base_var - qdiag + jnp.sum(B_i**2, axis=1), 1e-7, None
+                )
                 obs_var_i = noise_i + obs_noise_b[:, i]
                 ll_i = -0.5 * jnp.sum(((y_i - f_mean_i) ** 2 + f_var_i) / obs_var_i)
                 ll_i -= 0.5 * jnp.sum(jnp.log(obs_var_i))
                 L_i_diag = jnp.clip(jnp.diag(L_i), 1e-8, None)
                 kl_i = 0.5 * (
-                    jnp.sum(m_i ** 2)
-                    + jnp.sum(L_i ** 2)
+                    jnp.sum(m_i**2)
+                    + jnp.sum(L_i**2)
                     - self.M
                     - 2.0 * jnp.sum(jnp.log(L_i_diag))
                 )
                 return ll_i, kl_i
 
             ll_per_pc, kl_per_pc = jax.vmap(pc_term)(jnp.arange(self.n_pc))
-            total_elbo = (N_full / Xb.shape[0]) * jnp.sum(ll_per_pc) - jnp.sum(kl_per_pc)
+            total_elbo = (N_full / Xb.shape[0]) * jnp.sum(ll_per_pc) - jnp.sum(
+                kl_per_pc
+            )
             return total_elbo
 
         param_labels = {
@@ -544,10 +595,10 @@ class PCASparseGPEmulator:
         }
         if not (0.0 < lr_backoff_factor < 1.0):
             raise ValueError(
-                f"lr_backoff_factor must be in (0, 1), got {lr_backoff_factor}.")
+                f"lr_backoff_factor must be in (0, 1), got {lr_backoff_factor}."
+            )
         if max_lr_backoff_retries < 0:
-            raise ValueError(
-                "max_lr_backoff_retries must be >= 0.")
+            raise ValueError("max_lr_backoff_retries must be >= 0.")
         if nan_patience < 1:
             raise ValueError("nan_patience must be >= 1.")
 
@@ -559,9 +610,9 @@ class PCASparseGPEmulator:
         def make_optimizer_and_step(k_lr, v_lr, i_lr):
             tx_local = optax.multi_transform(
                 {
-                    "kernel":      optax.adam(k_lr),
+                    "kernel": optax.adam(k_lr),
                     "variational": optax.adam(v_lr),
-                    "inducing":    optax.adam(i_lr),
+                    "inducing": optax.adam(i_lr),
                 },
                 param_labels,
             )
@@ -578,7 +629,8 @@ class PCASparseGPEmulator:
             return tx_local, step_local
 
         tx, step = make_optimizer_and_step(
-            current_kernel_lr, current_variational_lr, current_inducing_lr)
+            current_kernel_lr, current_variational_lr, current_inducing_lr
+        )
         opt_state = tx.init(self.params)
 
         p = self.params
@@ -598,13 +650,17 @@ class PCASparseGPEmulator:
         if verbose:
             print(f"\nTraining progress:")
             if early_stopping:
-                print(f"Early stopping: patience={patience}, "
-                      f"es_rel_tol={es_rel_tol:.1e}, "
-                      f"ema_alpha={ema_alpha} (window~{es_check_interval} steps)")
+                print(
+                    f"Early stopping: patience={patience}, "
+                    f"es_rel_tol={es_rel_tol:.1e}, "
+                    f"ema_alpha={ema_alpha} (window~{es_check_interval} steps)"
+                )
                 if auto_lr_backoff:
-                    print(f"NaN recovery: nan_patience={nan_patience}, "
+                    print(
+                        f"NaN recovery: nan_patience={nan_patience}, "
                         f"max_lr_backoff_retries={max_lr_backoff_retries}, "
-                        f"lr_backoff_factor={lr_backoff_factor:.3f}")
+                        f"lr_backoff_factor={lr_backoff_factor:.3f}"
+                    )
 
         for i in range(steps):
             key, subkey = jax.random.split(key)
@@ -618,13 +674,16 @@ class PCASparseGPEmulator:
             # parameters, so elbo_val belongs to p_eval, not to the new p
             p_eval = p
             p, opt_state, elbo_val = step(
-                p_eval, opt_state, Xb, Yb, obs_noise_b, jnp.array(jitter))
+                p_eval, opt_state, Xb, Yb, obs_noise_b, jnp.array(jitter)
+            )
 
             if not jnp.isfinite(elbo_val):
                 new_jitter = min(jitter * 10.0, jitter_max)
                 if verbose:
-                    print(f"  Step {i:5d}: NaN loss -- "
-                          f"jitter {jitter:.1e} -> {new_jitter:.1e}")
+                    print(
+                        f"  Step {i:5d}: NaN loss -- "
+                        f"jitter {jitter:.1e} -> {new_jitter:.1e}"
+                    )
                 jitter = new_jitter
                 self.jitter = jitter
                 # restart from the best parameters with a finite ELBO, or
@@ -645,7 +704,8 @@ class PCASparseGPEmulator:
                                 f"{max_lr_backoff_retries}: lowering learning rates to "
                                 f"kernel={current_kernel_lr:.3e}, "
                                 f"variational={current_variational_lr:.3e}, "
-                                f"inducing={current_inducing_lr:.3e}")
+                                f"inducing={current_inducing_lr:.3e}"
+                            )
                         tx, step = make_optimizer_and_step(
                             current_kernel_lr,
                             current_variational_lr,
@@ -660,7 +720,8 @@ class PCASparseGPEmulator:
                         f"Current LRs: kernel={current_kernel_lr:.3e}, "
                         f"variational={current_variational_lr:.3e}, "
                         f"inducing={current_inducing_lr:.3e}. "
-                        f"Try smaller initial learning rates or larger jitter_init/jitter_max.")
+                        f"Try smaller initial learning rates or larger jitter_init/jitter_max."
+                    )
                 continue
 
             elbo_val_f = float(elbo_val)
@@ -695,19 +756,24 @@ class PCASparseGPEmulator:
                 if es_patience_count >= patience:
                     converged = True
                     if verbose:
-                        print(f"  Step {i:5d}/{steps}: ELBO = {elbo_val_f:10.3f} "
-                              f"(EMA={ema:.3f})")
+                        print(
+                            f"  Step {i:5d}/{steps}: ELBO = {elbo_val_f:10.3f} "
+                            f"(EMA={ema:.3f})"
+                        )
                         print(
                             f"\nEarly stopping: EMA gain over {es_check_interval} steps "
-                            f"stayed below {es_rel_tol:.1e} for {patience} steps at step {i+1}")
+                            f"stayed below {es_rel_tol:.1e} for {patience} steps at step {i + 1}"
+                        )
                     break
 
             if verbose and (i % print_every == 0 or i == steps - 1):
                 ema_str = f", EMA={ema:.3f}" if ema is not None else ""
-                es_str = (f", pat={es_patience_count}/{patience}"
-                          if early_stopping else "")
-                print(f"  Step {i:5d}/{steps}: "
-                      f"ELBO = {elbo_val_f:10.3f}{ema_str}{es_str}")
+                es_str = (
+                    f", pat={es_patience_count}/{patience}" if early_stopping else ""
+                )
+                print(
+                    f"  Step {i:5d}/{steps}: ELBO = {elbo_val_f:10.3f}{ema_str}{es_str}"
+                )
 
         if best_params is not None:
             self.params = {k: jnp.array(v) for k, v in best_params.items()}
@@ -716,12 +782,12 @@ class PCASparseGPEmulator:
 
         actual_steps = len(elbos)
         self.training_history = {
-            "elbos":     elbos,
-            "steps":     list(range(actual_steps)),
+            "elbos": elbos,
+            "steps": list(range(actual_steps)),
             "converged": converged,
-            "n_steps":   actual_steps,
+            "n_steps": actual_steps,
             "best_step": best_step,
-            "jitter":    jitter,
+            "jitter": jitter,
             "lr_backoff_retries": lr_backoff_count,
             "kernel_lr_final": current_kernel_lr,
             "variational_lr_final": current_variational_lr,
@@ -730,10 +796,11 @@ class PCASparseGPEmulator:
 
         if verbose:
             elbo_str = "Best ELBO (EMA)" if B < N_full else "Best ELBO"
-            print(f"\nTraining complete. {elbo_str}: {best_elbo:.3f} "
-                  f"at step {best_step} (converged: {converged})")
-            print(f"Total steps: {actual_steps}/{steps}, "
-                  f"jitter used: {jitter:.1e}")
+            print(
+                f"\nTraining complete. {elbo_str}: {best_elbo:.3f} "
+                f"at step {best_step} (converged: {converged})"
+            )
+            print(f"Total steps: {actual_steps}/{steps}, jitter used: {jitter:.1e}")
             print("=" * 60)
 
         return self.training_history
@@ -741,9 +808,15 @@ class PCASparseGPEmulator:
     # -------------------------
     # Predict
     # -------------------------
-    def predict(self, X_star, include_noise=False, include_truncation=True,
-                include_pca_sampling=False, include_obs_noise=False,
-                return_var_decomposition=False):
+    def predict(
+        self,
+        X_star,
+        include_noise=False,
+        include_truncation=True,
+        include_pca_sampling=False,
+        include_obs_noise=False,
+        return_var_decomposition=False,
+    ):
         """
         Make predictions on new data with full uncertainty quantification.
 
@@ -799,9 +872,10 @@ class PCASparseGPEmulator:
         full_cov : array (N_test, P, P)
         var_decomp : dict, only if return_var_decomposition=True
         """
-        if not hasattr(self, 'params'):
+        if not hasattr(self, "params"):
             raise RuntimeError(
-                "Call fit() before predict(). The emulator has not been trained yet.")
+                "Call fit() before predict(). The emulator has not been trained yet."
+            )
         Xn = (X_star - self.Xm) / self.Xs
         p = self.params
         Z = p["Z"]
@@ -812,7 +886,7 @@ class PCASparseGPEmulator:
 
         # Same whitened SVGP formulation as in elbo_fn()
         A_half = jax.scipy.linalg.solve_triangular(Lz, Ksz.T, lower=True)  # (M, N_test)
-        qdiag = jnp.sum(A_half ** 2, axis=0)  # (N_test,) = diag(Ksz Kzz^{-1} Kzs)
+        qdiag = jnp.sum(A_half**2, axis=0)  # (N_test,) = diag(Ksz Kzz^{-1} Kzs)
         # Returns per-test-point output-output covariance (N_test, P, P) — sufficient
         # for single-proposal MCMC / Bayesian calibration.  Does NOT compute the joint
         # covariance Cov(f(x_a), f(x_b)) for a≠b (needed for active learning / BALD).
@@ -826,12 +900,12 @@ class PCASparseGPEmulator:
             L_i = L[i]
             mean_i = A_half.T @ m_i
             B_i = A_half.T @ L_i
-            var_i = base_var - qdiag + jnp.sum(B_i ** 2, axis=1)
+            var_i = base_var - qdiag + jnp.sum(B_i**2, axis=1)
             return mean_i, jnp.clip(var_i, 1e-7, None)
 
         means_pc, vars_pc = jax.vmap(pc_predict)(jnp.arange(self.n_pc))
-        means_pc = means_pc.T   # (N_test, n_pc), standardized PC space
-        vars_gp  = vars_pc.T    # (N_test, n_pc), GP posterior variance only
+        means_pc = means_pc.T  # (N_test, n_pc), standardized PC space
+        vars_gp = vars_pc.T  # (N_test, n_pc), GP posterior variance only
         # Accumulate variance in standardized PC space
         vars_total = vars_gp
 
@@ -849,15 +923,17 @@ class PCASparseGPEmulator:
             vars_total = vars_total + (1.0 / self.N_train)
 
         # Undo PC normalization -> original PC space
-        means_pc        = means_pc * self.pc_std + self.pc_mean
-        vars_total_orig = vars_total * (self.pc_std ** 2)   # (N_test, n_pc)
-        vars_gp_orig    = vars_gp    * (self.pc_std ** 2)   # for decomposition
+        means_pc = means_pc * self.pc_std + self.pc_mean
+        vars_total_orig = vars_total * (self.pc_std**2)  # (N_test, n_pc)
+        vars_gp_orig = vars_gp * (self.pc_std**2)  # for decomposition
 
         # Back-project from original PC space -> normalized output (Yn) space
-        W      = jnp.array(self.pca.components_)  # (n_pc, P)
-        Wt     = W.T                               # (P, n_pc)
+        W = jnp.array(self.pca.components_)  # (n_pc, P)
+        Wt = W.T  # (P, n_pc)
         P_size = W.shape[1]
-        full_cov = jnp.einsum("pi,ni,qi->npq", Wt, vars_total_orig, Wt)  # (N_test, P, P)
+        full_cov = jnp.einsum(
+            "pi,ni,qi->npq", Wt, vars_total_orig, Wt
+        )  # (N_test, P, P)
 
         # 3. PCA truncation uncertainty — exact Sigma_trunc computed in fit().
         #
@@ -885,23 +961,26 @@ class PCASparseGPEmulator:
         # 4. Observation noise from Y_err — back-projected via the stored
         # (n_pc, n_pc) mean covariance. Handles both (N,P) and (N,P,P) inputs.
         if include_obs_noise and self.mean_obs_cov_pc_ is not None:
-            obs_cov_pc_orig = self.mean_obs_cov_pc_ * jnp.outer(self.pc_std, self.pc_std)  # (n_pc, n_pc)
-            obs_cov_yn      = Wt @ obs_cov_pc_orig @ W                                     # (P, P)
-            full_cov        = full_cov + (obs_cov_yn * Ys_outer)[None, :, :]
+            obs_cov_pc_orig = self.mean_obs_cov_pc_ * jnp.outer(
+                self.pc_std, self.pc_std
+            )  # (n_pc, n_pc)
+            obs_cov_yn = Wt @ obs_cov_pc_orig @ W  # (P, P)
+            full_cov = full_cov + (obs_cov_yn * Ys_outer)[None, :, :]
 
         Y_pred = self.pca.inverse_transform(np.array(means_pc))
         Y_pred = Y_pred * self.Ys + self.Ym
 
         if return_var_decomposition:
             # GP posterior covariance in Y space
-            gp_cov = (jnp.einsum("pi,ni,qi->npq", Wt, vars_gp_orig, Wt)
-                      * Ys_outer[None, :, :])
+            gp_cov = (
+                jnp.einsum("pi,ni,qi->npq", Wt, vars_gp_orig, Wt) * Ys_outer[None, :, :]
+            )
 
             # Nugget covariance in Y space (gated by include_noise)
             if include_noise:
-                nugget_orig   = noise * (self.pc_std ** 2)                       # (n_pc,)
+                nugget_orig = noise * (self.pc_std**2)  # (n_pc,)
                 nugget_cov_yn = jnp.einsum("pi,i,qi->pq", Wt, nugget_orig, Wt)  # (P, P)
-                nugget_cov    = (nugget_cov_yn * Ys_outer)[None, :, :]
+                nugget_cov = (nugget_cov_yn * Ys_outer)[None, :, :]
             else:
                 nugget_cov = jnp.zeros((1, P_size, P_size))
 
@@ -909,9 +988,11 @@ class PCASparseGPEmulator:
             # Uses the stored full (n_pc, n_pc) covariance — correct for both
             # diagonal (N,P) and full-covariance (N,P,P) Y_err inputs.
             if include_obs_noise and self.mean_obs_cov_pc_ is not None:
-                obs_cov_pc_orig = self.mean_obs_cov_pc_ * jnp.outer(self.pc_std, self.pc_std)
-                obs_cov_yn      = Wt @ obs_cov_pc_orig @ W
-                obs_noise_cov   = (obs_cov_yn * Ys_outer)[None, :, :]
+                obs_cov_pc_orig = self.mean_obs_cov_pc_ * jnp.outer(
+                    self.pc_std, self.pc_std
+                )
+                obs_cov_yn = Wt @ obs_cov_pc_orig @ W
+                obs_noise_cov = (obs_cov_yn * Ys_outer)[None, :, :]
             else:
                 obs_noise_cov = jnp.zeros((1, P_size, P_size))
 
@@ -923,19 +1004,23 @@ class PCASparseGPEmulator:
 
             # PCA sampling covariance in Y space
             if include_pca_sampling:
-                pca_samp_pc     = (self.pc_std ** 2) / self.N_train        # (n_pc,)
+                pca_samp_pc = (self.pc_std**2) / self.N_train  # (n_pc,)
                 pca_samp_cov_yn = jnp.einsum("pi,i,qi->pq", Wt, pca_samp_pc, Wt)
-                pca_samp_cov    = (pca_samp_cov_yn * Ys_outer)[None, :, :]
+                pca_samp_cov = (pca_samp_cov_yn * Ys_outer)[None, :, :]
             else:
                 pca_samp_cov = jnp.zeros((1, P_size, P_size))
 
-            return Y_pred, full_cov, {
-                "gp_posterior":  gp_cov,
-                "nugget":        nugget_cov,
-                "obs_noise":     obs_noise_cov,
-                "pca_truncation": trunc_cov_y,
-                "pca_sampling":  pca_samp_cov,
-            }
+            return (
+                Y_pred,
+                full_cov,
+                {
+                    "gp_posterior": gp_cov,
+                    "nugget": nugget_cov,
+                    "obs_noise": obs_noise_cov,
+                    "pca_truncation": trunc_cov_y,
+                    "pca_sampling": pca_samp_cov,
+                },
+            )
 
         return Y_pred, full_cov
 
@@ -943,6 +1028,7 @@ class PCASparseGPEmulator:
 # =============================================================================
 # PCASparseGPEnsemble
 # =============================================================================
+
 
 class PCASparseGPEnsemble:
     """
@@ -997,9 +1083,15 @@ class PCASparseGPEnsemble:
     treating the ensemble spread as an upper bound and validating on held-out data.
     """
 
-    def __init__(self, n_ensemble=5, n_pc=0.999, M=200,
-                 base_key=None, init_strategy='maxmin',
-                 bootstrap=False):
+    def __init__(
+        self,
+        n_ensemble=5,
+        n_pc=0.999,
+        M=200,
+        base_key=None,
+        init_strategy="maxmin",
+        bootstrap=False,
+    ):
         """
         Parameters
         ----------
@@ -1032,8 +1124,7 @@ class PCASparseGPEnsemble:
         self.members = []
         self.training_histories = []
 
-    def fit(self, X, Y, Y_err=None, verbose=True, verbose_members=False,
-            **fit_kwargs):
+    def fit(self, X, Y, Y_err=None, verbose=True, verbose_members=False, **fit_kwargs):
         """
         Train all ensemble members.
 
@@ -1071,38 +1162,50 @@ class PCASparseGPEnsemble:
         # predictions lie in the same output space and the sample covariance
         # of their means is a statistically clean epistemic uncertainty estimate.
         # ------------------------------------------------------------------
-        _Xm  = X.mean(0); _Xs = X.std(0) + 1e-8
-        _Ym  = Y.mean(0); _Ys = Y.std(0) + 1e-8
-        _Yn  = (Y - _Ym) / _Ys
+        _Xm = X.mean(0)
+        _Xs = X.std(0) + 1e-8
+        _Ym = Y.mean(0)
+        _Ys = Y.std(0) + 1e-8
+        _Yn = (Y - _Ym) / _Ys
         _pca = PCA(n_components=self.n_pc)
-        _Yp_raw  = _pca.fit_transform(np.array(_Yn))
-        _n_pc    = _pca.n_components_
+        _Yp_raw = _pca.fit_transform(np.array(_Yn))
+        _n_pc = _pca.n_components_
         _pc_mean = jnp.mean(_Yp_raw, axis=0)
-        _pc_std  = jnp.std(_Yp_raw,  axis=0) + 1e-8
-        _P_out   = np.array(_Yn).shape[1]
-        _W_ret   = _pca.components_
+        _pc_std = jnp.std(_Yp_raw, axis=0) + 1e-8
+        _P_out = np.array(_Yn).shape[1]
+        _W_ret = _pca.components_
         _lam_ret = _pca.explained_variance_
         if _n_pc < _P_out:
-            _Sigma_data  = np.cov(np.array(_Yn).T)
-            _Sigma_ret   = (_W_ret * _lam_ret[:, None]).T @ _W_ret
+            _Sigma_data = np.cov(np.array(_Yn).T)
+            _Sigma_ret = (_W_ret * _lam_ret[:, None]).T @ _W_ret
             _Sigma_trunc = _Sigma_data - _Sigma_ret
             _vals, _vecs = np.linalg.eigh(_Sigma_trunc)
-            _vals        = np.maximum(_vals, 0.0)
-            _trunc_cov   = jnp.array(_vecs @ (_vals[:, None] * _vecs.T))
+            _vals = np.maximum(_vals, 0.0)
+            _trunc_cov = jnp.array(_vecs @ (_vals[:, None] * _vecs.T))
         else:
             _trunc_cov = jnp.zeros((_P_out, _P_out))
         self.pca_state_ = {
-            'Xm': _Xm, 'Xs': _Xs, 'Ym': _Ym, 'Ys': _Ys,
-            'pca': _pca, 'n_pc': _n_pc,
-            'pc_mean': _pc_mean, 'pc_std': _pc_std,
-            'trunc_cov_yn_': _trunc_cov,
+            "Xm": _Xm,
+            "Xs": _Xs,
+            "Ym": _Ym,
+            "Ys": _Ys,
+            "pca": _pca,
+            "n_pc": _n_pc,
+            "pc_mean": _pc_mean,
+            "pc_std": _pc_std,
+            "trunc_cov_yn_": _trunc_cov,
         }
         if verbose:
             ev = float(np.sum(_pca.explained_variance_ratio_))
-            print(f"Shared PCA: {_n_pc} components, explained variance: {ev:.4f} "
-                  f"(fixed for all {self.n_ensemble} members)")
-        member_kwargs = {**fit_kwargs, 'verbose': verbose_members,
-                         '_fixed_pca_state': self.pca_state_}
+            print(
+                f"Shared PCA: {_n_pc} components, explained variance: {ev:.4f} "
+                f"(fixed for all {self.n_ensemble} members)"
+            )
+        member_kwargs = {
+            **fit_kwargs,
+            "verbose": verbose_members,
+            "_fixed_pca_state": self.pca_state_,
+        }
 
         for k, key in enumerate(keys):
             # Bootstrap resample: draw N indices with replacement using the
@@ -1111,41 +1214,55 @@ class PCASparseGPEnsemble:
             if self.bootstrap:
                 N = X.shape[0]
                 boot_idx = np.array(jax.random.choice(key, N, (N,), replace=True))
-                X_fit     = X[boot_idx]
-                Y_fit     = Y[boot_idx]
+                X_fit = X[boot_idx]
+                Y_fit = Y[boot_idx]
                 Y_err_fit = Y_err[boot_idx] if Y_err is not None else None
                 if verbose:
                     n_unique = len(np.unique(boot_idx))
-                    print(f"[Ensemble {k+1}/{self.n_ensemble}] Bootstrap: "
-                          f"{n_unique}/{N} unique points ({100*n_unique/N:.0f}%)",
-                          flush=True)
+                    print(
+                        f"[Ensemble {k + 1}/{self.n_ensemble}] Bootstrap: "
+                        f"{n_unique}/{N} unique points ({100 * n_unique / N:.0f}%)",
+                        flush=True,
+                    )
             else:
                 X_fit, Y_fit, Y_err_fit = X, Y, Y_err
                 if verbose:
-                    print(f"[Ensemble {k+1}/{self.n_ensemble}] Training ...", flush=True)
+                    print(
+                        f"[Ensemble {k + 1}/{self.n_ensemble}] Training ...", flush=True
+                    )
             emu = PCASparseGPEmulator(
-                n_pc=_n_pc, M=self.M,
-                key=key, init_strategy=self.init_strategy,
+                n_pc=_n_pc,
+                M=self.M,
+                key=key,
+                init_strategy=self.init_strategy,
             )
             emu.fit(X_fit, Y_fit, Y_err=Y_err_fit, **member_kwargs)
             self.members.append(emu)
             self.training_histories.append(emu.training_history)
             if verbose:
                 h = emu.training_history
-                best = h.get('best_step')
-                best_elbo = h['elbos'][best] if best is not None else float('nan')
-                print(f"  ELBO of the selected parameters={best_elbo:.2f}, "
-                      f"steps={h['n_steps']}, "
-                      f"converged={h['converged']}, "
-                      f"jitter={h['jitter']:.1e}")
+                best = h.get("best_step")
+                best_elbo = h["elbos"][best] if best is not None else float("nan")
+                print(
+                    f"  ELBO of the selected parameters={best_elbo:.2f}, "
+                    f"steps={h['n_steps']}, "
+                    f"converged={h['converged']}, "
+                    f"jitter={h['jitter']:.1e}"
+                )
 
         if verbose:
             print(f"Ensemble of {self.n_ensemble} members trained.")
         return self
 
-    def predict(self, X_star, include_noise=False, include_truncation=True,
-                include_pca_sampling=False, include_obs_noise=False,
-                return_var_decomposition=False):
+    def predict(
+        self,
+        X_star,
+        include_noise=False,
+        include_truncation=True,
+        include_pca_sampling=False,
+        include_obs_noise=False,
+        return_var_decomposition=False,
+    ):
         """
         Combined ensemble prediction via the law of total variance.
 
@@ -1186,28 +1303,32 @@ class PCASparseGPEnsemble:
             all_means.append(np.array(mu))
             all_covs.append(np.array(cov))
 
-        K          = len(self.members)
-        means_arr  = np.stack(all_means, axis=0)   # (K, N, P)
-        covs_arr   = np.stack(all_covs,  axis=0)   # (K, N, P, P)
+        K = len(self.members)
+        means_arr = np.stack(all_means, axis=0)  # (K, N, P)
+        covs_arr = np.stack(all_covs, axis=0)  # (K, N, P, P)
         # Ensemble mean
-        Y_pred     = means_arr.mean(axis=0)          # (N, P)
+        Y_pred = means_arr.mean(axis=0)  # (N, P)
         # Aleatoric: average of per-member covariances
-        aleatoric  = covs_arr.mean(axis=0)           # (N, P, P)
+        aleatoric = covs_arr.mean(axis=0)  # (N, P, P)
 
         # Epistemic: sample covariance of per-member means (Bessel-corrected)
-        residuals  = means_arr - Y_pred[None]        # (K, N, P)
+        residuals = means_arr - Y_pred[None]  # (K, N, P)
         if K > 1:
-            epistemic = np.einsum('knp,knq->npq', residuals, residuals) / (K - 1)
+            epistemic = np.einsum("knp,knq->npq", residuals, residuals) / (K - 1)
         else:
             epistemic = np.zeros_like(aleatoric)
 
-        full_cov   = aleatoric + epistemic            # (N, P, P)
+        full_cov = aleatoric + epistemic  # (N, P, P)
 
         if return_var_decomposition:
-            return Y_pred, full_cov, {
-                "aleatoric": aleatoric,
-                "epistemic": epistemic,
-            }
+            return (
+                Y_pred,
+                full_cov,
+                {
+                    "aleatoric": aleatoric,
+                    "epistemic": epistemic,
+                },
+            )
         return Y_pred, full_cov
 
     # -------------------------
@@ -1230,6 +1351,7 @@ class PCASparseGPEnsemble:
 # EmulatorSparseGP — high-level wrapper (same interface as EmulatorBAND)
 # =============================================================================
 
+
 class EmulatorSparseGP(EmulatorBase):
     """
     High-level wrapper around PCASparseGPEmulator / PCASparseGPEnsemble that
@@ -1247,11 +1369,20 @@ class EmulatorSparseGP(EmulatorBase):
     in the original scale of the observables (see __init__).
     """
 
-    def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
-                 npc=0.999, M=200, n_ensemble=1,
-                 init_strategy='maxmin', bootstrap=False,
-                 logTrafo=False, max_rel_uncertainty_data=None,
-                 exp_and_cov_diagonal=False, seed=None):
+    def __init__(
+        self,
+        training_set_path=".",
+        parameter_file="ABCD.txt",
+        npc=0.999,
+        M=200,
+        n_ensemble=1,
+        init_strategy="maxmin",
+        bootstrap=False,
+        logTrafo=False,
+        max_rel_uncertainty_data=None,
+        exp_and_cov_diagonal=False,
+        seed=None,
+    ):
         """
         Parameters
         ----------
@@ -1296,15 +1427,20 @@ class EmulatorSparseGP(EmulatorBase):
         self.n_ensemble_ = n_ensemble
         self.init_strategy_ = init_strategy
         self.bootstrap_ = bootstrap
-        super().__init__(training_set_path, parameter_file, logTrafo,
-                         max_rel_uncertainty_data, exp_and_cov_diagonal)
+        super().__init__(
+            training_set_path,
+            parameter_file,
+            logTrafo,
+            max_rel_uncertainty_data,
+            exp_and_cov_diagonal,
+        )
 
     # -------------------------
     # Training
     # -------------------------
     def _key(self):
         """JAX random key from the seed, or None for the default keys."""
-        seed = getattr(self, 'seed_', None)
+        seed = getattr(self, "seed_", None)
         return None if seed is None else jax.random.PRNGKey(seed)
 
     def trainEmulator(self, event_mask, **fit_kwargs):
@@ -1318,21 +1454,21 @@ class EmulatorSparseGP(EmulatorBase):
         **fit_kwargs
             Forwarded to PCASparseGPEmulator.fit() or PCASparseGPEnsemble.fit().
         """
-        logging.info('Performing sparse GP emulator training ...')
+        logging.info("Performing sparse GP emulator training ...")
         X = self.design_points[event_mask, :]
         Y = self.model_data[event_mask, :]
         Y_err = self.model_data_err[event_mask, :]
-        logging.info('Train sparse GP with {} training points ...'.format(
-            X.shape[0]))
+        logging.info("Train sparse GP with {} training points ...".format(X.shape[0]))
         # emulators saved with older versions store the argument as n_pc_
-        npc = getattr(self, 'npc_requested_', getattr(self, 'n_pc_', None))
+        npc = getattr(self, "npc_requested_", getattr(self, "n_pc_", None))
 
         if self.n_ensemble_ <= 1:
             # verbose_members only exists for the ensemble
-            fit_kwargs = {k: v for k, v in fit_kwargs.items()
-                          if k != 'verbose_members'}
+            fit_kwargs = {k: v for k, v in fit_kwargs.items() if k != "verbose_members"}
             self.emu_ = PCASparseGPEmulator(
-                n_pc=npc, M=self.M_, key=self._key(),
+                n_pc=npc,
+                M=self.M_,
+                key=self._key(),
                 init_strategy=self.init_strategy_,
             )
             self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
@@ -1340,7 +1476,9 @@ class EmulatorSparseGP(EmulatorBase):
         else:
             self.emu_ = PCASparseGPEnsemble(
                 n_ensemble=self.n_ensemble_,
-                n_pc=npc, M=self.M_, base_key=self._key(),
+                n_pc=npc,
+                M=self.M_,
+                base_key=self._key(),
                 init_strategy=self.init_strategy_,
                 bootstrap=self.bootstrap_,
             )
@@ -1350,9 +1488,15 @@ class EmulatorSparseGP(EmulatorBase):
     # -------------------------
     # Prediction
     # -------------------------
-    def predict(self, X, return_cov=True,
-                include_noise=False, include_truncation=True,
-                include_pca_sampling=False, include_obs_noise=False):
+    def predict(
+        self,
+        X,
+        return_cov=True,
+        include_noise=False,
+        include_truncation=True,
+        include_pca_sampling=False,
+        include_obs_noise=False,
+    ):
         """
         Predict model output at parameter points ``X``.
 
@@ -1377,9 +1521,8 @@ class EmulatorSparseGP(EmulatorBase):
         fpredmean : array (N_test, nobs)
         fpredcov  : array (N_test, nobs, nobs), only when return_cov=True
         """
-        if not hasattr(self, 'emu_'):
-            raise RuntimeError(
-                "Call trainEmulator() before predict().")
+        if not hasattr(self, "emu_"):
+            raise RuntimeError("Call trainEmulator() before predict().")
 
         X = np.atleast_2d(X)
         Y_pred, full_cov = self.emu_.predict(
@@ -1395,7 +1538,7 @@ class EmulatorSparseGP(EmulatorBase):
 
         # Inverse log-transform if needed. Emulators saved with older versions
         # have no exp_and_cov_diagonal_ and always transformed back.
-        if getattr(self, 'exp_and_cov_diagonal_', self.logTrafo_):
+        if getattr(self, "exp_and_cov_diagonal_", self.logTrafo_):
             Y_pred_exp = np.exp(Y_pred)
             # delta method: Cov_y[i,j] = exp(mu_i) * Cov_log[i,j] * exp(mu_j)
             outer_exp = Y_pred_exp[:, :, None] * Y_pred_exp[:, None, :]
@@ -1412,4 +1555,4 @@ class EmulatorSparseGP(EmulatorBase):
     def _predictions_in_log_space(self):
         # emulators saved with older versions have no exp_and_cov_diagonal_
         # and always transformed the predictions back
-        return self.logTrafo_ and not getattr(self, 'exp_and_cov_diagonal_', True)
+        return self.logTrafo_ and not getattr(self, "exp_and_cov_diagonal_", True)
