@@ -1234,7 +1234,8 @@ class EmulatorSparseGP:
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
                  n_pc=0.999, M=200, n_ensemble=1,
                  init_strategy='maxmin', bootstrap=False,
-                 logTrafo=False, max_rel_uncertainty_data=None):
+                 logTrafo=False, max_rel_uncertainty_data=None,
+                 exp_and_cov_diagonal=False):
         """
         Parameters
         ----------
@@ -1253,11 +1254,19 @@ class EmulatorSparseGP:
         bootstrap : bool
             Bootstrap resampling for ensemble members.
         logTrafo : bool
-            If True, log-transform outputs before training and inverse-transform
-            predictions.
+            If True, the emulator is trained on the log of the outputs and
+            predict() returns the mean and covariance in log space, like the
+            other emulators. The experimental data used with the emulator must
+            then also be log-transformed.
         max_rel_uncertainty_data : float or None
             Maximum relative statistical uncertainty; training points with
             larger values are discarded. Set to None to disable this filter.
+        exp_and_cov_diagonal : bool
+            Only with logTrafo=True: predict() returns the predictions
+            transformed back to the original scale, exp(mean) and the
+            covariance cov_ij * exp(mean_i) * exp(mean_j) (delta method).
+            Unlike the other emulators, the correlations between the
+            observables are kept (default False).
         """
         self.n_pc_ = n_pc
         self.M_ = M
@@ -1266,6 +1275,9 @@ class EmulatorSparseGP:
         self.bootstrap_ = bootstrap
         self.logTrafo_ = logTrafo
         self.max_rel_uncertainty_data_ = max_rel_uncertainty_data
+        self.exp_and_cov_diagonal_ = exp_and_cov_diagonal
+        if not self.logTrafo_ and self.exp_and_cov_diagonal_:
+            raise ValueError("exp_and_cov_diagonal can only be set to True if logTrafo is True.")
 
         self._load_training_data_pickle(training_set_path)
 
@@ -1425,8 +1437,9 @@ class EmulatorSparseGP:
         Y_pred = np.array(Y_pred)
         full_cov = np.array(full_cov)
 
-        # Inverse log-transform if needed
-        if self.logTrafo_:
+        # Inverse log-transform if needed. Emulators saved with older versions
+        # have no exp_and_cov_diagonal_ and always transformed back.
+        if getattr(self, 'exp_and_cov_diagonal_', self.logTrafo_):
             Y_pred_exp = np.exp(Y_pred)
             # delta method: Cov_y[i,j] = exp(mu_i) * Cov_log[i,j] * exp(mu_j)
             outer_exp = Y_pred_exp[:, :, None] * Y_pred_exp[:, None, :]
@@ -1471,8 +1484,13 @@ class EmulatorSparseGP:
         pred_var = np.sqrt(np.array(
             [pred_cov[i].diagonal() for i in range(pred_cov.shape[0])]))
 
+        # if logTrafo is True and exp_and_cov_diagonal is False, the
+        # predictions are in log space and are transformed back here
+        if self.logTrafo_ and not getattr(self, 'exp_and_cov_diagonal_', True):
+            pred_var = pred_var * np.exp(pred_mean)
+            pred_mean = np.exp(pred_mean)
+
         if self.logTrafo_:
-            # predictions are already back-transformed by self.predict()
             validation_data = np.exp(self.model_data[validate_event_mask, :])
             validation_data_err = (
                 self.model_data_err[validate_event_mask, :]
