@@ -160,14 +160,20 @@ def test_validation(emulator, test_points):
 
 
 def test_validation_random_points(emulator):
-    train_mask, test_mask = emulator._validation_masks(10, True, 5)
+    train_mask, test_mask = emulator._validation_masks(10, True, 5, 1)
     assert test_mask.sum() == 10 and np.all(train_mask == ~test_mask)
-    np.testing.assert_array_equal(test_mask, emulator._validation_masks(10, True, 5)[1])
-    assert not np.array_equal(test_mask, emulator._validation_masks(10, True, 6)[1])
+    np.testing.assert_array_equal(
+        test_mask, emulator._validation_masks(10, True, 5, 1)[1]
+    )
+    assert not np.array_equal(test_mask, emulator._validation_masks(10, True, 6, 1)[1])
     data = emulator.test_emulator_errors(10, random_points=True, seed=5)[2]
     np.testing.assert_array_equal(data, emulator.model_data[test_mask])
+    # at least one test point and two training points are required
+    for n_test_points in (0, emulator.nev - 1):
+        with pytest.raises(ValueError):
+            emulator.test_emulator_errors(n_test_points)
     with pytest.raises(ValueError):
-        emulator.test_emulator_errors(emulator.nev)
+        emulator.test_emulator_errors_with_training_points(emulator.nev - 1)
 
 
 def test_validation_untrained_emulator_stays_untrained(training_file, param_file):

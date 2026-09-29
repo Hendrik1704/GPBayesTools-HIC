@@ -79,6 +79,7 @@ Bug fixes:
 - `EmulatorSklearn.predict` accepts a single parameter point as a 1D array or a list, like the other emulators, and computes only the variances of the GPs at the points instead of their full covariance between all points. This makes the prediction for many points (e.g. all MCMC walkers) much faster.
 - `EmulatorHetGP` computes the output PCA with the exact (full) SVD like `EmulatorSklearn`. The default of scikit-learn could choose a randomized, approximate solver for more than 500 observables, which made the PCs change between trainings.
 - `EmulatorHetGP` warns if a hetGP model gives non-finite predictions at the training points (failed fit), and logs the messages that hetgpy prints to stdout at the DEBUG level.
+- The validation functions check that `n_test_points` leaves at least 2 training points, and `test_emulator_errors` that there is at least one test point. Before, `n_test_points=0` failed after the training, and a single training point gave NaN errors.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.

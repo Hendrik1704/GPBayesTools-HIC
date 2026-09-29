@@ -370,17 +370,18 @@ class EmulatorBase:
             samples = np.exp(samples)
         return samples
 
-    def _validation_masks(self, n_test_points, random_points, seed):
+    def _validation_masks(self, n_test_points, random_points, seed, min_test_points):
         """
         Boolean masks of the training and test points.
 
         The test points are the last n_test_points points, or randomly
-        chosen points if random_points is True.
+        chosen points if random_points is True. At least `min_test_points`
+        test points and 2 training points are required.
         """
-        if not 0 <= n_test_points < self.nev:
+        if not min_test_points <= n_test_points <= self.nev - 2:
             raise ValueError(
-                f"n_test_points must be between 0 and {self.nev - 1}, "
-                f"got {n_test_points}"
+                f"n_test_points must be between {min_test_points} and "
+                f"{self.nev - 2} (at least 2 training points), got {n_test_points}"
             )
         if random_points:
             rng = np.random.default_rng(seed)
@@ -425,6 +426,14 @@ class EmulatorBase:
             np.array(data_err).reshape(-1, self.nobs),
         )
 
+    @staticmethod
+    def _test_points_text(n_test_points, random_points):
+        """Description of the chosen test points for the log messages."""
+        points = "point" if n_test_points == 1 else "points"
+        if random_points:
+            return f"{n_test_points} random training {points}"
+        return f"the last {n_test_points} training {points}"
+
     @keep_trained_state
     def test_emulator_errors(
         self, n_test_points=1, random_points=False, seed=None, **train_kwargs
@@ -440,7 +449,7 @@ class EmulatorBase:
         Parameters
         ----------
         n_test_points : int, default=1
-            Number of test points, between 0 and nev - 1.
+            Number of test points, between 1 and nev - 2.
         random_points : bool, default=False
             If False, the test points are the last points of the training
             data. If True, they are chosen randomly.
@@ -460,16 +469,15 @@ class EmulatorBase:
         Raises
         ------
         ValueError
-            If `n_test_points` is not between 0 and nev - 1.
+            If `n_test_points` is not between 1 and nev - 2.
         """
-        choice = (
-            f"{n_test_points} random" if random_points else f"the last {n_test_points}"
+        train_mask, test_mask = self._validation_masks(
+            n_test_points, random_points, seed, min_test_points=1
         )
         logger.info(
-            f"Validating the emulator with {choice} training points as test points ..."
-        )
-        train_mask, test_mask = self._validation_masks(
-            n_test_points, random_points, seed
+            "Validating the emulator with "
+            f"{self._test_points_text(n_test_points, random_points)} as test "
+            "points ..."
         )
         self.train_emulator(train_mask, **train_kwargs)
         return self._validation_output(test_mask)
@@ -489,7 +497,8 @@ class EmulatorBase:
         Parameters
         ----------
         n_test_points : int, default=1
-            Number of test points excluded from the training.
+            Number of test points excluded from the training, between 0 and
+            nev - 2.
         random_points : bool, default=False
             If True, the test points are chosen randomly, otherwise they are
             the last points of the training data.
@@ -507,15 +516,15 @@ class EmulatorBase:
         Raises
         ------
         ValueError
-            If `n_test_points` is not between 0 and nev - 1.
+            If `n_test_points` is not between 0 and nev - 2.
         """
-        choice = (
-            f"{n_test_points} random" if random_points else f"the last {n_test_points}"
+        train_mask, _ = self._validation_masks(
+            n_test_points, random_points, seed, min_test_points=0
         )
         logger.info(
             "Validating the emulator at the training points, without "
-            f"{choice} training points as test points ..."
+            f"{self._test_points_text(n_test_points, random_points)} as test "
+            "points ..."
         )
-        train_mask, _ = self._validation_masks(n_test_points, random_points, seed)
         self.train_emulator(train_mask, **train_kwargs)
         return self._validation_output(train_mask)
