@@ -1338,6 +1338,9 @@ class EmulatorSparseGP:
             X.shape[0]))
 
         if self.n_ensemble_ <= 1:
+            # verbose_members only exists for the ensemble
+            fit_kwargs = {k: v for k, v in fit_kwargs.items()
+                          if k != 'verbose_members'}
             self.emu_ = PCASparseGPEmulator(
                 n_pc=self.n_pc_, M=self.M_,
                 init_strategy=self.init_strategy_,
