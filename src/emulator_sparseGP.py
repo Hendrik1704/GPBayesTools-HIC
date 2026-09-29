@@ -1283,6 +1283,11 @@ class EmulatorSparseGP:
         discarded_points = 0
         for event_id in sorted_event_ids:
             temp_data = dataDict[event_id]["obs"].transpose()
+            if not np.all(np.isfinite(temp_data[:, 0])):
+                logging.info("Discard Parameter {}, non-finite observables".format(
+                                                    event_id))
+                discarded_points += 1
+                continue
             if self.max_rel_uncertainty_data_ is not None:
                 statErrMax = np.abs(
                     (temp_data[:, 1] / (temp_data[:, 0] + 1e-16))).max()
