@@ -90,6 +90,7 @@ Bug fixes:
 - `parse_model_parameter_file` raises a `ValueError` with the file and line number for malformed lines, non-numeric ranges, min >= max and parameters that are defined twice. Before, a duplicate parameter silently replaced the first one, and min == max gave an infinite log prior.
 - The perturbation of the optimized PTLMC starting points uses the inverse Hessian as covariance (the surmise code used a rotated covariance) and stops after a few step reductions, so that it cannot loop forever when the log posterior at the optimum is not finite.
 - `Design.write_files` accepts the base directory as a string. `Design` raises a clear error for MaxPro designs with one parameter (R crashed) and includes the error message of R when R fails. The docstring says that a validation design needs a different seed than the main design.
+- `BayesianAnalysis` raises a clear error when the likelihood is evaluated without loaded emulators and for non-finite experimental data values or infinite errors, warns when NaN errors of the experimental data are set to 0, and warns when `compute_log_likelihood_for_chain` overwrites its output file. `log_likelihood_point_by_point` uses `log_likelihood` for each point instead of a copy of its code.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.

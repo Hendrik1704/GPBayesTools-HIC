@@ -262,7 +262,7 @@ def sampler(
         f"Running {samptunning} tuning and {sampperchain} sampling steps of the "
         "PTLMC chains ..."
     )
-    for k in range(0, n_total):  # loop over all chains
+    for k in range(0, n_total):  # loop over the tuning and sampling steps
         if k % log_every == 0:
             logger.info(f"PTLMC step {k + 1}/{n_total} ...")
         rvalo = rng.standard_normal(size=thetac.shape)

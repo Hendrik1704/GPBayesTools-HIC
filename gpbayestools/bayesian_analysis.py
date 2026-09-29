@@ -90,13 +90,13 @@ class LoggingEnsembleSampler(emcee.EnsembleSampler):
     The constructor parameters are those of `emcee.EnsembleSampler`.
     """
 
-    def run_mcmc(self, X0, nsteps, status=None, **kwargs):
+    def run_mcmc(self, initial_state, nsteps, status=None, **kwargs):
         """
         Run MCMC and log the acceptance fraction every `status` steps.
 
         Parameters
         ----------
-        X0 : array_like of shape (nwalkers, ndim) or emcee.State
+        initial_state : array_like of shape (nwalkers, ndim) or emcee.State
             Initial positions of the walkers.
         nsteps : int
             Number of steps. Must be at least 1.
@@ -116,16 +116,15 @@ class LoggingEnsembleSampler(emcee.EnsembleSampler):
         ValueError
             If `nsteps` is smaller than 1.
         """
-        logger.info("Running %d walkers for %d steps ...", self.nwalkers, nsteps)
-
         if nsteps < 1:
-            raise ValueError("nsteps must be >= 1")
+            raise ValueError(f"nsteps must be >= 1, got {nsteps}")
         if status is None:
             status = max(nsteps // 10, 1)
+        logger.info("Running %d walkers for %d steps ...", self.nwalkers, nsteps)
 
         # the state of the last iteration is returned
         for n, result in enumerate(  # noqa: B007
-            self.sample(X0, iterations=nsteps, **kwargs), start=1
+            self.sample(initial_state, iterations=nsteps, **kwargs), start=1
         ):
             if n % status == 0 or n == nsteps:
                 af = self.acceptance_fraction
@@ -177,6 +176,8 @@ class BayesianAnalysis:
 
     Attributes
     ----------
+    mcmc_path : pathlib.Path
+        Base path of the chain files, see `chain_path`.
     pardict : dict
         The parameters of the parameter file, see
         ``parse_model_parameter_file``.
@@ -287,9 +288,11 @@ class BayesianAnalysis:
 
         The predictions of the emulators are concatenated, and the covariance
         is block diagonal with one block per emulator. Returns arrays of shape
-        (n, nobs) and (n, nobs, nobs), and raises a ValueError if the emulators
-        do not predict `nobs` observables in total.
+        (n, nobs) and (n, nobs, nobs), and raises a ValueError if no emulators
+        are loaded or if they do not predict `nobs` observables in total.
         """
+        if not self.emulators:
+            raise ValueError("No emulators are loaded, call load_emulators first")
         n_preds = X.shape[0]
         model_pred = np.zeros([n_preds, self.nobs])
         model_pred_cov = np.zeros([n_preds, self.nobs, self.nobs])
@@ -357,27 +360,26 @@ class BayesianAnalysis:
         -------
         ndarray of shape (n,)
             Log-likelihood at each point.
+
+        Raises
+        ------
+        ValueError
+            If no emulators are loaded, or if they do not predict the number
+            of experimental data points.
+        numpy.linalg.LinAlgError
+            If the covariance matrix at a point is not positive definite.
         """
         X = np.atleast_2d(np.asarray(X))
         lp = np.zeros(X.shape[0])
         inside = self._inside(X)
-        if not finite:
-            lp[~inside] = -np.inf
-        elif finite:
-            lp[~inside] = -1e300
+        lp[~inside] = -1e300 if finite else -np.inf
 
-        nsamples = np.count_nonzero(inside)
-        if nsamples > 0:
+        if np.any(inside):
             model_Y, model_cov = self._predict(X[inside])
-
-            # allocate difference (model - experiment) and covariance arrays
-            dY = np.empty([nsamples, self.nobs])
-            cov = np.empty([nsamples, self.nobs, self.nobs])
+            # difference (model - experiment) and the sum of the emulator and
+            # the experimental covariance
             dY = model_Y - self.exp_data
-            # add experiment cov to model cov
             cov = model_cov + self.exp_data_cov
-
-            # compute log likelihood at each point
             lp[inside] += list(map(mvn_loglike, dY, cov))
         return lp
 
@@ -403,6 +405,7 @@ class BayesianAnalysis:
             Log-likelihood at each point, ``-inf`` outside the parameter
             ranges.
         """
+        X = np.atleast_2d(np.asarray(X))
         n_points = X.shape[0]
         lp = np.zeros(n_points)
         log_every = max(n_points // 10, 1)
@@ -412,23 +415,7 @@ class BayesianAnalysis:
                 logger.info(
                     f"Evaluating the log-likelihood at point {k + 1}/{n_points} ..."
                 )
-            Xk = np.atleast_2d(np.asarray(X[k]))
-            inside = bool(self._inside(Xk)[0])
-            lp[k] = -np.inf if not inside else 0.0
-
-            nsamples = 1 if inside else 0
-            if nsamples > 0:
-                model_Y, model_cov = self._predict(Xk)
-
-                # allocate difference (model - experiment) and covariance arrays
-                dY = np.empty([nsamples, self.nobs])
-                cov = np.empty([nsamples, self.nobs, self.nobs])
-                dY = model_Y - self.exp_data
-                # add experiment cov to model cov
-                cov = model_cov + self.exp_data_cov
-
-                # compute log likelihood at this point
-                lp[k] += mvn_loglike(dY[0], cov[0])
+            lp[k] = self.log_likelihood(X[k])[0]
         return lp
 
     def log_posterior(self, X):
@@ -456,8 +443,9 @@ class BayesianAnalysis:
         The pickle file must contain a dictionary with exactly one entry,
         whose ``"obs"`` array holds the values in the first and the errors in
         the second row. The covariance matrix is diagonal with the squared
-        errors (NaN errors are set to 0). Returns the data of shape (1, nobs)
-        and the covariance of shape (nobs, nobs).
+        errors (NaN errors are set to 0 with a warning). Returns the data of
+        shape (1, nobs) and the covariance of shape (nobs, nobs). Raises a
+        ValueError for non-finite values or infinite errors.
         """
         model_data = []
         model_data_err = []
@@ -478,7 +466,17 @@ class BayesianAnalysis:
             f"Loaded {model_data[0].shape[0]} experimental data points from {filepath}"
         )
         model_data = np.array(model_data)
-        model_data_err = np.nan_to_num(np.abs(np.array(model_data_err)))
+        model_data_err = np.abs(np.array(model_data_err))
+        if not np.all(np.isfinite(model_data)):
+            raise ValueError(f"The experimental data in {filepath} are not finite")
+        if np.any(np.isinf(model_data_err)):
+            raise ValueError(
+                f"The experimental data in {filepath} have infinite errors"
+            )
+        n_nan = int(np.sum(np.isnan(model_data_err)))
+        if n_nan > 0:
+            logger.warning(f"Setting {n_nan} NaN errors of the experimental data to 0")
+            model_data_err = np.nan_to_num(model_data_err)
         nobs = model_data.shape[1]
 
         data_cov = np.zeros((nobs, nobs))
@@ -772,7 +770,7 @@ class BayesianAnalysis:
 
         self.chain_sampler = "emcee"
 
-        # Append the new data to the existing file
+        # write the whole chain, including the steps of previous runs
         logger.info(
             f"Writing the chain with {self.chain.shape[1]} samples per walker to "
             f"{chain_file}"
@@ -875,7 +873,10 @@ class BayesianAnalysis:
         Raises
         ------
         ValueError
-            If `sampler` is None and no chain has been run with this object.
+            If `sampler` is None and no chain has been run with this object,
+            or if `sampler` is not a known sampler.
+        FileNotFoundError
+            If the chain file of `sampler` does not exist.
         """
         if sampler is not None:
             logger.info(f"Loading the {sampler} chain from {self.chain_path(sampler)}")
@@ -895,12 +896,14 @@ class BayesianAnalysis:
             )
         # create the output directory before the (expensive) computation
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        if Path(output_path).exists():
+            logger.warning(f"Overwriting the existing file {output_path}")
         logger.info(
             f"Computing the log-likelihood of the {self.chain_sampler} chain ..."
         )
         reshape_chain = self.chain.reshape(-1, self.ndim)
         likelihood = self.log_likelihood_point_by_point(reshape_chain)
-        # emcee/PTLMC chains have shape (nwalkers, nsteps, ndim),
+        # emcee/PTLMC chains have shape (n_walkers, n_steps, ndim),
         # pocoMC samples have shape (nsamples, ndim)
         likelihood = likelihood.reshape(self.chain.shape[:-1])
 
