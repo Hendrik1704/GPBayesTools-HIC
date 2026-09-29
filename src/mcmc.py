@@ -160,10 +160,23 @@ class Chain:
 
 
     def loadEmulator(self, emulatorPathList):
-        for i, emuPath in enumerate(emulatorPathList):
+        """
+        Load the emulators from the files in `emulatorPathList`, replacing
+        previously loaded emulators. The order of the emulators must be the
+        order of the observables in the experimental data, and their numbers
+        of observables must add up to the number of experimental data points.
+        """
+        emuList = []
+        for emuPath in emulatorPathList:
             with open(emuPath, 'rb') as f:
-                emu_i = dill.load(f)
-                self.emuList.append(emu_i)
+                emuList.append(dill.load(f))
+        nobs_emu = [emu.nobs for emu in emuList]
+        if sum(nobs_emu) != self.nobs:
+            raise ValueError(
+                'The emulators have {} observables in total ({}), but the '
+                'experimental data have {} data points'.format(
+                    sum(nobs_emu), ', '.join(map(str, nobs_emu)), self.nobs))
+        self.emuList = emuList
         logging.info("Number of Emulators: {}".format(len(self.emuList)))
 
 
@@ -178,6 +191,10 @@ class Chain:
             modelPred[:, currIdx:currIdx+nobs_i] = model_Y
             modelPredCov[:, currIdx:currIdx+nobs_i, currIdx:currIdx+nobs_i] = model_cov
             currIdx += nobs_i
+        if currIdx != self.nobs:
+            raise ValueError(
+                'The emulators predict {} observables, but the experimental '
+                'data have {} data points'.format(currIdx, self.nobs))
         return modelPred, modelPredCov
 
 
@@ -294,6 +311,10 @@ class Chain:
         
         with open(filepath, "rb") as fp:
             dataDict = pickle.load(fp)
+        if len(dataDict) != 1:
+            raise ValueError(
+                'The experimental data file {} must contain exactly one data '
+                'set, but contains {}'.format(filepath, len(dataDict)))
 
         for event_id in dataDict.keys():
             temp_data = dataDict[event_id]["obs"].transpose()
