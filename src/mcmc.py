@@ -345,10 +345,24 @@ class Chain:
         else:
             burnFlag = False
 
-        if nburnsteps is None or nwalkers is None:
-                logging.error(
+        if burnFlag:
+            if nburnsteps is None or nwalkers is None:
+                raise ValueError(
                     'must specify nburnsteps and nwalkers to start chain')
-                return
+        else:
+            # emcee chains have shape (nwalkers, nsteps, ndim), pocoMC samples
+            # (nsamples, ndim)
+            if chain_data['chain'].ndim != 3:
+                raise ValueError(
+                    'the chain in {} was not generated with emcee and cannot '
+                    'be continued, use a different mcmc_path'.format(
+                        self.mcmc_path))
+            if nwalkers is None:
+                nwalkers = chain_data['chain'].shape[0]
+            elif nwalkers != chain_data['chain'].shape[0]:
+                raise ValueError(
+                    'the existing chain has {} walkers, but nwalkers = {}'
+                    .format(chain_data['chain'].shape[0], nwalkers))
 
         logging.info('Starting MCMC ...')
         sampler = LoggingEnsembleSampler(
