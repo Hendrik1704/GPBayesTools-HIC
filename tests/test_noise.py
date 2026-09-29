@@ -131,22 +131,6 @@ def test_validation_includes_noise(trained):
     np.testing.assert_allclose(pred_err, np.sqrt(np.diagonal(cov, axis1=1, axis2=2)))
 
 
-def test_sample_y_with_noise(trained, test_points):
-    name, emu, _ = trained
-    if name != "Emulator":
-        pytest.skip("only for Emulator")
-    for include_noise in (False, True):
-        samples = emu.sample_y(
-            test_points, n_samples=4000, random_state=1, include_noise=include_noise
-        )
-        _, cov = emu.predict(test_points, include_noise=include_noise)
-        # the prediction contains a small additional term for numerical
-        # stability
-        np.testing.assert_allclose(
-            samples.var(axis=1), np.diagonal(cov, axis1=1, axis2=2), rtol=0.15
-        )
-
-
 def test_emulator_calibration(noisy_training_file, param_file):
     # with noisy training data, the predicted uncertainty of the model
     # function matches the actual errors (it was overestimated with the
@@ -175,8 +159,6 @@ def test_sample_y(trained, test_points, include_noise):
     mean, cov = emu.predict(test_points, include_noise=include_noise)
     std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
     assert np.all(np.abs(samples.mean(axis=1) - mean) < 5 * std / np.sqrt(4000))
-    # the Emulator prediction contains a small additional term for numerical
-    # stability
     np.testing.assert_allclose(samples.var(axis=1), std**2, rtol=0.15)
 
 
