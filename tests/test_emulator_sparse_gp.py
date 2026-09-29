@@ -429,6 +429,24 @@ def test_t10(tmp_path):
     check("test_emulator_errors shapes match", emu_pred.shape == vali_data.shape)
 
 
+def test_npc_and_option_checks():
+    rng = np.random.default_rng(0)
+    X = rng.uniform(size=(40, 3))
+    Y = np.column_stack([np.sin(3 * X[:, 0]) + k * X[:, 1] for k in range(4)])
+    # more PCs than observables are capped at the number of observables
+    em = PCASparseGPEmulator(n_pc=10, M=10, key=_KEY)
+    em.fit(X, Y, steps=5, verbose=False)
+    assert em.n_pc == 4
+    # invalid options raise before the fitted attributes are replaced
+    pca = em.pca
+    with pytest.raises(ValueError):
+        PCASparseGPEmulator(n_pc=2, M=10, init_strategy="grid").fit(X, Y, steps=5)
+    em.M = 50
+    with pytest.raises(ValueError):
+        em.fit(X, Y, steps=5)
+    assert em.pca is pca
+
+
 def test_nan_recovery_keeps_jitter_of_best_parameters(monkeypatch):
     # force non-finite ELBOs in the last steps: the jitter is increased, but
     # the returned best parameters were trained with the initial jitter

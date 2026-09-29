@@ -31,7 +31,28 @@ import optax
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 
-from .emulator_base import truncation_signal
+from .emulator_base import number_of_pcs, truncation_signal
+
+_INIT_STRATEGIES = ("maxmin", "kmeans", "kmeans_pp", "random", "sobol")
+
+
+def _fit_pca(Yn, n_pc):
+    """
+    Fit the PCA of the standardized outputs `Yn` with `n_pc` components.
+
+    `n_pc` is the number of PCs or the fraction of the explained variance
+    (see `number_of_pcs`); it is capped at the number of available PCs. The
+    exact (full) SVD is used, since sklearn's default can choose a
+    randomized, approximate solver. Returns the fitted PCA and the PCs.
+    """
+    Yn = np.asarray(Yn)
+    full_pca = PCA(svd_solver="full").fit(Yn)
+    pca = PCA(
+        n_components=number_of_pcs(n_pc, full_pca.explained_variance_ratio_),
+        svd_solver="full",
+    )
+    return pca, pca.fit_transform(Yn)
+
 
 logger = logging.getLogger(__name__)
 
@@ -492,7 +513,8 @@ class PCASparseGPEmulator:
             If Y_err has an invalid shape or negative diagonal covariance
             entries, if M exceeds the number of training points, if
             init_strategy is unknown, or if lr_backoff_factor,
-            max_lr_backoff_retries or nan_patience are out of range.
+            max_lr_backoff_retries, nan_patience, ema_alpha, jitter_init or
+            print_every are out of range.
         RuntimeError
             If the Cholesky decomposition of Kzz fails at jitter_max at
             startup, or if the loss stays NaN after all jitter increases and
@@ -513,6 +535,19 @@ class PCASparseGPEmulator:
                 f"jitter_init must be in (0, jitter_max], got jitter_init="
                 f"{jitter_init} and jitter_max={jitter_max}"
             )
+        if print_every < 1:
+            raise ValueError(f"print_every must be >= 1, got {print_every}")
+        if self.init_strategy not in _INIT_STRATEGIES:
+            raise ValueError(
+                f"Unknown init_strategy {self.init_strategy!r}, use one of "
+                f"{_INIT_STRATEGIES}"
+            )
+        # checked before the PCA and the other fitted attributes are replaced
+        if self.M > X.shape[0]:
+            raise ValueError(
+                f"M={self.M} inducing points cannot exceed N={X.shape[0]} training "
+                f"points. Reduce M or provide more training data."
+            )
         if _fixed_pca_state is None:
             self.Xm, self.Xs = X.mean(0), X.std(0) + 1e-8
             Xn = (X - self.Xm) / self.Xs
@@ -525,8 +560,7 @@ class PCASparseGPEmulator:
                 f"standard deviations in [{self.Ys.min():.3g}, {self.Ys.max():.3g}]"
             )
 
-            self.pca = PCA(n_components=getattr(self, "n_pc_requested", self.n_pc))
-            Yp = self.pca.fit_transform(np.array(Yn))
+            self.pca, Yp = _fit_pca(Yn, getattr(self, "n_pc_requested", self.n_pc))
             self.n_pc = self.pca.n_components_
             explained_var = np.sum(self.pca.explained_variance_ratio_)
 
@@ -669,12 +703,6 @@ class PCASparseGPEmulator:
                 f"{steps} steps ..."
             )
 
-        if self.M > N_full:
-            raise ValueError(
-                f"M={self.M} inducing points cannot exceed N={N_full} training "
-                f"points. Reduce M or provide more training data."
-            )
-
         if self.init_strategy == "maxmin":
             Z = self._init_inducing_maxmin(Xn)
         elif self.init_strategy == "kmeans":
@@ -686,7 +714,7 @@ class PCASparseGPEmulator:
         elif self.init_strategy == "sobol":
             Z = self._init_inducing_sobol(Xn)
         else:
-            raise ValueError(f"Unknown init_strategy: {self.init_strategy}")
+            raise AssertionError(self.init_strategy)
 
         self.params = {
             "Z": Z,
@@ -1388,8 +1416,7 @@ class PCASparseGPEnsemble:
         _Ym = Y.mean(0)
         _Ys = Y.std(0) + 1e-8
         _Yn = (Y - _Ym) / _Ys
-        _pca = PCA(n_components=self.n_pc)
-        _Yp_raw = _pca.fit_transform(np.array(_Yn))
+        _pca, _Yp_raw = _fit_pca(_Yn, self.n_pc)
         _n_pc = _pca.n_components_
         _pc_mean = jnp.mean(_Yp_raw, axis=0)
         _pc_std = jnp.std(_Yp_raw, axis=0) + 1e-8
@@ -1439,8 +1466,15 @@ class PCASparseGPEnsemble:
                 X_fit = X[boot_idx]
                 Y_fit = Y[boot_idx]
                 Y_err_fit = Y_err[boot_idx] if Y_err is not None else None
+                n_unique = len(np.unique(boot_idx))
+                if self.M > n_unique:
+                    logger.warning(
+                        f"[Member {k + 1}/{self.n_ensemble}] The bootstrap sample "
+                        f"has only {n_unique} unique points, fewer than the "
+                        f"{self.M} inducing points, which are then partly "
+                        "duplicated"
+                    )
                 if verbose:
-                    n_unique = len(np.unique(boot_idx))
                     logger.info(
                         f"[Member {k + 1}/{self.n_ensemble}] Training on a "
                         f"bootstrap sample with {n_unique}/{N} unique points ..."
