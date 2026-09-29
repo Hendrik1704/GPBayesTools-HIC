@@ -67,6 +67,10 @@ class EmulatorBAND:
                                                     event_id))
                 discarded_points += 1
                 continue
+            if self.logTrafo_ and np.any(temp_data[:, 0] < 0):
+                raise ValueError(
+                    "logTrafo requires non-negative observables, but "
+                    "parameter point {} has negative values".format(event_id))
             statErrMax = np.abs((temp_data[:, 1]/(temp_data[:, 0]+1e-16))).max()
             if statErrMax > self.max_rel_uncertainty_data_:
                 logging.info("Discard Parameter {}, stat err = {:.2f}".format(
