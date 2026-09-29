@@ -7,6 +7,7 @@ collaboration.
 """
 
 import logging
+
 import numpy as np
 import surmise
 from surmise.emulation import emulator
@@ -57,7 +58,7 @@ class EmulatorBAND(EmulatorBase):
     def train_emulator(self, event_mask):
         logger.info("Performing emulator training ...")
         nev, nobs = self.model_data[event_mask, :].shape
-        logger.info("Train GP emulators with {} training points ...".format(nev))
+        logger.info(f"Train GP emulators with {nev} training points ...")
         X = np.arange(nobs).reshape(-1, 1)
 
         design_points = self.design_points[event_mask, :]

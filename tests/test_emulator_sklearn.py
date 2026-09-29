@@ -11,8 +11,8 @@ import warnings
 
 import numpy as np
 import pytest
+from conftest import N_OBS, OBS_SCALE, true_model, write_param_file
 
-from conftest import N_OBS, OBS_SCALE, true_model, write_param_file, write_training_data
 from gpbayestools import parse_model_parameter_file
 from gpbayestools.emulator_sklearn import EmulatorSklearn
 
@@ -81,7 +81,7 @@ def test_log_transformation(training_file, param_file, test_points):
     emu_exp.train_emulator_auto_mask()
     mean_exp, cov_exp = emu_exp.predict(test_points)
     np.testing.assert_allclose(mean_exp, np.exp(mean_log))
-    for c_exp, c_log, m in zip(cov_exp, cov_log, mean_exp):
+    for c_exp, c_log, m in zip(cov_exp, cov_log, mean_exp, strict=True):
         np.testing.assert_allclose(np.diag(c_exp), np.diag(c_log) * m**2)
         np.testing.assert_array_equal(c_exp, np.diag(np.diag(c_exp)))
 
@@ -109,7 +109,7 @@ def test_output_pca_does_not_change_emulator(emulator, test_points):
     design_points, Z = emulator.output_pca_vs_param()
     assert Z.shape == (emulator.npc_, emulator.nev)
     after = emulator.predict(test_points)
-    for a, b in zip(before, after):
+    for a, b in zip(before, after, strict=True):
         np.testing.assert_array_equal(a, b)
 
 
@@ -145,7 +145,7 @@ def test_validation(emulator, test_points):
 
     # the validation does not change the trained emulator
     after = emulator.predict(test_points)
-    for a, b in zip(before, after):
+    for a, b in zip(before, after, strict=True):
         np.testing.assert_array_equal(a, b)
 
 
@@ -268,5 +268,7 @@ def test_load_emulator_saved_with_old_package_name(emulator, test_points, tmp_pa
             dill.load(f)
     loaded = load_emulator(path)
     assert type(loaded) is type(emulator)
-    for a, b in zip(loaded.predict(test_points), emulator.predict(test_points)):
+    for a, b in zip(
+        loaded.predict(test_points), emulator.predict(test_points), strict=True
+    ):
         np.testing.assert_array_equal(a, b)

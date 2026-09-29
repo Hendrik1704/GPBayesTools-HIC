@@ -8,16 +8,16 @@ the following samplers:
 
 import logging
 import pickle
-
 from pathlib import Path
+
 import emcee
 import numpy as np
+import pocomc
+import scipy.optimize as spo
 from scipy.linalg import lapack
+from scipy.stats import uniform
 
 from . import load_emulator, parse_model_parameter_file
-import scipy.optimize as spo
-import pocomc
-from scipy.stats import uniform
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +45,12 @@ def mvn_loglike(y, cov):
 
     if info < 0:
         raise ValueError(
-            "lapack dpotrf error: the {}-th argument had an illegal value".format(-info)
+            f"lapack dpotrf error: the {-info}-th argument had an illegal value"
         )
     elif info > 0:
         raise np.linalg.LinAlgError(
             "lapack dpotrf error: "
-            "the leading minor of order {} is not positive definite".format(info)
+            f"the leading minor of order {info} is not positive definite"
         )
 
     # Solve for alpha = cov^-1.y using the Cholesky decomp.
@@ -58,7 +58,7 @@ def mvn_loglike(y, cov):
 
     if info != 0:
         raise ValueError(
-            "lapack dpotrs error: the {}-th argument had an illegal value".format(-info)
+            f"lapack dpotrs error: the {-info}-th argument had an illegal value"
         )
 
     return -0.5 * np.dot(y, alpha) - np.log(L.diagonal()).sum()
@@ -78,7 +78,8 @@ class LoggingEnsembleSampler(emcee.EnsembleSampler):
         if status is None:
             status = max(nsteps // 10, 1)
 
-        for n, result in enumerate(
+        # the state of the last iteration is returned
+        for n, result in enumerate(  # noqa: B007
             self.sample(X0, iterations=nsteps, **kwargs), start=1
         ):
             if n % status == 0 or n == nsteps:
@@ -135,15 +136,13 @@ class BayesianAnalysis:
         )
 
         # load the model parameter file
-        logger.info(
-            "Loading the model parameters space from {} ...".format(model_parafile)
-        )
+        logger.info(f"Loading the model parameters space from {model_parafile} ...")
         self.pardict = parse_model_parameter_file(model_parafile)
         self.ndim = len(self.pardict.keys())
         self.label = []
         self.min = []
         self.max = []
-        for par, val in self.pardict.items():
+        for val in self.pardict.values():
             self.label.append(val[0])
             self.min.append(val[1])
             self.max.append(val[2])
@@ -156,7 +155,7 @@ class BayesianAnalysis:
 
         logger.info("Run MCMC with emcee...")
         # load the experimental data to be fit
-        logger.info("Loading the experiment data from {} ...".format(expdata_path))
+        logger.info(f"Loading the experiment data from {expdata_path} ...")
         self.expdata, self.expdata_cov = self._read_in_exp_data_pickle(expdata_path)
         self.nobs = self.expdata.shape[1]
         self.emulators = []
@@ -164,15 +163,15 @@ class BayesianAnalysis:
         # sampler that generated self.chain
         self.chain_sampler = None
 
-    def load_emulators(self, emulatorPathList):
+    def load_emulators(self, emulator_path_list):
         """
-        Load the emulators from the files in `emulatorPathList`, replacing
+        Load the emulators from the files in `emulator_path_list`, replacing
         previously loaded emulators. The order of the emulators must be the
         order of the observables in the experimental data, and their numbers
         of observables must add up to the number of experimental data points.
         """
-        emuList = [load_emulator(emuPath) for emuPath in emulatorPathList]
-        nobs_emu = [emu.nobs for emu in emuList]
+        emu_list = [load_emulator(emu_path) for emu_path in emulator_path_list]
+        nobs_emu = [emu.nobs for emu in emu_list]
         if sum(nobs_emu) != self.nobs:
             raise ValueError(
                 "The emulators have {} observables in total ({}), but the "
@@ -180,28 +179,28 @@ class BayesianAnalysis:
                     sum(nobs_emu), ", ".join(map(str, nobs_emu)), self.nobs
                 )
             )
-        self.emulators = emuList
-        logger.info("Number of Emulators: {}".format(len(self.emulators)))
+        self.emulators = emu_list
+        logger.info(f"Number of Emulators: {len(self.emulators)}")
 
     def _predict(self, X):
-        nPreds = X.shape[0]
-        modelPred = np.zeros([nPreds, self.nobs])
-        modelPredCov = np.zeros([nPreds, self.nobs, self.nobs])
-        currIdx = 0
-        for i, emu_i in enumerate(self.emulators):
+        n_preds = X.shape[0]
+        model_pred = np.zeros([n_preds, self.nobs])
+        model_pred_cov = np.zeros([n_preds, self.nobs, self.nobs])
+        curr_idx = 0
+        for emu_i in self.emulators:
             model_Y, model_cov = emu_i.predict(X, return_cov=True)
             nobs_i = model_Y.shape[1]
-            modelPred[:, currIdx : currIdx + nobs_i] = model_Y
-            modelPredCov[:, currIdx : currIdx + nobs_i, currIdx : currIdx + nobs_i] = (
-                model_cov
-            )
-            currIdx += nobs_i
-        if currIdx != self.nobs:
+            model_pred[:, curr_idx : curr_idx + nobs_i] = model_Y
+            model_pred_cov[
+                :, curr_idx : curr_idx + nobs_i, curr_idx : curr_idx + nobs_i
+            ] = model_cov
+            curr_idx += nobs_i
+        if curr_idx != self.nobs:
             raise ValueError(
-                "The emulators predict {} observables, but the experimental "
-                "data have {} data points".format(currIdx, self.nobs)
+                f"The emulators predict {curr_idx} observables, but the experimental "
+                f"data have {self.nobs} data points"
             )
-        return modelPred, modelPredCov
+        return model_pred, model_pred_cov
 
     def _inside(self, X):
         """True for the points in X inside the parameter ranges (including
@@ -255,7 +254,7 @@ class BayesianAnalysis:
 
         for k in range(X.shape[0]):
             if k % 100 == 0:
-                logger.info("Evaluating log_likelihood at point {}".format(k))
+                logger.info(f"Evaluating log_likelihood at point {k}")
             Xk = np.atleast_2d(np.asarray(X[k]))
             inside = bool(self._inside(Xk)[0])
             lp[k] = -np.inf if not inside else 0.0
@@ -288,18 +287,18 @@ class BayesianAnalysis:
         model_data_err = []
 
         with open(filepath, "rb") as fp:
-            dataDict = pickle.load(fp)
-        if len(dataDict) != 1:
+            data_dict = pickle.load(fp)
+        if len(data_dict) != 1:
             raise ValueError(
-                "The experimental data file {} must contain exactly one data "
-                "set, but contains {}".format(filepath, len(dataDict))
+                f"The experimental data file {filepath} must contain exactly one data "
+                f"set, but contains {len(data_dict)}"
             )
 
-        for event_id in dataDict.keys():
-            temp_data = dataDict[event_id]["obs"].transpose()
+        for event_id in data_dict.keys():
+            temp_data = data_dict[event_id]["obs"].transpose()
             model_data.append(temp_data[:, 0])
             model_data_err.append(temp_data[:, 1])
-        logger.info("Experimental dataset size: {}".format(model_data[0].shape[0]))
+        logger.info(f"Experimental dataset size: {model_data[0].shape[0]}")
         model_data = np.array(model_data)
         model_data_err = np.nan_to_num(np.abs(np.array(model_data_err)))
         nobs = model_data.shape[1]
@@ -331,11 +330,9 @@ class BayesianAnalysis:
         Path of the chain file of `sampler` ('emcee', 'pocomc' or 'ptlmc').
         """
         if sampler not in self.samplers:
-            raise ValueError(
-                "Unknown sampler '{}', use one of {}".format(sampler, self.samplers)
-            )
+            raise ValueError(f"Unknown sampler '{sampler}', use one of {self.samplers}")
         return self.mcmc_path.with_name(
-            "{}_{}{}".format(self.mcmc_path.stem, sampler, self.mcmc_path.suffix)
+            f"{self.mcmc_path.stem}_{sampler}{self.mcmc_path.suffix}"
         )
 
     def run_emcee(
@@ -371,11 +368,11 @@ class BayesianAnalysis:
             pass
 
         if "chain" not in chain_data:
-            burnFlag = True
+            burn_in = True
         else:
-            burnFlag = False
+            burn_in = False
 
-        if burnFlag:
+        if burn_in:
             if nburnsteps is None or nwalkers is None:
                 raise ValueError("must specify nburnsteps and nwalkers to start chain")
         else:
@@ -383,8 +380,8 @@ class BayesianAnalysis:
             # (nsamples, ndim)
             if chain_data["chain"].ndim != 3:
                 raise ValueError(
-                    "the chain in {} was not generated with emcee and cannot "
-                    "be continued, use a different mcmc_path".format(chain_file)
+                    f"the chain in {chain_file} was not generated with emcee and cannot "
+                    "be continued, use a different mcmc_path"
                 )
             if nwalkers is None:
                 nwalkers = chain_data["chain"].shape[0]
@@ -400,7 +397,7 @@ class BayesianAnalysis:
             nwalkers, self.ndim, self.log_posterior, pool=self
         )
 
-        if burnFlag:
+        if burn_in:
             logger.info("no existing chain found, starting initial burn-in")
             if nburnsteps < 2:
                 raise ValueError(
@@ -427,9 +424,9 @@ class BayesianAnalysis:
                 X0 = sampler.flatchain[idx[-nwalkers:]]
             else:
                 logger.warning(
-                    "only {} distinct points with finite probability in the "
+                    f"only {len(idx)} distinct points with finite probability in the "
                     "first half of the burn-in, continuing from the current "
-                    "walker positions".format(len(idx))
+                    "walker positions"
                 )
                 X0 = state.coords
             sampler.reset()
@@ -452,20 +449,20 @@ class BayesianAnalysis:
         )
         chain_data["last_position"] = state.coords
 
-        thinedChain = sampler.chain[:, ::nthin, :]
+        thinned_chain = sampler.chain[:, ::nthin, :]
         if "chain" in chain_data:
             chain_data["chain"] = np.concatenate(
-                (chain_data["chain"], thinedChain), axis=1
+                (chain_data["chain"], thinned_chain), axis=1
             )
             self.chain = chain_data["chain"]
         else:
-            chain_data["chain"] = thinedChain
-            self.chain = thinedChain
+            chain_data["chain"] = thinned_chain
+            self.chain = thinned_chain
 
         self.chain_sampler = "emcee"
 
         # Append the new data to the existing file
-        logger.info("writing chain to {}".format(chain_file))
+        logger.info(f"writing chain to {chain_file}")
         with open(chain_file, "wb") as file:
             pickle.dump(chain_data, file)
 
@@ -780,7 +777,7 @@ class BayesianAnalysis:
         assert rng is not None
 
         order = np.arange(0, lpostf.shape[0])  # initializing
-        for k in range(0, iters):
+        for _ in range(iters):
             # choose random values to check for swapping
             rtv = rng.choice(range(1, lpostf.shape[0]), lpostf.shape[0])
             for rt in rtv:
@@ -857,7 +854,7 @@ class BayesianAnalysis:
         ``./mcmc/chain_emcee_log_likelihood.pkl``.
         """
         if sampler is not None:
-            logger.info("Loading chain from {}".format(self.chain_path(sampler)))
+            logger.info(f"Loading chain from {self.chain_path(sampler)}")
             with open(self.chain_path(sampler), "rb") as f:
                 chain_data = pickle.load(f)
             self.chain = chain_data["chain"]
@@ -882,7 +879,7 @@ class BayesianAnalysis:
         likelihood = likelihood.reshape(self.chain.shape[:-1])
 
         # Write the log_likelihood to file
-        logger.info("Writing log_likelihood for chains to {}".format(output_path))
+        logger.info(f"Writing log_likelihood for chains to {output_path}")
         likelihood_data = {"log_likelihood": likelihood}
         with open(output_path, "wb") as file:
             pickle.dump(likelihood_data, file)
@@ -967,8 +964,8 @@ class BayesianAnalysis:
 
         logger.info("Generate the evidence ...")
         logz, logz_err = sampler.evidence()
-        logger.info("Log evidence: {}".format(logz))
-        logger.info("Log evidence error: {}".format(logz_err))
+        logger.info(f"Log evidence: {logz}")
+        logger.info(f"Log evidence error: {logz_err}")
 
         self.chain = samples
         self.chain_sampler = "pocomc"

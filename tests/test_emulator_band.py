@@ -13,6 +13,7 @@ if not hasattr(surmise, "set_RNG"):
     pytest.skip("requires surmise >= 1.0.0", allow_module_level=True)
 
 from conftest import N_OBS, true_model
+
 from gpbayestools.emulator_band import EmulatorBAND
 
 METHODS = ["PCGP", "PCSK", "PCGPwImpute", "PCGPwM"]
@@ -61,7 +62,7 @@ def test_log_transformation(training_file, param_file, test_points):
     emu_exp.train_emulator_auto_mask()
     mean_exp, cov_exp = emu_exp.predict(test_points)
     np.testing.assert_allclose(mean_exp, np.exp(mean_log))
-    for c_exp, c_log, m in zip(cov_exp, cov_log, mean_exp):
+    for c_exp, c_log, m in zip(cov_exp, cov_log, mean_exp, strict=True):
         np.testing.assert_allclose(np.diag(c_exp), np.diag(c_log) * m**2)
 
     # a single 1D parameter vector gives the same as a 2D array with one row
@@ -89,7 +90,7 @@ def test_validation(training_file, param_file, test_points):
     assert pred.shape == data.shape == (10, N_OBS)
     assert np.abs(pred / data - 1).mean() < 0.05
     after = emu.predict(test_points)
-    for a, b in zip(before, after):
+    for a, b in zip(before, after, strict=True):
         np.testing.assert_array_equal(a, b)
 
     # the validation restores the random state: training again gives the

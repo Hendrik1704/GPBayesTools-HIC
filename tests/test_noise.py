@@ -11,10 +11,10 @@ import warnings
 
 import numpy as np
 import pytest
-
 from conftest import latin_hypercube, true_model, write_training_data
-from gpbayestools.emulator_sklearn import EmulatorSklearn
+
 from gpbayestools.emulator_hetgp import EmulatorHetGP
+from gpbayestools.emulator_sklearn import EmulatorSklearn
 from gpbayestools.emulator_sparse_gp import EmulatorSparseGP
 
 warnings.filterwarnings("ignore", module="sklearn")
@@ -65,7 +65,7 @@ def test_noise_covariance(trained, test_points):
     mean_noise, cov_noise = emu.predict(test_points, include_noise=True)
     np.testing.assert_array_equal(mean_latent, mean_noise)
     noise = cov_noise - cov_latent
-    for n, c in zip(noise, cov_noise):
+    for n, c in zip(noise, cov_noise, strict=True):
         # the noise covariance is positive semi-definite
         assert np.linalg.eigvalsh(n).min() > -1e-8 * np.abs(c).max()
     if name in ("EmulatorSklearn", "hetGPy", "PCGP"):
@@ -193,5 +193,5 @@ def test_legacy_attribute_names(trained, test_points):
     legacy = type(emu).__new__(type(emu))
     legacy.__setstate__(state)
     assert "logTrafo_" not in legacy.__dict__
-    for a, b in zip(legacy.predict(test_points), emu.predict(test_points)):
+    for a, b in zip(legacy.predict(test_points), emu.predict(test_points), strict=True):
         np.testing.assert_array_equal(a, b)

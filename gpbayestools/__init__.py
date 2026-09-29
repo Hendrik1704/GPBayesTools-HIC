@@ -8,7 +8,6 @@ from pathlib import Path
 import dill
 import numpy as np
 
-
 workdir = Path(os.getenv("WORKDIR", "."))
 
 # created when it is needed (see design.py)
@@ -82,7 +81,7 @@ def load_emulator(path):
 
 def parse_model_parameter_file(parfile):
     pardict = {}
-    with open(parfile, "r") as f:
+    with open(parfile) as f:
         for line in f:
             par = line.split("#")[0].strip()
             if par == "":

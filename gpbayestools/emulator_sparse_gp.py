@@ -16,16 +16,16 @@ the MCMC.
 """
 
 import logging
-import numpy as np
 
 import jax
+import numpy as np
 
 # must be set before any JAX arrays are created
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import optax
-from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 
 from .emulator_base import EmulatorBase, check_npc, truncation_signal
 
@@ -158,7 +158,7 @@ class PCASparseGPEmulator:
     # -------------------------
     # Build variational L (Cholesky factor)
     # -------------------------
-    def build_L(self, L_unconstrained):
+    def _build_cholesky_factor(self, L_unconstrained):
         """Construct positive-definite lower triangular matrix from unconstrained params."""
         L = jnp.tril(L_unconstrained)
         raw_diag = jnp.diagonal(L, axis1=-2, axis2=-1)
@@ -176,7 +176,7 @@ class PCASparseGPEmulator:
         different initialisations."""
         return int(jax.random.randint(self.key, (), 0, 2**31 - 1))
 
-    def init_Z_maxmin(self, X):
+    def _init_inducing_maxmin(self, X):
         N, _ = X.shape
         idx = jax.random.randint(self.key, (), 0, N)
         Z = X[idx : idx + 1]
@@ -188,7 +188,7 @@ class PCASparseGPEmulator:
             min_dists = jnp.minimum(min_dists, dists_to_new)
         return Z
 
-    def init_Z_kmeans(self, X):
+    def _init_inducing_kmeans(self, X):
         kmeans = KMeans(self.M, n_init=10, random_state=self._numpy_seed()).fit(
             np.array(X)
         )
@@ -196,18 +196,18 @@ class PCASparseGPEmulator:
         Z += 0.01 * jax.random.normal(self.key, Z.shape)
         return Z
 
-    def init_Z_kmeans_pp(self, X):
+    def _init_inducing_kmeans_pp(self, X):
         kmeans = KMeans(
             self.M, init="k-means++", n_init=1, random_state=self._numpy_seed()
         ).fit(np.array(X))
         return jnp.array(kmeans.cluster_centers_)
 
-    def init_Z_random(self, X):
+    def _init_inducing_random(self, X):
         N = X.shape[0]
         idx = jax.random.choice(self.key, N, (self.M,), replace=False)
         return X[idx]
 
-    def init_Z_sobol(self, X):
+    def _init_inducing_sobol(self, X):
         from scipy.stats import qmc
 
         sampler = qmc.Sobol(d=X.shape[1], scramble=True, seed=self._numpy_seed())
@@ -509,15 +509,15 @@ class PCASparseGPEmulator:
             )
 
         if self.init_strategy == "maxmin":
-            Z = self.init_Z_maxmin(Xn)
+            Z = self._init_inducing_maxmin(Xn)
         elif self.init_strategy == "kmeans":
-            Z = self.init_Z_kmeans(Xn)
+            Z = self._init_inducing_kmeans(Xn)
         elif self.init_strategy == "kmeans_pp":
-            Z = self.init_Z_kmeans_pp(Xn)
+            Z = self._init_inducing_kmeans_pp(Xn)
         elif self.init_strategy == "random":
-            Z = self.init_Z_random(Xn)
+            Z = self._init_inducing_random(Xn)
         elif self.init_strategy == "sobol":
-            Z = self.init_Z_sobol(Xn)
+            Z = self._init_inducing_sobol(Xn)
         else:
             raise ValueError(f"Unknown init_strategy: {self.init_strategy}")
 
@@ -567,7 +567,7 @@ class PCASparseGPEmulator:
             Kxz = self.kernel(Xb, Z, p)
             A_half = jax.scipy.linalg.solve_triangular(Lz, Kxz.T, lower=True)
             m = p["m"]
-            L = self.build_L(p["L_unconstrained"])
+            L = self._build_cholesky_factor(p["L_unconstrained"])
             base_var = self.kernel_diag(Xb, p)
             qdiag = jnp.sum(A_half**2, axis=0)
 
@@ -663,7 +663,7 @@ class PCASparseGPEmulator:
         key = self.key
 
         if verbose:
-            logger.info(f"\nTraining progress:")
+            logger.info("\nTraining progress:")
             if early_stopping:
                 logger.info(
                     f"Early stopping: patience={patience}, "
@@ -911,7 +911,7 @@ class PCASparseGPEmulator:
         # covariance Cov(f(x_a), f(x_b)) for a≠b (needed for active learning / BALD).
 
         m = p["m"]
-        L = self.build_L(p["L_unconstrained"])
+        L = self._build_cholesky_factor(p["L_unconstrained"])
         base_var = self.kernel_diag(Xn, p)
 
         def pc_predict(i):
@@ -1495,7 +1495,7 @@ class EmulatorSparseGP(EmulatorBase):
         X = self.design_points[event_mask, :]
         Y = self.model_data[event_mask, :]
         Y_err = self.model_data_err[event_mask, :]
-        logger.info("Train sparse GP with {} training points ...".format(X.shape[0]))
+        logger.info(f"Train sparse GP with {X.shape[0]} training points ...")
         # emulators saved with older versions store the argument as n_pc_
         npc = self.npc
 

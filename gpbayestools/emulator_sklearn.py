@@ -9,11 +9,11 @@ and `Gaussian process regression
 """
 
 import logging
+
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.gaussian_process import GaussianProcessRegressor, kernels
 from sklearn.preprocessing import StandardScaler
-from sklearn.gaussian_process import GaussianProcessRegressor as GPR
-from sklearn.gaussian_process import kernels
 
 from .emulator_base import EmulatorBase, check_npc, number_of_pcs, truncation_signal
 
@@ -133,8 +133,8 @@ class EmulatorSklearn(EmulatorBase):
         Z = self._pca_of_all_data()
         return (self.design_points, Z.T)
 
-    def train_emulator(self, eventMask, kernel_type="RBF"):
-        data_to_use = self.model_data[eventMask, :]
+    def train_emulator(self, event_mask, kernel_type="RBF"):
+        data_to_use = self.model_data[event_mask, :]
         # Standardize the input data. New scaler and PCA objects are used,
         # so that the previously trained ones are not modified.
         self.scaler_ = StandardScaler()
@@ -144,7 +144,7 @@ class EmulatorSklearn(EmulatorBase):
         if self.perform_no_pca:
             logger.info("Skipping PCA. Using raw standardized data for GP training ...")
             Z = standardized_data
-            logger.info("Standardized data shape: {}".format(Z.shape))
+            logger.info(f"Standardized data shape: {Z.shape}")
         else:
             logger.info("Standardizing data and performing PCA ...")
             # Transform data with PCA. Use the first
@@ -158,15 +158,13 @@ class EmulatorSklearn(EmulatorBase):
             Z = Z[:, : self.npc_]
 
             logger.info(
-                "{} PCs explain {:.5f} of variance".format(
-                    self.npc_, self.pca_.explained_variance_ratio_[: self.npc_].sum()
-                )
+                f"{self.npc_} PCs explain {self.pca_.explained_variance_ratio_[: self.npc_].sum():.5f} of variance"
             )
 
-        nev, nobs = self.model_data[eventMask, :].shape
-        logger.info("Train GP emulators with {} training points ...".format(nev))
+        nev, nobs = self.model_data[event_mask, :].shape
+        logger.info(f"Train GP emulators with {nev} training points ...")
 
-        design_points = self.design_points[eventMask, :]
+        design_points = self.design_points[event_mask, :]
 
         # Define kernel (covariance function):
         # Gaussian correlation (RBF) plus a noise term.
@@ -181,7 +179,7 @@ class EmulatorSklearn(EmulatorBase):
                 length_scale=ptp, length_scale_bounds=np.outer(ptp, (1e-3, 1e5)), nu=1.5
             )
         else:
-            raise ValueError("Unknown kernel type: {}".format(kernel_type))
+            raise ValueError(f"Unknown kernel type: {kernel_type}")
 
         # homoscedastic noise kernel
         hom_white_kern = kernels.WhiteKernel(
@@ -191,7 +189,7 @@ class EmulatorSklearn(EmulatorBase):
 
         # Fit a GP (optimize the kernel hyperparameters) to each PC.
         self.gps_ = [
-            GPR(
+            GaussianProcessRegressor(
                 kernel=kernel,
                 alpha=self.alpha,
                 n_restarts_optimizer=self.n_restarts,
@@ -200,22 +198,16 @@ class EmulatorSklearn(EmulatorBase):
             ).fit(design_points, z)
             for z in Z.T
         ]
-        gpScores = []
+        gp_scores = []
         for i, gp in enumerate(self.gps_):
-            gpScores.append(gp.score(design_points, Z.T[i]))
-        logger.info("GP scores: {}".format(gpScores))
+            gp_scores.append(gp.score(design_points, Z.T[i]))
+        logger.info(f"GP scores: {gp_scores}")
 
         if not self.perform_no_pca:
             for n, gp in enumerate(self.gps_):
                 evr = self.pca_.explained_variance_ratio_[n]
                 logger.info(
-                    "GP {}: {:.5f} of variance, LML = {:.5g}, Score = {:.2f}, kernel: {}".format(
-                        n,
-                        evr,
-                        gp.log_marginal_likelihood_value_,
-                        gpScores[n],
-                        gp.kernel_,
-                    )
+                    f"GP {n}: {evr:.5f} of variance, LML = {gp.log_marginal_likelihood_value_:.5g}, Score = {gp_scores[n]:.2f}, kernel: {gp.kernel_}"
                 )
 
         if not self.perform_no_pca:
@@ -256,7 +248,7 @@ class EmulatorSklearn(EmulatorBase):
             # part is used for predictions of the model function
             # (include_noise=False).
             scale = self.scaler_.scale_
-            err_std = self.model_data_err[eventMask, :] / scale
+            err_std = self.model_data_err[event_mask, :] / scale
             noise_std = np.diag(np.mean(err_std**2, axis=0))
             trunc_std = self._cov_trunc / np.outer(scale, scale)
             self._cov_trunc_signal = truncation_signal(trunc_std, noise_std) * np.outer(
@@ -305,7 +297,7 @@ class EmulatorSklearn(EmulatorBase):
         gp_mean = [gp.predict(X, return_cov=return_cov) for gp in self.gps_]
 
         if return_cov:
-            gp_mean, gp_cov = zip(*gp_mean)
+            gp_mean, gp_cov = zip(*gp_mean, strict=True)
 
         if not self.perform_no_pca:
             mean = self._inverse_transform(

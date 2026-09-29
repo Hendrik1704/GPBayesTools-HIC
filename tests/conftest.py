@@ -34,7 +34,7 @@ def write_param_file(path, n_params=N_PARAMS):
     with open(path, "w") as f:
         f.write("# test parameters\n\n")
         for name in names:
-            f.write("{}: {}, 0.0, 1.0\n".format(name, name))
+            f.write(f"{name}: {name}, 0.0, 1.0\n")
     return str(path)
 
 

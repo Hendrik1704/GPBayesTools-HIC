@@ -8,8 +8,9 @@ and ``predict(X, return_cov=True)``.
 """
 
 import logging
-import numpy as np
 import pickle
+
+import numpy as np
 
 from . import keep_trained_state, parse_model_parameter_file
 
@@ -21,15 +22,15 @@ def check_npc(npc):
     PCs) or a float in (0, 1) (fraction of the explained variance)."""
     if isinstance(npc, (int, np.integer)) and not isinstance(npc, bool):
         if npc < 1:
-            raise ValueError("npc must be >= 1, got {}".format(npc))
+            raise ValueError(f"npc must be >= 1, got {npc}")
     elif isinstance(npc, (float, np.floating)):
         if not 0 < npc < 1:
             raise ValueError(
                 "A float npc is the fraction of the explained variance and "
-                "must be in (0, 1), got {}".format(npc)
+                f"must be in (0, 1), got {npc}"
             )
     else:
-        raise TypeError("npc must be an int or a float, got {!r}".format(npc))
+        raise TypeError(f"npc must be an int or a float, got {npc!r}")
 
 
 def number_of_pcs(npc, explained_variance_ratio):
@@ -41,9 +42,7 @@ def number_of_pcs(npc, explained_variance_ratio):
         n = np.searchsorted(np.cumsum(explained_variance_ratio), npc, side="right") + 1
         return int(min(n, n_available))
     if npc > n_available:
-        logger.warning(
-            "Only {} PCs available, using npc = {}".format(n_available, n_available)
-        )
+        logger.warning(f"Only {n_available} PCs available, using npc = {n_available}")
     return int(min(npc, n_available))
 
 
@@ -113,8 +112,8 @@ class EmulatorBase:
         self.nparameters = self.design_points.shape[1]
         if self.nparameters != len(self.pardict):
             raise ValueError(
-                "The training data have {} parameters, but the parameter file "
-                "{} has {}".format(self.nparameters, parameter_file, len(self.pardict))
+                f"The training data have {self.nparameters} parameters, but the parameter file "
+                f"{parameter_file} has {len(self.pardict)}"
             )
 
     # attributes of the emulators saved with versions < 3.0.0 and their
@@ -157,43 +156,39 @@ class EmulatorBase:
             np.abs(temp_data[nonzero, 1] / temp_data[nonzero, 0]), initial=0.0
         )
 
-    def _load_training_data_pickle(self, dataFile):
+    def _load_training_data_pickle(self, data_file):
         """This function reads in training data sets at every sample point"""
-        logger.info("loading training data from {} ...".format(dataFile))
+        logger.info(f"loading training data from {data_file} ...")
         self.model_data = []
         self.model_data_err = []
         self.design_points = []
-        with open(dataFile, "rb") as fp:
-            dataDict = pickle.load(fp)
+        with open(data_file, "rb") as fp:
+            data_dict = pickle.load(fp)
 
         # Sort keys in ascending order
-        sorted_event_ids = sorted(dataDict.keys(), key=lambda x: int(x))
+        sorted_event_ids = sorted(data_dict.keys(), key=lambda x: int(x))
 
         discarded_points = 0
         for event_id in sorted_event_ids:
-            temp_data = dataDict[event_id]["obs"].transpose()
+            temp_data = data_dict[event_id]["obs"].transpose()
             if not np.all(np.isfinite(temp_data[:, 0])):
-                logger.info(
-                    "Discard Parameter {}, non-finite observables".format(event_id)
-                )
+                logger.info(f"Discard Parameter {event_id}, non-finite observables")
                 discarded_points += 1
                 continue
             if self.log_trafo and np.any(temp_data[:, 0] <= 0):
                 raise ValueError(
                     "log_trafo requires positive observables, but "
-                    "parameter point {} has values <= 0".format(event_id)
+                    f"parameter point {event_id} has values <= 0"
                 )
             if self.max_rel_uncertainty_data is not None:
-                statErrMax = self._max_rel_error(temp_data)
-                if statErrMax > self.max_rel_uncertainty_data:
+                stat_err_max = self._max_rel_error(temp_data)
+                if stat_err_max > self.max_rel_uncertainty_data:
                     logger.info(
-                        "Discard Parameter {}, stat err = {:.2f}".format(
-                            event_id, statErrMax
-                        )
+                        f"Discard Parameter {event_id}, stat err = {stat_err_max:.2f}"
                     )
                     discarded_points += 1
                     continue
-            self.design_points.append(dataDict[event_id]["parameter"])
+            self.design_points.append(data_dict[event_id]["parameter"])
             if not self.log_trafo:
                 self.model_data.append(temp_data[:, 0])
                 self.model_data_err.append(temp_data[:, 1])
@@ -202,17 +197,13 @@ class EmulatorBase:
                 self.model_data.append(np.log(temp_data[:, 0]))
                 self.model_data_err.append(np.abs(temp_data[:, 1] / temp_data[:, 0]))
         if len(self.model_data) == 0:
-            raise ValueError(
-                "All training points in {} were discarded".format(dataFile)
-            )
+            raise ValueError(f"All training points in {data_file} were discarded")
         self.design_points = np.array(self.design_points)
         self.model_data = np.array(self.model_data)
         self.model_data_err = np.nan_to_num(np.abs(np.array(self.model_data_err)))
         logger.info("All training data are loaded.")
         logger.info(
-            "Training dataset size: {}, discarded points: {}".format(
-                len(self.model_data), discarded_points
-            )
+            f"Training dataset size: {len(self.model_data)}, discarded points: {discarded_points}"
         )
 
     def train_emulator_auto_mask(self, **train_kwargs):
@@ -260,7 +251,7 @@ class EmulatorBase:
         samples = np.stack(
             [
                 rng.multivariate_normal(m, c, size=n_samples, method="eigh")
-                for m, c in zip(np.asarray(mean), np.asarray(cov))
+                for m, c in zip(np.asarray(mean), np.asarray(cov), strict=True)
             ]
         )
         if back_transform:
@@ -273,9 +264,7 @@ class EmulatorBase:
         random_points is True."""
         if not 0 <= number_test_points < self.nev:
             raise ValueError(
-                "number_test_points must be between 0 and {}, got {}".format(
-                    self.nev - 1, number_test_points
-                )
+                f"number_test_points must be between 0 and {self.nev - 1}, got {number_test_points}"
             )
         if random_points:
             rng = np.random.default_rng(seed)

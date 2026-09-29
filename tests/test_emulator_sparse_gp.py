@@ -20,7 +20,6 @@ Tests covered
 Run with ``python -m pytest tests/test_emulator_sparse_gp.py``.
 """
 
-import os
 import pickle
 import sys
 
@@ -29,14 +28,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-# Resolve the project root (one level up from tests/)
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-sys.path.insert(0, PROJECT_ROOT)
-
 from gpbayestools.emulator_sparse_gp import (
+    EmulatorSparseGP,
     PCASparseGPEmulator,
     PCASparseGPEnsemble,
-    EmulatorSparseGP,
 )
 
 

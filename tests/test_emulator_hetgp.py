@@ -14,7 +14,6 @@ The emulator is trained on these data and tested for
 Run with ``python -m pytest tests/test_emulator_hetgp.py``.
 """
 
-import os
 import pickle
 import sys
 
@@ -22,9 +21,6 @@ import dill
 import numpy as np
 import pytest
 
-# Resolve the project root (one level up from tests/)
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-sys.path.insert(0, PROJECT_ROOT)
 from gpbayestools.emulator_hetgp import EmulatorHetGP
 
 # ── Configuration ────────────────────────────────────────────────────

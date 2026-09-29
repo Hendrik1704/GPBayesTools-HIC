@@ -15,9 +15,9 @@ import pickle
 import dill
 import numpy as np
 import pytest
+from conftest import LinearEmulator, write_param_file
 from scipy.stats import multivariate_normal
 
-from conftest import LinearEmulator, write_param_file
 from gpbayestools.bayesian_analysis import BayesianAnalysis, mvn_loglike
 
 A = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, -1.0]])
@@ -47,7 +47,7 @@ def files(tmp_path):
     emu_files = []
     for i, rows in enumerate((slice(0, 2), slice(2, 4))):
         emu = LinearEmulator(A[rows], B[rows], EMU_VAR * np.eye(2))
-        path = tmp_path / "emu{}.dill".format(i)
+        path = tmp_path / f"emu{i}.dill"
         with open(path, "wb") as f:
             dill.dump(emu, f)
         emu_files.append(str(path))
@@ -151,7 +151,7 @@ def test_emcee_seed(files):
     chains = []
     for i in range(2):
         c = BayesianAnalysis(
-            mcmc_path=files["mcmc"].replace("chain", "chain{}".format(i)),
+            mcmc_path=files["mcmc"].replace("chain", f"chain{i}"),
             expdata_path=files["exp"],
             model_parafile=files["par"],
         )

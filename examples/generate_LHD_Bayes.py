@@ -4,8 +4,9 @@ from os import path
 
 # Add the parent directory to sys.path
 sys.path.insert(0, path.abspath("../"))
-from gpbayestools.design import Design
 from pathlib import Path
+
+from gpbayestools.design import Design
 
 # show the messages of gpbayestools, e.g. the seed of the design
 logging.basicConfig(level=logging.INFO)

@@ -21,7 +21,6 @@ parameter file and writes the input files for the physics model, see
 """
 
 import logging
-from pathlib import Path
 import subprocess
 from datetime import datetime
 
@@ -32,17 +31,14 @@ from . import cachedir, parse_model_parameter_file
 logger = logging.getLogger(__name__)
 
 
-def _generate_with_R(method, r_code, npoints, ndim, seed):
+def _generate_with_r(method, r_code, npoints, ndim, seed):
     """
     Run `r_code` in R and return the design it writes to stdout as an array.
     The design is cached in cachedir/lhs/<method>/.
 
     """
     cachefile = (
-        cachedir
-        / "lhs"
-        / method
-        / "npoints{}_ndim{}_seed{}.npy".format(npoints, ndim, seed)
+        cachedir / "lhs" / method / f"npoints{npoints}_ndim{ndim}_seed{seed}.npy"
     )
 
     if cachefile.exists():
@@ -53,7 +49,9 @@ def _generate_with_R(method, r_code, npoints, ndim, seed):
     proc = subprocess.run(
         ["R", "--slave"], input=r_code.encode(), stdout=subprocess.PIPE, check=True
     )
-    lhs = np.array([l.split() for l in proc.stdout.decode().splitlines()], dtype=float)
+    lhs = np.array(
+        [line.split() for line in proc.stdout.decode().splitlines()], dtype=float
+    )
 
     cachefile.parent.mkdir(parents=True, exist_ok=True)
     np.save(cachefile, lhs)
@@ -73,13 +71,13 @@ def generate_maximin_lhs(npoints, ndim, seed):
         ndim,
         seed,
     )
-    return _generate_with_R(
+    return _generate_with_r(
         "maximin",
-        """
+        f"""
         library('lhs')
-        set.seed({})
-        write.table(maximinLHS({}, {}), col.names=FALSE, row.names=FALSE)
-        """.format(seed, npoints, ndim),
+        set.seed({seed})
+        write.table(maximinLHS({npoints}, {ndim}), col.names=FALSE, row.names=FALSE)
+        """,
         npoints,
         ndim,
         seed,
@@ -99,13 +97,13 @@ def generate_maxpro_lhs(npoints, ndim, seed):
         ndim,
         seed,
     )
-    lhs = _generate_with_R(
+    lhs = _generate_with_r(
         "maxpro",
-        """
+        f"""
         library(MaxPro)
-        set.seed({})
-        write.table(MaxProRunOrder(MaxProLHD({}, {})$Design)$Design, col.names=FALSE, row.names=FALSE)
-        """.format(seed, npoints, ndim),
+        set.seed({seed})
+        write.table(MaxProRunOrder(MaxProLHD({npoints}, {ndim})$Design)$Design, col.names=FALSE, row.names=FALSE)
+        """,
         npoints,
         ndim,
         seed,
@@ -154,9 +152,7 @@ class Design:
     ):
         if method not in design_generators:
             raise ValueError(
-                "Unknown design method '{}', use one of {}".format(
-                    method, list(design_generators)
-                )
+                f"Unknown design method '{method}', use one of {list(design_generators)}"
             )
         self.pardict = parse_model_parameter_file(parfile)
         self.type = "validation" if validation else "main"
@@ -172,12 +168,12 @@ class Design:
             # R's set.seed() requires an integer, positive 32-bit seeds are
             # used here
             seed = int(datetime.now().timestamp() * 1000) % (2**31 - 1)
-            logger.info("seed = {}".format(seed))
+            logger.info(f"seed = {seed}")
         self.seed = seed
 
         self.min = []
         self.max = []
-        for par, val in self.pardict.items():
+        for val in self.pardict.values():
             self.min.append(val[1])
             self.max.append(val[2])
         self.min = np.array(self.min)
@@ -200,11 +196,11 @@ class Design:
         outdir = basedir / self.type
         outdir.mkdir(parents=True, exist_ok=True)
 
-        for point, row in zip(self.points, self.array):
+        for point, row in zip(self.points, self.array, strict=True):
             filepath = outdir / point
             with filepath.open("w") as f:
                 idx = 0
                 for ikey in self.pardict.keys():
-                    f.write("{} {}\n".format(ikey, row[idx]))
+                    f.write(f"{ikey} {row[idx]}\n")
                     idx += 1
                 logger.debug("wrote %s", filepath)

@@ -6,11 +6,13 @@ Uses the `Gaussian process regression with heteroskedastic emulator
 """
 
 import logging
-import numpy as np
 import pickle
+
+import numpy as np
 from hetgpy import hetGP, homGP
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+
 from .emulator_base import EmulatorBase, check_npc, truncation_signal
 
 logger = logging.getLogger(__name__)
@@ -74,9 +76,7 @@ class EmulatorHetGP(EmulatorBase):
         npc = self.npc
         if isinstance(npc, (int, np.integer)) and npc > min(data.shape):
             logger.warning(
-                "Only {} PCs available, using npc = {}".format(
-                    min(data.shape), min(data.shape)
-                )
+                f"Only {min(data.shape)} PCs available, using npc = {min(data.shape)}"
             )
             npc = min(data.shape)
         self.output_pca_ = PCA(n_components=npc)
@@ -84,9 +84,7 @@ class EmulatorHetGP(EmulatorBase):
         self.npc_ = self.output_pca_.n_components_
         self._compute_truncation_cov(data, self.model_data_pca_, data_err)
         logger.info(
-            "Output PCA uses {} PCs to explain {:.1f}% of the variance ...".format(
-                self.npc_, 100.0 * self.output_pca_.explained_variance_ratio_.sum()
-            )
+            f"Output PCA uses {self.npc_} PCs to explain {100.0 * self.output_pca_.explained_variance_ratio_.sum():.1f}% of the variance ..."
         )
 
     def _compute_truncation_cov(self, data, data_pca, data_err=None):
@@ -209,9 +207,7 @@ class EmulatorHetGP(EmulatorBase):
                 )
             self.emu_.append(model)
 
-        logger.info(
-            "Rebuilt {} GP models via warm-start (maxit={}).".format(self.npc_, maxit)
-        )
+        logger.info(f"Rebuilt {self.npc_} GP models via warm-start (maxit={maxit}).")
 
     def train_emulator(self, event_mask):
         logger.info("Performing emulator training ...")
@@ -226,9 +222,7 @@ class EmulatorHetGP(EmulatorBase):
 
         nev_train = design_points_masked.shape[0]
         logger.info(
-            "Train hetGP emulators for {} training points and {} PCs ...".format(
-                nev_train, self.npc_
-            )
+            f"Train hetGP emulators for {nev_train} training points and {self.npc_} PCs ..."
         )
 
         # Train one hetGP model per principal component of the outputs.
