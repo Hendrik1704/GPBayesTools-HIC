@@ -243,6 +243,17 @@ def test_negative_values_with_log_trafo(modified_data, param_file):
     with pytest.raises(ValueError):
         EmulatorSklearn(path, param_file, log_trafo=True)
 
+    # a point that is discarded because of its errors does not raise
+    def modify_with_errors(values, errors):
+        values[2, 0] *= -1
+        errors[2, 0] = 10 * abs(values[2, 0])
+
+    path = modified_data(modify_with_errors)
+    emu = EmulatorSklearn(
+        path, param_file, log_trafo=True, max_rel_uncertainty_data=0.1
+    )
+    assert emu.nev == 59
+
 
 def test_all_points_discarded(modified_data, param_file):
     def modify(values, errors):

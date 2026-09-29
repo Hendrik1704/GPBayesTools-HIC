@@ -249,11 +249,6 @@ class EmulatorBase:
                 )
                 n_nonfinite += 1
                 continue
-            if self.log_trafo and np.any(temp_data[:, 0] <= 0):
-                raise ValueError(
-                    "log_trafo requires positive observables, but "
-                    f"parameter point {event_id} has values <= 0"
-                )
             if self.max_rel_uncertainty_data is not None:
                 stat_err_max = self._max_rel_error(temp_data)
                 if stat_err_max > self.max_rel_uncertainty_data:
@@ -264,6 +259,12 @@ class EmulatorBase:
                     )
                     n_filtered += 1
                     continue
+            # after the error filter, which can discard such points
+            if self.log_trafo and np.any(temp_data[:, 0] <= 0):
+                raise ValueError(
+                    "log_trafo requires positive observables, but "
+                    f"parameter point {event_id} has values <= 0"
+                )
             self.design_points.append(data_dict[event_id]["parameter"])
             if not self.log_trafo:
                 self.model_data.append(temp_data[:, 0])
