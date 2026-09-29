@@ -14,7 +14,6 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process import kernels
-from sklearn.model_selection import learning_curve
 
 from .emulator_base import EmulatorBase, check_npc, number_of_pcs
 
@@ -223,44 +222,6 @@ class Emulator(EmulatorBase):
         relErr = np.mean(np.nan_to_num(self.model_data_err/self.model_data),
                          axis=0)
         return(relErr)
-
-
-    def print_learning_curve(self):
-        Z = self._pca_of_all_data()
-        # Define kernel (covariance function):
-        # Gaussian correlation (RBF) plus a noise term.
-        ptp = self.design_max - self.design_min
-        kernel = (
-            1. * kernels.RBF(
-                length_scale=ptp,
-                length_scale_bounds=np.outer(ptp, (.01, 100))
-            ) +
-            kernels.WhiteKernel(
-                noise_level=.01**2,
-                noise_level_bounds=(.001**2, 1)
-            )
-        )
-
-        design_points = self.design_points
-        
-        trainStatus = []
-        for i, z in enumerate(Z.T):
-            train_size_abs, train_scores, test_scores = learning_curve(
-                GPR(kernel=kernel, alpha=0.,
-                    copy_X_train=False),
-                design_points, z, train_sizes=[0.2, 0.4, 0.6, 0.8, 0.9]
-            )
-            output = np.array([train_size_abs, np.mean(train_scores, axis=1),
-                               np.mean(test_scores, axis=1)])
-            trainStatus.append(output.transpose())
-            logging.info("GP {}:".format(i))
-            for train_size, cv_train_scores, cv_test_scores in zip(
-                    train_size_abs, train_scores, test_scores
-            ):
-                logging.info(f"{train_size} samples were used to train the model")
-                logging.info(f"The average train accuracy is {cv_train_scores.mean():.2f}")
-                logging.info(f"The average test accuracy is {cv_test_scores.mean():.2f}")
-        return(trainStatus)
 
 
     def predict(self, X, return_cov=True):

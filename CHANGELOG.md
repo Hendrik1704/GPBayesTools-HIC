@@ -21,6 +21,7 @@ Changes that are not backward compatible:
 - Raise an error in the MCMC likelihood if the covariance matrix is not positive definite, instead of returning NaN.
 - Each sampler writes its chain to its own file derived from `mcmc_path`, e.g. `./mcmc/chain_emcee.pkl`, `./mcmc/chain_pocoMC.pkl` and `./mcmc/chain_PTLMC.pkl` (`Chain.chain_path(sampler)`), instead of all samplers overwriting `./mcmc/chain.pkl`. `compute_log_likelihood_for_chain` takes the sampler of the chain as first argument (default: the last sampler run) and writes the result next to the chain file by default.
 - `max_rel_uncertainty_data` is `None` (no filtering of the training data) by default in all emulators. Before, it was 0.1 in `Emulator`, `EmulatorBAND` and `EmulatorHETGPy`.
+- Remove `Emulator.print_learning_curve()`, which did not use the settings of the trained emulator.
 - The number of principal components is given by `npc` in all emulators except `EmulatorBAND`, where surmise chooses it: an int for the number of PCs or a float in (0, 1) for the fraction of the explained variance. `EmulatorSparseGP` used `n_pc`, and `EmulatorHETGPy` always used 99% of the variance (still the default).
 - Remove `predict_test_emu_errors` from `EmulatorBAND` and `EmulatorHETGPy`, `predict` gives the same results.
 - Remove the `extra_std` option from the `predict` functions of all emulators and from the MCMC. It was always 0 in the MCMC and ignored or treated differently by the emulators.
@@ -33,7 +34,7 @@ Changes that are not backward compatible:
 
 Bug fixes:
 - Fix `Emulator.predict` with `return_cov=True`, which failed with NumPy 2 (`np.array(..., copy=False)`). The same applies to the log prior, likelihood and posterior in `mcmc.py` for list inputs.
-- `Emulator.outputPCAvsParam()` and `Emulator.print_learning_curve()` no longer overwrite the training data with standardized values.
+- `Emulator.outputPCAvsParam()` no longer overwrites the training data with standardized values.
 - Fix the covariance of `Emulator` with `perform_no_PCA=True`, which was returned in standardized units instead of observable units.
 - Fix `Emulator.sample_y`: the PCs are sampled independently and reproducibly with `random_state`, and the samples are returned in physical space if `exp_and_cov_diagonal` is set.
 - Fix the `PCGPwM` option of `EmulatorBAND`, which previously trained a `PCGPwImpute` emulator.
@@ -46,7 +47,7 @@ Bug fixes:
 - Add the variance of the PCs discarded by surmise to the `EmulatorBAND` covariance. surmise's `covx()` does not contain it, which underestimated the emulator uncertainty, strongly for PCGP with `logTrafo=True`.
 - `EmulatorBAND.predict` with `exp_and_cov_diagonal=True` works for a single 1D parameter vector.
 - `Emulator` limits `npc` to the number of available PCs instead of failing when fewer observables or training points than `npc` are given.
-- `Emulator.outputPCAvsParam()` and `Emulator.print_learning_curve()` no longer refit the scaler and PCA of the trained emulator, which changed later predictions.
+- `Emulator.outputPCAvsParam()` no longer refits the scaler and PCA of the trained emulator, which changed later predictions.
 - Raise a `ValueError` in `Emulator` for unknown kernel types.
 - Training points with NaN or infinite observables are discarded when loading the training data in all emulators. Previously they passed the relative-error filter.
 - The SVGP training caps observation errors that are more than 1e5 times larger than the spread of the training data. They overflowed in float32 and made the training fail. `nan_patience` now counts consecutive NaN steps only.
