@@ -195,6 +195,11 @@ class EmulatorBase:
         """Rename the attributes of emulators saved with versions < 3.0.0."""
         if "logTrafo_" not in state:
             return state
+        if state.get("parameterTrafoPCA_", False):
+            raise ValueError(
+                "The emulator was trained with parameterTrafoPCA=True, which was "
+                "removed in version 3.0.0. Use version v2.0.1 to load it."
+            )
         state = dict(state)
         renames = [
             ("logTrafo_", "log_trafo"),

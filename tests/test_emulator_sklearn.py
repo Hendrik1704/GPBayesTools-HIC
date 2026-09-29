@@ -303,6 +303,15 @@ def test_load_emulator_saved_with_old_package_name(emulator, test_points, tmp_pa
         np.testing.assert_array_equal(a, b)
 
 
+def test_old_emulator_with_parameter_pca_raises():
+    # the parameterTrafoPCA option of versions < 3.0.0 was removed
+    state = {"logTrafo_": False, "parameterTrafoPCA_": True}
+    with pytest.raises(ValueError, match="parameterTrafoPCA"):
+        EmulatorSklearn._migrate_legacy_state(state)
+    state["parameterTrafoPCA_"] = False
+    assert EmulatorSklearn._migrate_legacy_state(state)["log_trafo"] is False
+
+
 def test_non_finite_errors_are_set_to_zero(modified_data, param_file):
     def modify(values, errors):
         errors[3, 2] = np.nan
