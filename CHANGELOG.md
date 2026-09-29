@@ -20,7 +20,8 @@ Changes that are not backward compatible:
 - Remove the `extra_std` option from the `predict` functions of all emulators and from the MCMC. It was always 0 in the MCMC and ignored or treated differently by the emulators.
 - `EmulatorSparseGP` handles `logTrafo` like the other emulators: by default, `predict` returns the mean and covariance in log space. The new option `exp_and_cov_diagonal=True` returns the predictions in the original scale, keeping the correlations between the observables. Previously, the predictions were always transformed back. Emulators saved with older versions keep the old behavior.
 - The validation functions `testEmulatorErrors` and `testEmulatorErrorsWithTrainingPoints` no longer change the trained emulator. Previously, the emulator was left trained on the reduced training set. The argument `nTestPoints` of `Emulator` is renamed to `number_test_points` as in the other emulators, and `EmulatorSparseGP` also has `testEmulatorErrorsWithTrainingPoints`.
-- All emulators raise a `ValueError` for negative observables with `logTrafo=True`. Previously `log(|x|)` was used, so the sign was lost.
+- All emulators raise a `ValueError` for observables <= 0 with `logTrafo=True`. Previously `log(|x|)` was used, so the sign was lost, and zeros became `log(1e-30)`.
+- `Chain.loadEmulator` replaces previously loaded emulators instead of appending to them, and checks that the numbers of observables of the emulators add up to the number of experimental data points. The experimental data file must contain exactly one data set.
 - The sparse GP emulator computes in 64-bit floats. Importing `src.emulator_sparseGP` enables `jax_enable_x64` for the whole Python process.
 - With mini-batches, the SVGP training returns the parameters with the best exponential moving average of the ELBO instead of the best single-batch ELBO, which selected the parameters of the luckiest batch.
 
@@ -48,6 +49,9 @@ Bug fixes:
 - PTLMC draws at least one starting point per chain.
 - `compute_log_likelihood_for_chain` creates its output directory before the computation.
 - Empty lines in parameter files are skipped, and keys are stripped.
+- Observables that are exactly zero are ignored in the relative-error filter of the training data, instead of discarding the whole training point.
+- `generate_posterior_clusters.py` no longer overwrites its input file when the chain file name does not contain `.pkl`.
+- Unpickling or copying an untrained `EmulatorHETGPy` no longer trains it.
 - The default seed of `Design` is an integer from the current time (stored in `Design.seed`). The float timestamp was truncated by R, so the printed seed was not the one used.
 - Fix the chain loading and the error bars in the `ClosureTest` notebook, and the log-likelihood output in the `RunBayesianAnalysis` notebook.
 
