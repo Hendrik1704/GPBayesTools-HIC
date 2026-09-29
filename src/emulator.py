@@ -68,6 +68,7 @@ class Emulator:
         self.design_min = np.array(self.design_min)
         self.design_max = np.array(self.design_max)
 
+        self.npc_requested_ = npc
         self.npc = npc
         self.nrestarts = nrestarts
         self.nev, self.nobs = self.model_data.shape
@@ -102,7 +103,14 @@ class Emulator:
             logging.info('Standardizing data and performing PCA ...')
             # Transform data with PCA. Use the first
             # `npc` components but save the full PC transformation for later.
-            Z = self.pca.fit_transform(standardized_data)[:, :self.npc]
+            Z = self.pca.fit_transform(standardized_data)
+            # the PCA has at most min(n_training_points, nobs) components
+            self.npc = min(getattr(self, 'npc_requested_', self.npc),
+                           self.pca.n_components_)
+            if self.npc < getattr(self, 'npc_requested_', self.npc):
+                logging.warning('Only {} PCs available, using npc = {}'.format(
+                    self.pca.n_components_, self.npc))
+            Z = Z[:, :self.npc]
 
             logging.info('{} PCs explain {:.5f} of variance'.format(
                 self.npc, self.pca.explained_variance_ratio_[:self.npc].sum()
