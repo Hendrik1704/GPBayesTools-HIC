@@ -198,22 +198,20 @@ class Chain:
         return modelPred, modelPredCov
 
 
+    def _inside(self, X):
+        """True for the points in X inside the parameter ranges (including
+        the boundaries, as the uniform prior of pocoMC)."""
+        return np.all((X >= self.min) & (X <= self.max), axis=-1)
+
+
     def log_prior(self, X):
         """
-        Evaluate the prior at `X`.
+        Evaluate the (normalized, uniform) prior at `X`.
 
         """
         X = np.atleast_2d(np.asarray(X))
-
-        #not normalized
-        #lp = np.zeros(X.shape[0])
-
-        #normalize the prior
         lp = np.log( np.ones(X.shape[0]) / self.prior_volume_ )
-
-        inside = np.all((X > self.min) & (X < self.max), axis=1)
-        lp[~inside] = -np.inf
-
+        lp[~self._inside(X)] = -np.inf
         return lp
 
 
@@ -223,7 +221,7 @@ class Chain:
         """
         X = np.atleast_2d(np.asarray(X))
         lp = np.zeros(X.shape[0])
-        inside = np.all( (X > self.min) & (X < self.max), axis=1)
+        inside = self._inside(X)
         if not finite:
             lp[~inside] = -np.inf
         elif finite:
@@ -257,7 +255,7 @@ class Chain:
             if k % 100 == 0:
                 logging.info("Evaluating log_likelihood at point {}".format(k))
             Xk = np.atleast_2d(np.asarray(X[k]))
-            inside = np.all( (Xk > self.min) & (Xk < self.max))
+            inside = bool(self._inside(Xk)[0])
             lp[k] = -np.inf if not inside else 0.0
 
             nsamples = 1 if inside else 0
@@ -278,30 +276,10 @@ class Chain:
 
     def log_posterior(self, X):
         """
-        Evaluate the posterior at `X`.
+        Evaluate the posterior at `X`, the sum of the log prior and the log
+        likelihood.
         """
-        X = np.atleast_2d(np.asarray(X))
-
-        lp = np.zeros(X.shape[0])
-
-        inside = np.all((X > self.min) & (X < self.max), axis=1)
-        lp[~inside] = -np.inf
-
-        nsamples = np.count_nonzero(inside)
-        if nsamples > 0:
-            model_Y, model_cov = self._predict(X[inside])
-
-            # allocate difference (model - expt) and covariance arrays
-            dY = np.empty([nsamples, self.nobs])
-            cov = np.empty([nsamples, self.nobs, self.nobs])
-            dY = model_Y - self.expdata
-            # add expt cov to model cov
-            cov = model_cov + self.expdata_cov
-
-            # compute log likelihood at each point
-            lp[inside] += list(map(mvn_loglike, dY, cov))
-
-        return lp
+        return self.log_prior(X) + self.log_likelihood(X)
 
 
     def _read_in_exp_data_pickle(self, filepath):
