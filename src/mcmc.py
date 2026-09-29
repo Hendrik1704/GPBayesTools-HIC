@@ -102,7 +102,15 @@ class Chain:
     to be the same at all beam energies.  It is assumed (NOT checked) that all
     system designs have the same parameters and ranges (except for the norms).
 
+    Each sampler writes its chain to its own file, which is derived from
+    `mcmc_path` by adding the name of the sampler, e.g. for the default
+    ``./mcmc/chain.pkl``: ``./mcmc/chain_emcee.pkl``,
+    ``./mcmc/chain_pocoMC.pkl`` and ``./mcmc/chain_PTLMC.pkl``
+    (see :meth:`chain_path`).
+
     """
+    samplers = ('emcee', 'pocoMC', 'PTLMC')
+
     def __init__(self, mcmc_path="./mcmc/chain.pkl",
                  expdata_path="./exp_data.dat",
                  model_parafile="./model.dat"
@@ -111,7 +119,7 @@ class Chain:
         self.mcmc_path = Path(mcmc_path)
         self.mcmc_path.parent.mkdir(parents=True, exist_ok=True)
         logging.info('Final Markov Chain results will be saved in {}'.format(
-            self.mcmc_path)
+            ', '.join(str(self.chain_path(s)) for s in self.samplers))
         )
 
         # load the model parameter file
@@ -142,6 +150,8 @@ class Chain:
         self.nobs = self.expdata.shape[1]
         self.emuList = []
         self.chain = False
+        # sampler that generated self.chain
+        self.chain_sampler = None
 
 
     def loadEmulator(self, emulatorPathList):
@@ -324,6 +334,17 @@ class Chain:
         return f(args)
 
 
+    def chain_path(self, sampler):
+        """
+        Path of the chain file of `sampler` ('emcee', 'pocoMC' or 'PTLMC').
+        """
+        if sampler not in self.samplers:
+            raise ValueError("Unknown sampler '{}', use one of {}".format(
+                sampler, self.samplers))
+        return self.mcmc_path.with_name('{}_{}{}'.format(
+            self.mcmc_path.stem, sampler, self.mcmc_path.suffix))
+
+
     def run_mcmc(self, nsteps=500, nburnsteps=None, nwalkers=None,
                  status=None, nthin=10, skip_initial_state_check=False):
         """
@@ -333,9 +354,10 @@ class Chain:
         Run MCMC model calibration. If the chain already exists, continue from
         the last point, otherwise burn-in and start the chain.
         """
+        chain_file = self.chain_path('emcee')
         chain_data = {}
         try:
-            with open(self.mcmc_path, 'rb') as f:
+            with open(chain_file, 'rb') as f:
                 chain_data = pickle.load(f)
         except FileNotFoundError:
             pass
@@ -356,7 +378,7 @@ class Chain:
                 raise ValueError(
                     'the chain in {} was not generated with emcee and cannot '
                     'be continued, use a different mcmc_path'.format(
-                        self.mcmc_path))
+                        chain_file))
             if nwalkers is None:
                 nwalkers = chain_data['chain'].shape[0]
             elif nwalkers != chain_data['chain'].shape[0]:
@@ -425,9 +447,11 @@ class Chain:
             chain_data['chain'] = thinedChain
             self.chain = thinedChain
 
+        self.chain_sampler = 'emcee'
+
         # Append the new data to the existing file
-        logging.info('writing chain to file')
-        with open(self.mcmc_path, 'wb') as file:
+        logging.info('writing chain to {}'.format(chain_file))
+        with open(chain_file, 'wb') as file:
             pickle.dump(chain_data, file)
 
 
@@ -721,27 +745,39 @@ class Chain:
         # This reshape should not be necessary, just done to match the format of the other MCMC
         self.chain = self.chain.reshape((nwalkers, nsteps, self.ndim))
 
-        # Write the chain to file (nwalkers, nsteps, self.ndim)
-        logging.info('Writing MCMC chains to file ...')
-        chain_data['chain'] = self.chain
+        self.chain_sampler = 'PTLMC'
 
-        # Write the chain to file
-        logging.info('Writing MCMC chains to file...')
-        with open(self.mcmc_path, 'wb') as file:
+        # Write the chain to file (nwalkers, nsteps, self.ndim)
+        chain_data['chain'] = self.chain
+        logging.info('Writing MCMC chains to {}'.format(self.chain_path('PTLMC')))
+        with open(self.chain_path('PTLMC'), 'wb') as file:
             pickle.dump(chain_data, file)
 
 
-    def compute_log_likelihood_for_chain(self, output_path="./mcmc/log_likelihood.pkl"):
+    def compute_log_likelihood_for_chain(self, sampler=None, output_path=None):
         """
-        This function computes the log likelihood for the loaded chain.
-        The log likelihood is computed for each point in the chain and stored
-        in a new pkl file.
+        This function computes the log likelihood for each point in a chain and
+        stores it in a new pkl file.
+
+        The chain of `sampler` ('emcee', 'pocoMC' or 'PTLMC') is loaded from
+        its chain file. If `sampler` is None, the chain of the last sampler run
+        with this object is used. By default, the output is written next to the
+        chain file with the suffix ``_log_likelihood``, e.g.
+        ``./mcmc/chain_emcee_log_likelihood.pkl``.
         """
-        if self.chain is False:
-            logging.info('Loading chain from {}'.format(self.mcmc_path))
-            with open(self.mcmc_path, 'rb') as f:
+        if sampler is not None:
+            logging.info('Loading chain from {}'.format(self.chain_path(sampler)))
+            with open(self.chain_path(sampler), 'rb') as f:
                 chain_data = pickle.load(f)
             self.chain = chain_data['chain']
+            self.chain_sampler = sampler
+        elif self.chain is False:
+            raise ValueError('No chain has been run with this object, specify '
+                             'the sampler of the chain to load')
+        if output_path is None:
+            chain_file = self.chain_path(self.chain_sampler)
+            output_path = chain_file.with_name(
+                chain_file.stem + '_log_likelihood' + chain_file.suffix)
         # create the output directory before the (expensive) computation
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         logging.info('Computing log likelihood for the chain...')
@@ -752,7 +788,7 @@ class Chain:
         likelihood = likelihood.reshape(self.chain.shape[:-1])
 
         # Write the log_likelihood to file
-        logging.info('Writing log_likelihood for chains to file...')
+        logging.info('Writing log_likelihood for chains to {}'.format(output_path))
         likelihood_data = {'log_likelihood': likelihood}
         with open(output_path, 'wb') as file:
             pickle.dump(likelihood_data, file)
@@ -823,9 +859,10 @@ class Chain:
         logging.info('Log evidence: {}'.format(logz))
         logging.info('Log evidence error: {}'.format(logz_err))
 
-        logging.info('Writing pocoMC chains to file...')
         self.chain = samples
+        self.chain_sampler = 'pocoMC'
         chain_data = {'chain': samples, 'logl': logl,
                         'logp': logp, 'logz': logz, 'logz_err': logz_err}
-        with open(self.mcmc_path, 'wb') as file:
+        logging.info('Writing pocoMC chains to {}'.format(self.chain_path('pocoMC')))
+        with open(self.chain_path('pocoMC'), 'wb') as file:
             pickle.dump(chain_data, file)
