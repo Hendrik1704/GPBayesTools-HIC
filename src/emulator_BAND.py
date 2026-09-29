@@ -128,6 +128,20 @@ class EmulatorBAND:
             raise ValueError("Requested method not implemented!")
 
 
+    def _full_covariance(self, gp):
+        """
+        Covariance matrices of the surmise prediction `gp` with shape
+        (ntheta, nobs, nobs). surmise's covx() only contains the variance of
+        the emulated PCs, while var() also contains the variance of the
+        discarded PCs, which is added to the diagonal here.
+        """
+        cov = np.array(gp.covx())
+        missing_var = gp.var().T - np.diagonal(cov, axis1=1, axis2=2)
+        idx = np.arange(cov.shape[1])
+        cov[:, idx, idx] += np.clip(missing_var, 0.0, None)
+        return cov
+
+
     def predict_test_emu_errors(self,X,theta):
         """
         Predict model output.
@@ -141,7 +155,7 @@ class EmulatorBAND:
         else:
             fpredmean = gp.mean()
 
-        fpredcov = gp.covx()
+        fpredcov = self._full_covariance(gp)
 
         if self.exp_and_cov_diagonal_:
             fcov = np.zeros((theta.shape[0], self.nobs, self.nobs))
@@ -172,7 +186,7 @@ class EmulatorBAND:
         else:
             fpredmean = gp.mean().T
 
-        fpredcov = gp.covx()
+        fpredcov = self._full_covariance(gp)
 
         if self.exp_and_cov_diagonal_:
             fcov = np.zeros((X.shape[0], self.nobs, self.nobs))
