@@ -176,7 +176,8 @@ class EmulatorSklearn(EmulatorBase):
             Mask of the training points to use.
         kernel_type : {"RBF", "Matern"}, default="RBF"
             Correlation kernel of the GPs: Gaussian (RBF) or Matern with
-            nu = 1.5.
+            nu = 1.5. The length scales are bounded by 1e-3 and 1e5 times the
+            parameter ranges.
 
         Raises
         ------
@@ -227,15 +228,17 @@ class EmulatorSklearn(EmulatorBase):
 
         # Define kernel (covariance function):
         # correlation kernel (RBF or Matern) plus a noise term.
+        # the length scales start at the parameter ranges and are bounded by
+        # 1e-3 and 1e5 times the ranges
         ptp = self.design_max - self.design_min
+        length_scale_bounds = np.outer(ptp, (1e-3, 1e5))
         if kernel_type == "RBF":
             corr_kern = 1.0 * kernels.RBF(
-                length_scale=ptp,
-                length_scale_bounds=np.outer(ptp, (1e-1, 1e2)),
+                length_scale=ptp, length_scale_bounds=length_scale_bounds
             )
         elif kernel_type == "Matern":
             corr_kern = 1.0 * kernels.Matern(
-                length_scale=ptp, length_scale_bounds=np.outer(ptp, (1e-3, 1e5)), nu=1.5
+                length_scale=ptp, length_scale_bounds=length_scale_bounds, nu=1.5
             )
         else:
             raise AssertionError(kernel_type)
