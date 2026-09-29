@@ -162,15 +162,13 @@ class Chain:
         logging.info("Number of Emulators: {}".format(len(self.emuList)))
 
 
-    def _predict(self, X, extra_std=0.0):
+    def _predict(self, X):
         nPreds = X.shape[0]
         modelPred = np.zeros([nPreds, self.nobs])
         modelPredCov = np.zeros([nPreds, self.nobs, self.nobs])
-        extra_std_arr = extra_std*X[:, -1]
         currIdx = 0
         for i, emu_i in enumerate(self.emuList):
-            model_Y, model_cov = emu_i.predict(
-                X, return_cov=True, extra_std=extra_std_arr)
+            model_Y, model_cov = emu_i.predict(X, return_cov=True)
             nobs_i = model_Y.shape[1]
             modelPred[:, currIdx:currIdx+nobs_i] = model_Y
             modelPredCov[:, currIdx:currIdx+nobs_i, currIdx:currIdx+nobs_i] = model_cov
@@ -211,10 +209,7 @@ class Chain:
 
         nsamples = np.count_nonzero(inside)
         if nsamples > 0:
-            # not sure why to use the last parameter for extra std
-            extra_std = 0.0*X[inside, -1]
-
-            model_Y, model_cov = self._predict(X[inside], extra_std)
+            model_Y, model_cov = self._predict(X[inside])
 
             # allocate difference (model - experiment) and covariance arrays
             dY = np.empty([nsamples, self.nobs])
@@ -245,8 +240,7 @@ class Chain:
 
             nsamples = 1 if inside else 0
             if nsamples > 0:
-                extra_std = 0.0*Xk[0,-1]
-                model_Y, model_cov = self._predict(Xk, extra_std)
+                model_Y, model_cov = self._predict(Xk)
 
                 # allocate difference (model - experiment) and covariance arrays
                 dY = np.empty([nsamples, self.nobs])
@@ -273,10 +267,7 @@ class Chain:
 
         nsamples = np.count_nonzero(inside)
         if nsamples > 0:
-            # not sure why to use the last parameter for extra std
-            extra_std = 0.0*X[inside, -1]
-
-            model_Y, model_cov = self._predict(X[inside], extra_std)
+            model_Y, model_cov = self._predict(X[inside])
 
             # allocate difference (model - expt) and covariance arrays
             dY = np.empty([nsamples, self.nobs])

@@ -372,16 +372,7 @@ def test_t10(tmp_path):
     check("predict cov diag ≥ 0",
           bool(np.all(np.diagonal(pred_cov, axis1=1, axis2=2) >= 0)))
 
-    # 4. extra_std: a scalar applies to all points, an array per point
-    extra_std = np.linspace(0.1, 0.5, n_test)
-    for es, expected in ((0.2, np.full(n_test, 0.2**2)), (extra_std, extra_std**2)):
-        _, cov_extra = emu.predict(test_par, extra_std=es)
-        added = np.diagonal(cov_extra - pred_cov, axis1=1, axis2=2)
-        check("extra_std**2 added to the diagonal",
-              np.allclose(added, expected[:, None], rtol=1e-3),
-              f"extra_std={es}")
-
-    # 5. testEmulatorErrors
+    # 4. testEmulatorErrors
     emu_pred, emu_pred_err, vali_data, vali_data_err = \
         emu.testEmulatorErrors(number_test_points=2, **fit_kwargs)
     check("testEmulatorErrors shapes match",

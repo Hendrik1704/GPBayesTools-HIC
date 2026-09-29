@@ -1382,7 +1382,7 @@ class EmulatorSparseGP:
     # -------------------------
     # Prediction
     # -------------------------
-    def predict(self, X, return_cov=True, extra_std=0.0,
+    def predict(self, X, return_cov=True,
                 include_noise=False, include_truncation=True,
                 include_pca_sampling=False, include_obs_noise=False):
         """
@@ -1394,9 +1394,6 @@ class EmulatorSparseGP:
             Parameter points in original (non-normalised) space.
         return_cov : bool
             If True, return covariance matrices (default True).
-        extra_std : float or array (N_test,)
-            Additional standard deviation added to the diagonal of each
-            predictive covariance (for use in MCMC calibration).
         include_noise : bool
             Include learned nugget in predictive variance.
         include_truncation : bool
@@ -1435,17 +1432,6 @@ class EmulatorSparseGP:
             outer_exp = Y_pred_exp[:, :, None] * Y_pred_exp[:, None, :]
             full_cov = full_cov * outer_exp
             Y_pred = Y_pred_exp
-
-        # Add extra_std to diagonal
-        extra_std = np.asarray(extra_std, dtype=float)
-        if np.any(extra_std != 0.0):
-            # a scalar extra_std applies to all parameter points
-            extra = np.broadcast_to(extra_std, (X.shape[0],))
-            for i in range(X.shape[0]):
-                np.fill_diagonal(
-                    full_cov[i],
-                    full_cov[i].diagonal() + extra[i] ** 2,
-                )
 
         if return_cov:
             return Y_pred, full_cov

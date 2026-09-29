@@ -317,7 +317,7 @@ class Emulator:
         return(trainStatus)
 
 
-    def predict(self, X, return_cov=True, extra_std=0):
+    def predict(self, X, return_cov=True):
         """
         Predict model output at `X`.
 
@@ -338,10 +338,6 @@ class Emulator:
 
         NB: the covariance is only computed between observables 
             not between sample points.
-
-        `extra_std` is additional uncertainty which is added to each GP's
-        predictive uncertainty, e.g. to account for model systematic error.
-        It may either be a scalar or an array-like of length nsamples.
 
         """
         gp_mean = [gp.predict(X, return_cov=return_cov) for gp in self.gps]
@@ -367,10 +363,6 @@ class Emulator:
             gp_var = np.concatenate([
                 c.diagonal()[:, np.newaxis] for c in gp_cov
             ], axis=1)
-
-            # Add extra uncertainty to predictive variance.
-            extra_std = np.asarray(extra_std).reshape(-1, 1)
-            gp_var += extra_std**2
 
             if not self.perform_no_PCA_:
                 # Compute the covariance at each sample point using the
