@@ -83,6 +83,7 @@ Bug fixes:
 - `EmulatorSklearn.npc_` is the number of trained GPs also with `perform_no_pca=True` (the number of observables) instead of the requested `npc`, and the fitted attributes `npc_`, `scaler_` and `pca_` are only set by the training.
 - Training points that are discarded by `max_rel_uncertainty_data` no longer raise the `log_trafo` error for values <= 0.
 - `gpbayestools.load_emulator` maps only the modules of the old `src` package to `gpbayestools`, not the modules of other packages called `src`.
+- The sparse GP emulator predicts with the jitter with which the returned best parameters were trained. After a NaN recovery, which increases the jitter, it used the increased jitter, which changed the predictions. `training_history["jitter"]` is the jitter of the returned parameters, the new `"jitter_final"` the jitter at the end of the training. A warning is logged if no training step had a finite ELBO.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.

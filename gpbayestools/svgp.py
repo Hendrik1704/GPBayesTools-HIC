@@ -479,8 +479,10 @@ class PCASparseGPEmulator:
               parameters (the ELBO, or its EMA with mini-batches), None if no
               step had a finite ELBO.
             - 'converged': True if the early stopping stopped the training.
-            - 'jitter': the final jitter, 'lr_backoff_retries': the number of
-              learning-rate reductions, 'kernel_lr_final',
+            - 'jitter': the jitter of the returned parameters, which predict()
+              uses, 'jitter_final': the jitter at the end of the training
+              (larger after a NaN recovery), 'lr_backoff_retries': the number
+              of learning-rate reductions, 'kernel_lr_final',
               'variational_lr_final', 'inducing_lr_final': the final learning
               rates.
 
@@ -809,6 +811,10 @@ class PCASparseGPEmulator:
         best_step = None
         step_ids = []
         best_params = None
+        # jitter with which the best parameters were trained; the jitter can
+        # be increased later by the NaN recovery, and predict() must use the
+        # jitter of the returned parameters
+        best_jitter = jitter
         converged = False
         nan_count = 0
         ema = None
@@ -914,6 +920,7 @@ class PCASparseGPEmulator:
                 best_score = score
                 best_step = i
                 best_params = {k: np.array(v) for k, v in p_eval.items()}
+                best_jitter = jitter
 
             if early_stopping and len(ema_history) > es_check_interval:
                 prev_ema = ema_history[-es_check_interval - 1]
@@ -945,8 +952,14 @@ class PCASparseGPEmulator:
 
         if best_params is not None:
             self.params = {k: jnp.array(v) for k, v in best_params.items()}
+            self.jitter = best_jitter
         else:
+            logger.warning(
+                f"No step of the {n_iterations} training steps had a finite ELBO, "
+                "returning the last parameters"
+            )
             self.params = p
+            self.jitter = jitter
 
         actual_steps = len(elbos)
         self.training_history = {
@@ -956,7 +969,8 @@ class PCASparseGPEmulator:
             "n_steps": actual_steps,
             "best_step": best_step,
             "best_score": best_score if best_step is not None else None,
-            "jitter": jitter,
+            "jitter": self.jitter,
+            "jitter_final": jitter,
             "lr_backoff_retries": lr_backoff_count,
             "kernel_lr_final": current_kernel_lr,
             "variational_lr_final": current_variational_lr,
@@ -968,7 +982,7 @@ class PCASparseGPEmulator:
             logger.info(
                 f"Training finished after {n_iterations} steps ({actual_steps} with "
                 f"a finite ELBO, converged: {converged}): best {elbo_str} = "
-                f"{best_score:.3f} at step {best_step}, jitter = {jitter:.1e}"
+                f"{best_score:.3f} at step {best_step}, jitter = {self.jitter:.1e}"
             )
 
         return self.training_history

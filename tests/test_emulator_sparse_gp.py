@@ -429,5 +429,36 @@ def test_t10(tmp_path):
     check("test_emulator_errors shapes match", emu_pred.shape == vali_data.shape)
 
 
+def test_nan_recovery_keeps_jitter_of_best_parameters(monkeypatch):
+    # force non-finite ELBOs in the last steps: the jitter is increased, but
+    # the returned best parameters were trained with the initial jitter
+    import gpbayestools.svgp as svgp
+
+    class FailingIsfinite:
+        def __init__(self):
+            self.n_scalar_calls = 0
+
+        def __getattr__(self, name):
+            return getattr(jnp, name)
+
+        def isfinite(self, x):
+            if np.ndim(x) == 0:
+                self.n_scalar_calls += 1
+                if self.n_scalar_calls > 96:
+                    return jnp.array(False)
+            return jnp.isfinite(x)
+
+    rng = np.random.default_rng(0)
+    X = rng.uniform(size=(60, 3))
+    Y = np.column_stack([np.sin(3 * X[:, 0]) + k * X[:, 1] for k in range(4)])
+    monkeypatch.setattr(svgp, "jnp", FailingIsfinite())
+    em = PCASparseGPEmulator(n_pc=2, M=15, key=_KEY)
+    history = em.fit(X, Y, steps=100, jitter_init=1e-5, verbose=False)
+    monkeypatch.undo()
+    assert history["best_step"] < 96
+    assert history["jitter_final"] > 1e-5
+    assert em.jitter == history["jitter"] == 1e-5
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
