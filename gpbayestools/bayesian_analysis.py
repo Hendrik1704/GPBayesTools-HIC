@@ -708,9 +708,10 @@ class BayesianAnalysis:
         :func:`gpbayestools.ptlmc.sampler`). The initial points are drawn
         uniformly within the parameter ranges, and ``n_temps + n_walkers`` of
         them are optimized with L-BFGS-B before the sampling. The first
-        ``2 * n_steps`` steps tune the step size and are discarded. The samples of the temperature-1 chains are
-        stored in ``self.chain`` with shape (n_walkers, n_steps, ndim) and
-        written to ``chain_path("ptlmc")``, overwriting an existing file.
+        ``2 * n_steps`` steps tune the step size and are discarded. The
+        samples of the temperature-1 chains are stored in ``self.chain`` with
+        shape (n_walkers, n_steps, ndim) and written to
+        ``chain_path("ptlmc")``, overwriting an existing file.
 
         Parameters
         ----------
@@ -833,8 +834,8 @@ class BayesianAnalysis:
         Run preconditioned Monte Carlo with pocoMC.
 
         This function uses the pocoMC package (version 1.2.6, as required by
-        the package). pocoMC is a Preconditioned Monte Carlo (PMC) sampler that uses normalizing flows
-        to precondition the target distribution.
+        the package). pocoMC is a Preconditioned Monte Carlo (PMC) sampler
+        that uses normalizing flows to precondition the target distribution.
 
         The resampled posterior samples are stored in ``self.chain`` with
         shape (nsamples, ndim). They are written to ``chain_path("pocomc")``
