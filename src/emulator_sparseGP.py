@@ -363,6 +363,11 @@ class PCASparseGPEmulator:
         _Ys_np = np.array(self.Ys)
         _W_scaled = _W_np / (_pc_std_np[:, None] * _Ys_np[None, :])
 
+        # Observation-noise variances in standardized PC units (data variance
+        # ~1) are capped at this value. Larger errors carry no information, but
+        # overflow in float32 and make the ELBO non-finite.
+        max_obs_var = 1e10
+
         if Y_err is not None:
             _yerr = np.asarray(Y_err, dtype=float)
             if _yerr.ndim == 2:
@@ -370,7 +375,15 @@ class PCASparseGPEmulator:
                     raise ValueError(
                         f"Y_err shape {_yerr.shape} must match Y shape "
                         f"{np.array(Y).shape} for the (N, P) diagonal-error format.")
-                obs_var_full = jnp.array((_yerr ** 2) @ (_W_scaled ** 2).T)
+                _yerr_max = np.sqrt(max_obs_var) * _Ys_np
+                n_capped = int(np.sum(_yerr > _yerr_max[None, :]))
+                if n_capped > 0:
+                    logging.warning(
+                        f"{n_capped} entries of Y_err are larger than 1e5 times the "
+                        f"standard deviation of the training data and are capped.")
+                    _yerr = np.minimum(_yerr, _yerr_max[None, :])
+                obs_var_full = jnp.array(np.minimum(
+                    (_yerr ** 2) @ (_W_scaled ** 2).T, max_obs_var))
                 _mean_C_Y = np.diag(np.mean(_yerr ** 2, axis=0))
                 _mean_obs_cov_pc = _W_scaled @ _mean_C_Y @ _W_scaled.T
                 if verbose:
@@ -387,9 +400,9 @@ class PCASparseGPEmulator:
                     raise ValueError(
                         "Y_err contains covariance matrices with negative diagonal "
                         "entries. Check your input.")
-                obs_var_full = jnp.array(
-                    np.einsum('ij,njk,ik->ni', _W_scaled, _yerr, _W_scaled))
-                obs_var_full = jnp.clip(obs_var_full, 0.0, None)
+                obs_var_full = jnp.array(np.clip(
+                    np.einsum('ij,njk,ik->ni', _W_scaled, _yerr, _W_scaled),
+                    0.0, max_obs_var))
                 _mean_C_Y = np.mean(_yerr, axis=0)
                 _mean_obs_cov_pc = _W_scaled @ _mean_C_Y @ _W_scaled.T
                 _mean_obs_cov_pc = 0.5 * (_mean_obs_cov_pc + _mean_obs_cov_pc.T)
