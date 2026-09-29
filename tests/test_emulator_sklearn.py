@@ -279,6 +279,24 @@ def test_parse_model_parameter_file(tmp_path):
     }
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "alpha a, 0, 1",
+        "alpha: a, 0",
+        "alpha: a, zero, 1",
+        "alpha: a, 1, 1",
+        "alpha: a, 2, 1",
+        "beta: b, 0, 1",
+    ],
+)
+def test_invalid_parameter_file(tmp_path, line):
+    path = tmp_path / "par.txt"
+    path.write_text(f"beta: b, 0, 1\n{line}\n")
+    with pytest.raises(ValueError, match="line 2"):
+        parse_model_parameter_file(path)
+
+
 def test_load_emulator_saved_with_old_package_name(emulator, test_points, tmp_path):
     # emulators saved with versions < 3.0.0 refer to the class
     # src.emulator.Emulator; with pickle protocol 2 the reference is stored

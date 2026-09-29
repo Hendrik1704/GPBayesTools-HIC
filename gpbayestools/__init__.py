@@ -124,17 +124,42 @@ def parse_model_parameter_file(parameter_file):
         Maps each parameter name to the list ``[label, min, max, ...]`` of the
         comma-separated entries of its line, with min and max converted to
         float. Further entries are kept as strings.
+
+    Raises
+    ------
+    ValueError
+        If a line does not have the format ``name: label, min, max``, if min
+        or max is not a number, if min >= max, or if a parameter is defined
+        twice. The message contains the file and the line number.
     """
     pardict = {}
     with open(parameter_file) as f:
-        for line in f:
+        for line_number, line in enumerate(f, start=1):
             par = line.split("#")[0].strip()
             if par == "":
                 # skip empty and comment lines
                 continue
+            where = f"{parameter_file}, line {line_number}"
+            if ":" not in par:
+                raise ValueError(f"{where}: expected 'name: label, min, max'")
             key, par = par.split(":", 1)
+            key = key.strip()
             val = [ival.strip() for ival in par.split(",")]
-            for i in range(1, 3):
-                val[i] = float(val[i])
-            pardict.update({key.strip(): val})
+            if len(val) < 3:
+                raise ValueError(f"{where}: expected 'name: label, min, max'")
+            try:
+                val[1], val[2] = float(val[1]), float(val[2])
+            except ValueError:
+                raise ValueError(
+                    f"{where}: min and max of {key!r} must be numbers, got "
+                    f"{val[1]!r} and {val[2]!r}"
+                ) from None
+            if key in pardict:
+                raise ValueError(f"{where}: parameter {key!r} is defined twice")
+            if not val[1] < val[2]:
+                raise ValueError(
+                    f"{where}: min = {val[1]} of {key!r} must be smaller than "
+                    f"max = {val[2]}"
+                )
+            pardict[key] = val
     return pardict
