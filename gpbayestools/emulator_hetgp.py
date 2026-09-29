@@ -5,6 +5,8 @@ Uses the `Gaussian process regression with heteroskedastic emulator
 <https://hetgpy.readthedocs.io/en/v1.0.4/>`_ implemented in the `hetgpy` package.
 """
 
+import contextlib
+import io
 import logging
 import pickle
 
@@ -183,16 +185,29 @@ class EmulatorHetGP(EmulatorBase):
         # Train one hetGP model per principal component of the outputs.
         self.gps_ = []
         for j in range(self.npc_):
-            Z_train = data_pca_masked[:, j]
-            model = hetGP()
-            model.mleHetGP(
-                X=design_points_masked,
-                Z=Z_train,
-                settings={"return_matrices": True},
-                covtype="Matern3_2",
-                maxit=100,
-            )
-            self.gps_.append(model)
+            gp = hetGP()
+            # hetgpy prints messages (e.g. when it returns a homoskedastic
+            # model) to stdout, they are logged instead
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                gp.mleHetGP(
+                    X=design_points_masked,
+                    Z=data_pca_masked[:, j],
+                    covtype="Matern3_2",
+                    maxit=100,
+                )
+            if output.getvalue().strip():
+                logger.debug(f"hetGP model {j + 1}: {output.getvalue().strip()}")
+            # a failed fit gives non-finite predictions
+            pred = gp.predict(x=design_points_masked)
+            if not (
+                np.all(np.isfinite(pred["mean"])) and np.all(np.isfinite(pred["sd2"]))
+            ):
+                logger.warning(
+                    f"The hetGP model of PC {j + 1} gives non-finite predictions at "
+                    "the training points, the fit failed"
+                )
+            self.gps_.append(gp)
             logger.debug(f"hetGP model {j + 1}/{self.npc_} trained")
         logger.info("Emulator training finished")
 
@@ -234,7 +249,7 @@ class EmulatorHetGP(EmulatorBase):
             pred = gp.predict(x=X)
             pc_means[j] = np.asarray(pred["mean"]).reshape(-1)
             pc_vars[j] = np.asarray(pred["sd2"]).reshape(-1)
-            if include_noise and "nugs" in pred:
+            if include_noise:
                 pc_vars[j] += np.asarray(pred["nugs"]).reshape(-1)
 
         # Reconstruct observables from PCs
