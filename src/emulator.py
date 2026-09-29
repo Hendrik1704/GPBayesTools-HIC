@@ -145,7 +145,7 @@ class Emulator:
                     nu=1.5
                     )
         else:
-            logging.error("Unknown kernel type: {}".format(kernel_type))
+            raise ValueError("Unknown kernel type: {}".format(kernel_type))
 
         #homoscedastic noise kernel
         hom_white_kern = kernels.WhiteKernel(
