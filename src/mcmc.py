@@ -742,6 +742,8 @@ class Chain:
             with open(self.mcmc_path, 'rb') as f:
                 chain_data = pickle.load(f)
             self.chain = chain_data['chain']
+        # create the output directory before the (expensive) computation
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         logging.info('Computing log likelihood for the chain...')
         reshape_chain = self.chain.reshape(-1, self.ndim)
         likelihood = self.log_likelihood_point_by_point(reshape_chain)
