@@ -6,6 +6,7 @@ Date: not released yet
 New features:
 - `Design` takes a `method` argument to choose between maximum projection Latin-hypercube designs (`'maxpro'`, R package MaxPro, default as before) and maximin designs (`'maximin'`, R package lhs).
 - `run_mcmc` (emcee) and `run_MCMC_PTLMC` take an optional `seed` for reproducible chains.
+- All emulators have `sample_y` to draw samples of the observables from the emulator uncertainty. Before, it was only available for `Emulator`.
 - `Emulator` and `EmulatorSparseGP` take an optional `seed` for reproducible training. For `EmulatorSparseGP`, the KMeans and Sobol initialisations of the inducing points are seeded as well, so that ensemble members start from different inducing points.
 - The validation functions `testEmulatorErrors` and `testEmulatorErrorsWithTrainingPoints` can choose random test points (`random_points=True`, reproducible with `seed`) instead of the last points of the training data.
 - The emulators share the base class `EmulatorBase` (`gpbayestools/emulator_base.py`), which implements loading and filtering the training data and the validation functions for all of them. It checks that the number of parameters in the parameter file matches the training data.
