@@ -27,6 +27,9 @@ class EmulatorBAND(EmulatorBase):
     and a diagonal covariance in the original scale of the observables.
     """
 
+    _legacy_attributes = [("method_", "method"), ("rng_", "_rng"), ("emu", "emu_")]
+    _legacy_defaults = {"seed": None, "_rng": lambda state: np.random.default_rng()}
+
     def __init__(
         self,
         training_set_path=".",
@@ -37,9 +40,10 @@ class EmulatorBAND(EmulatorBase):
         exp_and_cov_diagonal=False,
         seed=None,
     ):
-        self.method_ = method
+        self.method = method
         # surmise (>=1.0.0) requires a global RNG to be set before training
-        self.rng_ = np.random.default_rng(seed)
+        self.seed = seed
+        self._rng = np.random.default_rng(seed)
         super().__init__(
             training_set_path,
             parameter_file,
@@ -56,35 +60,35 @@ class EmulatorBAND(EmulatorBase):
 
         design_points = self.design_points[event_mask, :]
 
-        surmise.set_RNG(self.rng_)
-        if self.method_ == "PCGP":
-            self.emu = emulator(
+        surmise.set_RNG(self._rng)
+        if self.method == "PCGP":
+            self.emu_ = emulator(
                 x=X,
                 theta=design_points,
                 f=self.model_data[event_mask, :].T,
                 method="PCGP",
                 args={"warnings": True},
             )
-        elif self.method_ == "PCSK":
+        elif self.method == "PCSK":
             sim_sdev = self.model_data_err[event_mask, :].T
 
-            self.emu = emulator(
+            self.emu_ = emulator(
                 x=X,
                 theta=design_points,
                 f=self.model_data[event_mask, :].T,
                 method="PCSK",
                 args={"warnings": True, "simsd": sim_sdev},
             )
-        elif self.method_ == "PCGPwImpute":
-            self.emu = emulator(
+        elif self.method == "PCGPwImpute":
+            self.emu_ = emulator(
                 x=X,
                 theta=design_points,
                 f=self.model_data[event_mask, :].T,
                 method="PCGPwImpute",
                 args={"warnings": True},
             )
-        elif self.method_ == "PCGPwM":
-            self.emu = emulator(
+        elif self.method == "PCGPwM":
+            self.emu_ = emulator(
                 x=X,
                 theta=design_points,
                 f=self.model_data[event_mask, :].T,
@@ -114,9 +118,9 @@ class EmulatorBAND(EmulatorBase):
         surmise: sigma2hat * exp(hypnug) for PCGP, sig2 * nug for the other
         methods (PCSK, PCGPwM, PCGPwImpute).
         """
-        info = self.emu._info
+        info = self.emu_._info
         infos = info["emulist"]
-        if self.method_ == "PCGP":
+        if self.method == "PCGP":
             noise = np.array([i["sigma2hat"] * np.exp(i["hypnug"]) for i in infos])
             pctscale = (info["pct"].T * info["scale"]).T
         else:
@@ -138,9 +142,9 @@ class EmulatorBAND(EmulatorBase):
         """
         x = np.arange(self.nobs).reshape(-1, 1)
 
-        gp = self.emu.predict(x=x, theta=X)
+        gp = self.emu_.predict(x=x, theta=X)
 
-        if self.exp_and_cov_diagonal_:
+        if self.exp_and_cov_diagonal:
             # If the emulator is trained on the log of the data, we return the
             # predictions in the original scale with diagonal covariance matrix.
             fpredmean = np.exp(gp.mean().T)
@@ -151,7 +155,7 @@ class EmulatorBAND(EmulatorBase):
         if not include_noise:
             fpredcov = fpredcov - self._noise_covariance()[None, :, :]
 
-        if self.exp_and_cov_diagonal_:
+        if self.exp_and_cov_diagonal:
             fcov = np.zeros_like(fpredcov)
             # Extract the diagonal of the covariance matrix for each prediction
             for i in range(fpredcov.shape[0]):

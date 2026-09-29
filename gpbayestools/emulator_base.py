@@ -93,10 +93,10 @@ class EmulatorBase:
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
     ):
-        self.logTrafo_ = log_trafo
-        self.max_rel_uncertainty_data_ = max_rel_uncertainty_data
-        self.exp_and_cov_diagonal_ = exp_and_cov_diagonal
-        if not self.logTrafo_ and self.exp_and_cov_diagonal_:
+        self.log_trafo = log_trafo
+        self.max_rel_uncertainty_data = max_rel_uncertainty_data
+        self.exp_and_cov_diagonal = exp_and_cov_diagonal
+        if not self.log_trafo and self.exp_and_cov_diagonal:
             raise ValueError(
                 "exp_and_cov_diagonal can only be set to True if log_trafo is True."
             )
@@ -114,6 +114,34 @@ class EmulatorBase:
                 "The training data have {} parameters, but the parameter file "
                 "{} has {}".format(self.nparameters, parameter_file, len(self.pardict))
             )
+
+    # attributes of the emulators saved with versions < 3.0.0 and their
+    # current names, in the order in which they are renamed, and default
+    # values of attributes that did not exist in these versions
+    _legacy_attributes = []
+    _legacy_defaults = {}
+
+    def __setstate__(self, state):
+        self.__dict__.update(self._migrate_legacy_state(state))
+
+    @classmethod
+    def _migrate_legacy_state(cls, state):
+        """Rename the attributes of emulators saved with versions < 3.0.0."""
+        if "logTrafo_" not in state:
+            return state
+        state = dict(state)
+        renames = [
+            ("logTrafo_", "log_trafo"),
+            ("max_rel_uncertainty_data_", "max_rel_uncertainty_data"),
+            ("exp_and_cov_diagonal_", "exp_and_cov_diagonal"),
+        ] + cls._legacy_attributes
+        for old, new in renames:
+            if old in state and new not in state:
+                state[new] = state.pop(old)
+        for name, default in cls._legacy_defaults.items():
+            if name not in state:
+                state[name] = default(state) if callable(default) else default
+        return state
 
     # -------------------------
     # Training data
@@ -148,14 +176,14 @@ class EmulatorBase:
                 )
                 discarded_points += 1
                 continue
-            if self.logTrafo_ and np.any(temp_data[:, 0] <= 0):
+            if self.log_trafo and np.any(temp_data[:, 0] <= 0):
                 raise ValueError(
                     "log_trafo requires positive observables, but "
                     "parameter point {} has values <= 0".format(event_id)
                 )
-            if self.max_rel_uncertainty_data_ is not None:
+            if self.max_rel_uncertainty_data is not None:
                 statErrMax = self._max_rel_error(temp_data)
-                if statErrMax > self.max_rel_uncertainty_data_:
+                if statErrMax > self.max_rel_uncertainty_data:
                     logging.info(
                         "Discard Parameter {}, stat err = {:.2f}".format(
                             event_id, statErrMax
@@ -164,7 +192,7 @@ class EmulatorBase:
                     discarded_points += 1
                     continue
             self.design_points.append(dataDict[event_id]["parameter"])
-            if not self.logTrafo_:
+            if not self.log_trafo:
                 self.model_data.append(temp_data[:, 0])
                 self.model_data_err.append(temp_data[:, 1])
             else:
@@ -194,21 +222,17 @@ class EmulatorBase:
     # -------------------------
     def _predictions_in_log_space(self):
         """True if predict() returns the mean and covariance in log space."""
-        return self.logTrafo_ and not self.exp_and_cov_diagonal_
+        return self.log_trafo and not self.exp_and_cov_diagonal
 
     def _predict_log_space(self, X, include_noise):
         """predict() of a log-transformed emulator in log space, also if it
         returns the predictions in the original scale."""
-        had_flag = "exp_and_cov_diagonal_" in self.__dict__
-        flag = self.__dict__.get("exp_and_cov_diagonal_")
-        self.exp_and_cov_diagonal_ = False
+        flag = self.exp_and_cov_diagonal
+        self.exp_and_cov_diagonal = False
         try:
             return self.predict(X, return_cov=True, include_noise=include_noise)
         finally:
-            if had_flag:
-                self.exp_and_cov_diagonal_ = flag
-            else:
-                del self.exp_and_cov_diagonal_
+            self.exp_and_cov_diagonal = flag
 
     def sample_y(self, X, n_samples=1, random_state=None, include_noise=False):
         """
@@ -226,7 +250,7 @@ class EmulatorBase:
         """
         X = np.atleast_2d(X)
         rng = np.random.default_rng(random_state)
-        back_transform = self.logTrafo_ and not self._predictions_in_log_space()
+        back_transform = self.log_trafo and not self._predictions_in_log_space()
         if back_transform:
             mean, cov = self._predict_log_space(X, include_noise)
         else:
@@ -276,7 +300,7 @@ class EmulatorBase:
             pred_std = pred_std * np.exp(pred_mean)
             pred_mean = np.exp(pred_mean)
 
-        if self.logTrafo_:
+        if self.log_trafo:
             data = np.exp(self.model_data[mask, :])
             data_err = self.model_data_err[mask, :] * data
         else:

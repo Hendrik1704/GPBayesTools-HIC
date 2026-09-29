@@ -117,7 +117,7 @@ def test_load_emulator_checks_number_of_observables(chain, files):
         chain.load_emulators(files["emus"] + files["emus"][:1])
     # loading again replaces the emulators
     chain.load_emulators(files["emus"])
-    assert len(chain.emuList) == 2
+    assert len(chain.emulators) == 2
 
 
 def test_exp_data_with_several_sets(files, tmp_path):

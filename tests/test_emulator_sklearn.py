@@ -57,9 +57,9 @@ def test_npc(training_file, param_file, npc, expected):
     emu.train_emulator_auto_mask()
     if expected is None:
         # smallest number of PCs explaining more than 99% of the variance
-        evr = np.cumsum(emu.pca.explained_variance_ratio_)
+        evr = np.cumsum(emu.pca_.explained_variance_ratio_)
         expected = np.searchsorted(evr, 0.99, side="right") + 1
-    assert emu.npc == expected
+    assert emu.npc_ == expected
 
 
 @pytest.mark.parametrize("npc", [0, 1.0, -0.5, "3"])
@@ -107,7 +107,7 @@ def test_sample_y(emulator, test_points):
 def test_output_pca_does_not_change_emulator(emulator, test_points):
     before = emulator.predict(test_points)
     design_points, Z = emulator.output_pca_vs_param()
-    assert Z.shape == (emulator.npc, emulator.nev)
+    assert Z.shape == (emulator.npc_, emulator.nev)
     after = emulator.predict(test_points)
     for a, b in zip(before, after):
         np.testing.assert_array_equal(a, b)

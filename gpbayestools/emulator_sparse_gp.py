@@ -1387,6 +1387,22 @@ class EmulatorSparseGP(EmulatorBase):
     in the original scale of the observables (see __init__).
     """
 
+    _legacy_attributes = [
+        ("M_", "n_inducing"),
+        ("bootstrap_", "bootstrap"),
+        ("init_strategy_", "init_strategy"),
+        ("n_ensemble_", "n_ensemble"),
+        ("npc", "npc_"),
+        ("npc_requested_", "npc"),
+        ("n_pc_", "npc"),
+        ("seed_", "seed"),
+    ]
+    # older versions always transformed log-space predictions back
+    _legacy_defaults = {
+        "exp_and_cov_diagonal": lambda state: state["log_trafo"],
+        "seed": None,
+    }
+
     def __init__(
         self,
         training_set_path=".",
@@ -1439,12 +1455,12 @@ class EmulatorSparseGP(EmulatorBase):
             mini-batches, ensemble members). None uses fixed default keys.
         """
         check_npc(npc)
-        self.npc_requested_ = npc
-        self.seed_ = seed
-        self.M_ = n_inducing
-        self.n_ensemble_ = n_ensemble
-        self.init_strategy_ = init_strategy
-        self.bootstrap_ = bootstrap
+        self.npc = npc
+        self.seed = seed
+        self.n_inducing = n_inducing
+        self.n_ensemble = n_ensemble
+        self.init_strategy = init_strategy
+        self.bootstrap = bootstrap
         super().__init__(
             training_set_path,
             parameter_file,
@@ -1458,7 +1474,7 @@ class EmulatorSparseGP(EmulatorBase):
     # -------------------------
     def _key(self):
         """JAX random key from the seed, or None for the default keys."""
-        seed = getattr(self, "seed_", None)
+        seed = self.seed
         return None if seed is None else jax.random.PRNGKey(seed)
 
     def train_emulator(self, event_mask, **fit_kwargs):
@@ -1478,30 +1494,30 @@ class EmulatorSparseGP(EmulatorBase):
         Y_err = self.model_data_err[event_mask, :]
         logging.info("Train sparse GP with {} training points ...".format(X.shape[0]))
         # emulators saved with older versions store the argument as n_pc_
-        npc = getattr(self, "npc_requested_", getattr(self, "n_pc_", None))
+        npc = self.npc
 
-        if self.n_ensemble_ <= 1:
+        if self.n_ensemble <= 1:
             # verbose_members only exists for the ensemble
             fit_kwargs = {k: v for k, v in fit_kwargs.items() if k != "verbose_members"}
             self.emu_ = PCASparseGPEmulator(
                 n_pc=npc,
-                M=self.M_,
+                M=self.n_inducing,
                 key=self._key(),
-                init_strategy=self.init_strategy_,
+                init_strategy=self.init_strategy,
             )
             self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
-            self.npc = int(self.emu_.n_pc)
+            self.npc_ = int(self.emu_.n_pc)
         else:
             self.emu_ = PCASparseGPEnsemble(
-                n_ensemble=self.n_ensemble_,
+                n_ensemble=self.n_ensemble,
                 n_pc=npc,
-                M=self.M_,
+                M=self.n_inducing,
                 base_key=self._key(),
-                init_strategy=self.init_strategy_,
-                bootstrap=self.bootstrap_,
+                init_strategy=self.init_strategy,
+                bootstrap=self.bootstrap,
             )
             self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
-            self.npc = int(self.emu_.members[0].n_pc)
+            self.npc_ = int(self.emu_.members[0].n_pc)
 
     # -------------------------
     # Prediction
@@ -1554,9 +1570,8 @@ class EmulatorSparseGP(EmulatorBase):
         Y_pred = np.array(Y_pred)
         full_cov = np.array(full_cov)
 
-        # Inverse log-transform if needed. Emulators saved with older versions
-        # have no exp_and_cov_diagonal_ and always transformed back.
-        if getattr(self, "exp_and_cov_diagonal_", self.logTrafo_):
+        # Inverse log-transform if needed.
+        if self.exp_and_cov_diagonal:
             Y_pred_exp = np.exp(Y_pred)
             # delta method: Cov_y[i,j] = exp(mu_i) * Cov_log[i,j] * exp(mu_j)
             outer_exp = Y_pred_exp[:, :, None] * Y_pred_exp[:, None, :]
@@ -1566,11 +1581,3 @@ class EmulatorSparseGP(EmulatorBase):
         if return_cov:
             return Y_pred, full_cov
         return Y_pred
-
-    # -------------------------
-    # Validation
-    # -------------------------
-    def _predictions_in_log_space(self):
-        # emulators saved with older versions have no exp_and_cov_diagonal_
-        # and always transformed the predictions back
-        return self.logTrafo_ and not getattr(self, "exp_and_cov_diagonal_", True)

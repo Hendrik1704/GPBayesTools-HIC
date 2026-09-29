@@ -79,8 +79,8 @@ def test_emulator_noise_is_the_white_kernel(trained, test_points):
         pytest.skip("only for EmulatorSklearn")
     _, cov_latent = emu.predict(test_points)
     _, cov_noise = emu.predict(test_points, include_noise=True)
-    noise_pc = np.array([emu._gp_noise(gp.kernel_) for gp in emu.gps])
-    A = emu._trans_matrix[: emu.npc]
+    noise_pc = np.array([emu._gp_noise(gp.kernel_) for gp in emu.gps_])
+    A = emu._trans_matrix[: emu.npc_]
     # the WhiteKernel noise of the GPs and the noise part of the truncation
     # covariance
     noise_trunc = np.diag(emu._cov_trunc - emu._cov_trunc_signal)
@@ -173,4 +173,25 @@ def test_sample_y_log_normal(noisy_training_file, param_file, test_points):
     # predict() returns with exp_and_cov_diagonal
     mean = emu.predict(test_points)[0]
     np.testing.assert_allclose(np.median(samples, axis=1), mean, rtol=0.01)
-    assert emu.exp_and_cov_diagonal_
+    assert emu.exp_and_cov_diagonal
+
+
+def test_legacy_attribute_names(trained, test_points):
+    # emulators saved with versions < 3.0.0 have other attribute names, which
+    # are renamed when they are loaded
+    name, emu, _ = trained
+    state = emu.__getstate__() if hasattr(type(emu), "__getstate__") else None
+    state = dict(state if state is not None else emu.__dict__)
+    renames = [
+        ("logTrafo_", "log_trafo"),
+        ("max_rel_uncertainty_data_", "max_rel_uncertainty_data"),
+        ("exp_and_cov_diagonal_", "exp_and_cov_diagonal"),
+    ] + type(emu)._legacy_attributes
+    for old, new in reversed(renames):
+        if new in state:
+            state[old] = state.pop(new)
+    legacy = type(emu).__new__(type(emu))
+    legacy.__setstate__(state)
+    assert "logTrafo_" not in legacy.__dict__
+    for a, b in zip(legacy.predict(test_points), emu.predict(test_points)):
+        np.testing.assert_array_equal(a, b)

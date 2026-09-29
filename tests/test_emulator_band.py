@@ -45,7 +45,7 @@ def test_covariance_contains_variance_of_discarded_pcs(
     emu.train_emulator_auto_mask()
     _, cov = emu.predict(test_points, include_noise=True)
     x = np.arange(emu.nobs).reshape(-1, 1)
-    var = emu.emu.predict(x=x, theta=test_points).var().T
+    var = emu.emu_.predict(x=x, theta=test_points).var().T
     np.testing.assert_allclose(np.diagonal(cov, axis1=1, axis2=2), var, rtol=1e-10)
 
 

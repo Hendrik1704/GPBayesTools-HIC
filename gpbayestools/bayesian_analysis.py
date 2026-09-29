@@ -150,14 +150,14 @@ class BayesianAnalysis:
 
         # the volume of the uniform prior
         diff = self.max - self.min
-        self.prior_volume_ = np.prod(diff)
+        self.prior_volume = np.prod(diff)
 
         logging.info("Run MCMC with emcee...")
         # load the experimental data to be fit
         logging.info("Loading the experiment data from {} ...".format(expdata_path))
         self.expdata, self.expdata_cov = self._read_in_exp_data_pickle(expdata_path)
         self.nobs = self.expdata.shape[1]
-        self.emuList = []
+        self.emulators = []
         self.chain = False
         # sampler that generated self.chain
         self.chain_sampler = None
@@ -178,15 +178,15 @@ class BayesianAnalysis:
                     sum(nobs_emu), ", ".join(map(str, nobs_emu)), self.nobs
                 )
             )
-        self.emuList = emuList
-        logging.info("Number of Emulators: {}".format(len(self.emuList)))
+        self.emulators = emuList
+        logging.info("Number of Emulators: {}".format(len(self.emulators)))
 
     def _predict(self, X):
         nPreds = X.shape[0]
         modelPred = np.zeros([nPreds, self.nobs])
         modelPredCov = np.zeros([nPreds, self.nobs, self.nobs])
         currIdx = 0
-        for i, emu_i in enumerate(self.emuList):
+        for i, emu_i in enumerate(self.emulators):
             model_Y, model_cov = emu_i.predict(X, return_cov=True)
             nobs_i = model_Y.shape[1]
             modelPred[:, currIdx : currIdx + nobs_i] = model_Y
@@ -212,7 +212,7 @@ class BayesianAnalysis:
 
         """
         X = np.atleast_2d(np.asarray(X))
-        lp = np.log(np.ones(X.shape[0]) / self.prior_volume_)
+        lp = np.log(np.ones(X.shape[0]) / self.prior_volume)
         lp[~self._inside(X)] = -np.inf
         return lp
 

@@ -162,7 +162,7 @@ def test_pickle_roundtrip_is_exact(emulator, test_params, tmp_path):
 
 
 def test_covariance_includes_truncation(emulator, test_params):
-    assert emulator.npc < N_OBS
+    assert emulator.npc_ < N_OBS
     # by default, the truncation covariance without the noise of the training
     # data is used, with include_noise=True the full truncation covariance
     for include_noise, trunc in (
