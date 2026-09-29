@@ -100,7 +100,8 @@ class EmulatorHETGPy:
         emu_list_pickle = state.pop("_emu_list_pickle", None)
         hyperparams = state.pop("_gp_hyperparams", None)
         self.__dict__.update(state)
-        if "_cov_trunc" not in self.__dict__:
+        if ("_cov_trunc" not in self.__dict__
+                and "model_data_pca" in self.__dict__):
             # older versions fitted the output PCA to all training data
             self._compute_truncation_cov(self.model_data, self.model_data_pca)
         if emu_list_pickle is not None:
@@ -113,10 +114,7 @@ class EmulatorHETGPy:
                             "predictions can differ from the trained models. "
                             "Save the emulator again to avoid this.")
             self._rebuild_from_hyperparams(hyperparams)
-        else:
-            logging.info("No saved GP models found, performing full "
-                         "re-training ...")
-            self.trainEmulatorAutoMask()
+        # otherwise the emulator was not trained and stays untrained
 
     def _rebuild_from_hyperparams(self, hyperparams, maxit=0):
         """Rebuild GP models using saved hyperparameters as initial values.
