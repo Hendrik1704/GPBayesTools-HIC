@@ -271,7 +271,9 @@ class PCASparseGPEmulator:
             Minimum relative EMA improvement over the window required to reset patience (default 1e-4)
         ema_alpha : float
             EMA smoothing factor in [0, 1). Higher = heavier smoothing (default 0.95).
-            Effective window approx 1/(1 - ema_alpha) steps.
+            Effective window approx 1/(1 - ema_alpha) steps. With mini-batches
+            (batch_size < N), the parameters with the best EMA of the ELBO are
+            returned, with the full batch the ones with the best ELBO.
         auto_lr_backoff : bool
             Automatically reduce learning rates and retry when repeated NaN
             losses occur, instead of failing immediately (default True).
@@ -568,6 +570,7 @@ class PCASparseGPEmulator:
         p_init = {k: np.array(v) for k, v in p.items()}
         elbos = []
         best_elbo = -np.inf
+        best_step = None
         best_params = None
         converged = False
         nan_count = 0
@@ -650,36 +653,39 @@ class PCASparseGPEmulator:
             # nan_patience counts consecutive non-finite steps
             nan_count = 0
 
-            if elbo_val_f > best_elbo:
-                best_elbo = elbo_val_f
+            if ema is None:
+                ema = elbo_val_f
+            else:
+                ema = ema_alpha * ema + (1.0 - ema_alpha) * elbo_val_f
+            ema_history.append(ema)
+
+            # With mini-batches the ELBO of a single step is noisy, and its
+            # maximum would select the parameters of the luckiest batch.
+            # The best parameters are therefore selected on the EMA. With the
+            # full batch the ELBO is exact and used directly.
+            score = ema if B < N_full else elbo_val_f
+            if score > best_elbo:
+                best_elbo = score
+                best_step = len(elbos) - 1
                 best_params = {k: np.array(v) for k, v in p_eval.items()}
 
-            if early_stopping:
-                if ema is None:
-                    ema = elbo_val_f
-                    ema_history.append(ema)
-                    es_patience_count = 0
+            if early_stopping and len(ema_history) > es_check_interval:
+                prev_ema = ema_history[-es_check_interval - 1]
+                scale = max(1.0, abs(prev_ema), abs(ema))
+                rel_gain = (ema - prev_ema) / scale
+                if rel_gain < es_rel_tol:
+                    es_patience_count += 1
                 else:
-                    ema_new = ema_alpha * ema + (1.0 - ema_alpha) * elbo_val_f
-                    ema = ema_new
-                    ema_history.append(ema)
-                    if len(ema_history) > es_check_interval:
-                        prev_ema = ema_history[-es_check_interval - 1]
-                        scale = max(1.0, abs(prev_ema), abs(ema))
-                        rel_gain = (ema - prev_ema) / scale
-                        if rel_gain < es_rel_tol:
-                            es_patience_count += 1
-                        else:
-                            es_patience_count = 0
-                        if es_patience_count >= patience:
-                            converged = True
-                            if verbose:
-                                print(f"  Step {i:5d}/{steps}: ELBO = {elbo_val_f:10.3f} "
-                                      f"(EMA={ema:.3f})")
-                                print(
-                                    f"\nEarly stopping: EMA gain over {es_check_interval} steps "
-                                    f"stayed below {es_rel_tol:.1e} for {patience} checks at step {i+1}")
-                            break
+                    es_patience_count = 0
+                if es_patience_count >= patience:
+                    converged = True
+                    if verbose:
+                        print(f"  Step {i:5d}/{steps}: ELBO = {elbo_val_f:10.3f} "
+                              f"(EMA={ema:.3f})")
+                        print(
+                            f"\nEarly stopping: EMA gain over {es_check_interval} steps "
+                            f"stayed below {es_rel_tol:.1e} for {patience} checks at step {i+1}")
+                    break
 
             if verbose and (i % print_every == 0 or i == steps - 1):
                 ema_str = f", EMA={ema:.3f}" if ema is not None else ""
@@ -699,6 +705,7 @@ class PCASparseGPEmulator:
             "steps":     list(range(actual_steps)),
             "converged": converged,
             "n_steps":   actual_steps,
+            "best_step": best_step,
             "jitter":    jitter,
             "lr_backoff_retries": lr_backoff_count,
             "kernel_lr_final": current_kernel_lr,
@@ -707,8 +714,9 @@ class PCASparseGPEmulator:
         }
 
         if verbose:
-            print(f"\nTraining complete. Best ELBO: {best_elbo:.3f} "
-                  f"(converged: {converged})")
+            elbo_str = "Best ELBO (EMA)" if B < N_full else "Best ELBO"
+            print(f"\nTraining complete. {elbo_str}: {best_elbo:.3f} "
+                  f"at step {best_step} (converged: {converged})")
             print(f"Total steps: {actual_steps}/{steps}, "
                   f"jitter used: {jitter:.1e}")
             print("=" * 60)
