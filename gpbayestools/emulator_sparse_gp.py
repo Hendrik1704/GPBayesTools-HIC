@@ -127,6 +127,8 @@ class EmulatorSparseGP(EmulatorBase):
             If npc is neither an int nor a float.
         """
         check_npc(npc)
+        if n_ensemble < 1:
+            raise ValueError(f"n_ensemble must be >= 1, got {n_ensemble}")
         self.npc = npc
         self.seed = seed
         self.n_inducing = n_inducing

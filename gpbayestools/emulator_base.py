@@ -264,7 +264,14 @@ class EmulatorBase:
             raise ValueError(f"All training points in {data_file} were discarded")
         self.design_points = np.array(self.design_points)
         self.model_data = np.array(self.model_data)
-        self.model_data_err = np.nan_to_num(np.abs(np.array(self.model_data_err)))
+        self.model_data_err = np.abs(np.array(self.model_data_err))
+        n_nonfinite_err = int(np.sum(~np.isfinite(self.model_data_err)))
+        if n_nonfinite_err > 0:
+            logger.warning(
+                f"{n_nonfinite_err} non-finite statistical errors of the training "
+                "data are set to 0"
+            )
+            self.model_data_err[~np.isfinite(self.model_data_err)] = 0.0
         logger.info("All training data are loaded.")
         logger.info(
             f"Training dataset size: {len(self.model_data)}, "

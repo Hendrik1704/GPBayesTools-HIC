@@ -187,6 +187,11 @@ class EmulatorSklearn(EmulatorBase):
         ValueError
             If `kernel_type` is unknown.
         """
+        # check before the trained emulator is modified
+        if kernel_type not in ("RBF", "Matern"):
+            raise ValueError(
+                f"Unknown kernel type {kernel_type!r}, expected 'RBF' or 'Matern'"
+            )
         data_to_use = self.model_data[event_mask, :]
         # Standardize the input data. New scaler and PCA objects are used,
         # so that the previously trained ones are not modified.
@@ -234,7 +239,7 @@ class EmulatorSklearn(EmulatorBase):
                 length_scale=ptp, length_scale_bounds=np.outer(ptp, (1e-3, 1e5)), nu=1.5
             )
         else:
-            raise ValueError(f"Unknown kernel type: {kernel_type}")
+            raise AssertionError(kernel_type)
 
         # homoscedastic noise kernel
         hom_white_kern = kernels.WhiteKernel(

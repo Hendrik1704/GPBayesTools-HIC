@@ -113,10 +113,13 @@ def test_output_pca_does_not_change_emulator(emulator, test_points):
         np.testing.assert_array_equal(a, b)
 
 
-def test_unknown_kernel(training_file, param_file):
-    emu = EmulatorSklearn(training_file, param_file, npc=2)
+def test_unknown_kernel(emulator, test_points):
+    before = emulator.predict(test_points)
     with pytest.raises(ValueError):
-        emu.train_emulator(np.ones(emu.nev, dtype=bool), kernel_type="rbf")
+        emulator.train_emulator(np.ones(emulator.nev, dtype=bool), kernel_type="rbf")
+    # the trained emulator is not modified
+    for a, b in zip(before, emulator.predict(test_points), strict=True):
+        np.testing.assert_array_equal(a, b)
 
 
 def test_seed(training_file, param_file, test_points):
@@ -272,3 +275,13 @@ def test_load_emulator_saved_with_old_package_name(emulator, test_points, tmp_pa
         loaded.predict(test_points), emulator.predict(test_points), strict=True
     ):
         np.testing.assert_array_equal(a, b)
+
+
+def test_non_finite_errors_are_set_to_zero(modified_data, param_file):
+    def modify(values, errors):
+        errors[3, 2] = np.nan
+        errors[5, 1] = np.inf
+
+    emu = EmulatorSklearn(modified_data(modify), param_file)
+    assert emu.nev == 60
+    assert emu.model_data_err[3, 2] == 0 and emu.model_data_err[5, 1] == 0

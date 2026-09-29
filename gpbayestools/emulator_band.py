@@ -57,6 +57,8 @@ class EmulatorBAND(EmulatorBase):
         For invalid training data or options (see `EmulatorBase`).
     """
 
+    _METHODS = ("PCGP", "PCSK", "PCGPwImpute", "PCGPwM")
+
     _legacy_attributes = [("method_", "method"), ("rng_", "_rng"), ("emu", "emu_")]
     _legacy_defaults = {"seed": None, "_rng": lambda state: np.random.default_rng()}
 
@@ -70,6 +72,10 @@ class EmulatorBAND(EmulatorBase):
         exp_and_cov_diagonal=False,
         seed=None,
     ):
+        if method not in self._METHODS:
+            raise ValueError(
+                f"Unknown method {method!r}, expected one of {', '.join(self._METHODS)}"
+            )
         self.method = method
         # surmise (>=1.0.0) requires a global RNG to be set before training
         self.seed = seed
@@ -139,7 +145,7 @@ class EmulatorBAND(EmulatorBase):
                 args={"warnings": True},
             )
         else:
-            raise ValueError("Requested method not implemented!")
+            raise AssertionError(self.method)
 
     def _full_covariance(self, gp):
         """

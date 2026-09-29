@@ -105,6 +105,5 @@ def test_validation(training_file, param_file, test_points):
 
 
 def test_unknown_method(training_file, param_file):
-    emu = EmulatorBAND(training_file, param_file, method="GP")
     with pytest.raises(ValueError):
-        emu.train_emulator_auto_mask()
+        EmulatorBAND(training_file, param_file, method="GP")
