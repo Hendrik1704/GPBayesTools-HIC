@@ -333,7 +333,7 @@ class EmulatorBase:
         finally:
             self.exp_and_cov_diagonal = flag
 
-    def sample_y(self, X, n_samples=1, random_state=None, include_noise=False):
+    def sample_y(self, X, n_samples=1, seed=None, include_noise=False):
         """
         Sample model output from the predicted Gaussian distribution.
 
@@ -352,7 +352,7 @@ class EmulatorBase:
             Parameter points. A 1D array is treated as a single point.
         n_samples : int, default=1
             Number of samples per parameter point.
-        random_state : int, numpy.random.Generator or None, default=None
+        seed : int, numpy.random.Generator or None, default=None
             Seed or generator passed to ``numpy.random.default_rng``.
         include_noise : bool, default=False
             If True, the noise fitted by the emulator is included in the
@@ -364,7 +364,7 @@ class EmulatorBase:
             Samples of the observables.
         """
         X = np.atleast_2d(X)
-        rng = np.random.default_rng(random_state)
+        rng = np.random.default_rng(seed)
         back_transform = self.log_trafo and not self._predictions_in_log_space()
         if back_transform:
             mean, cov = self._predict_log_space(X, include_noise)

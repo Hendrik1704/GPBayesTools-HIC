@@ -142,14 +142,12 @@ def test_emulator_calibration(noisy_training_file, param_file):
 def test_sample_y(trained, test_points, include_noise):
     name, emu, _ = trained
     samples = emu.sample_y(
-        test_points, n_samples=4000, random_state=1, include_noise=include_noise
+        test_points, n_samples=4000, seed=1, include_noise=include_noise
     )
     assert samples.shape == (len(test_points), 4000, emu.nobs)
     np.testing.assert_array_equal(
         samples,
-        emu.sample_y(
-            test_points, n_samples=4000, random_state=1, include_noise=include_noise
-        ),
+        emu.sample_y(test_points, n_samples=4000, seed=1, include_noise=include_noise),
     )
     mean, cov = emu.predict(test_points, include_noise=include_noise)
     std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
@@ -162,7 +160,7 @@ def test_sample_y_log_normal(noisy_training_file, param_file, test_points):
         noisy_training_file, param_file, log_trafo=True, exp_and_cov_diagonal=True
     )
     emu.train_emulator_auto_mask()
-    samples = emu.sample_y(test_points, n_samples=4000, random_state=1)
+    samples = emu.sample_y(test_points, n_samples=4000, seed=1)
     assert np.all(samples > 0)
     # the median of the log-normal samples is exp(mean in log space), which
     # predict() returns with exp_and_cov_diagonal

@@ -101,10 +101,10 @@ def test_log_transformation(training_file, param_file, test_points):
 
 
 def test_sample_y(emulator, test_points):
-    samples = emulator.sample_y(test_points, n_samples=4000, random_state=3)
+    samples = emulator.sample_y(test_points, n_samples=4000, seed=3)
     assert samples.shape == (len(test_points), 4000, N_OBS)
     np.testing.assert_array_equal(
-        samples, emulator.sample_y(test_points, n_samples=4000, random_state=3)
+        samples, emulator.sample_y(test_points, n_samples=4000, seed=3)
     )
     mean, cov = emulator.predict(test_points)
     std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
