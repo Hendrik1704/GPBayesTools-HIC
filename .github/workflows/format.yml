@@ -23,8 +23,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      # a fixed version, since the formatting can change between versions
       - name: Install ruff
-        run: python -m pip install "ruff>=0.6"
+        run: python -m pip install "ruff==0.16.9"
 
       - name: Check the formatting
         if: github.event_name == 'pull_request'
