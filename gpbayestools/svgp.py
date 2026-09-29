@@ -123,11 +123,14 @@ class PCASparseGPEmulator:
       ``Kxx - sum(A_half^2, axis=0) + sum((A_half.T @ L)^2, axis=1)``,
       where ``A_half = Lz^{-1} @ Kxz.T`` (one triangular solve only).
 
-    Hyperparameters are MAP point estimates, not posteriors. The kernel
-    parameters (log_lengthscale, log_var_rbf, log_var_mat, log_noise) are
-    optimized to a single MAP point with ADAM on the ELBO. The predictive
-    distribution p(f* | X*, X, Y) is therefore conditioned on a fixed θ_MAP
-    and does NOT integrate over p(θ | X, Y). Consequences:
+    Hyperparameters are point estimates, not posteriors. The kernel
+    parameters (log_lengthscale, log_var_rbf, log_var_mat) and the nugget
+    (log_noise) are optimized with ADAM on the ELBO, without a hyperprior
+    (type-II maximum likelihood). Despite their names, these parameters are
+    unconstrained values that are mapped to positive values with a softplus.
+    The predictive distribution p(f* | X*, X, Y) is therefore conditioned on
+    fixed hyperparameters θ̂ and does NOT integrate over p(θ | X, Y).
+    Consequences:
 
     - The predictive variance is the GP posterior variance at fixed θ, which
       systematically underestimates the total uncertainty when the
@@ -135,7 +138,7 @@ class PCASparseGPEmulator:
     - This is most problematic with short lengthscales (overfitting), very
       small datasets, or when the kernel family is misspecified.
     - PCASparseGPEnsemble partially compensates: different random seeds
-      produce different θ_MAP values, so the spread between members
+      produce different θ̂ values, so the spread between members
       captures some hyperparameter uncertainty. However, if all members
       collapse to the same optimum (common with large N), this compensation
       vanishes.
@@ -143,7 +146,7 @@ class PCASparseGPEmulator:
     Principled alternatives (not implemented):
 
     - MCMC over θ (e.g. HMC in NumPyro/BlackJAX): exact but expensive.
-    - Laplace approximation around θ_MAP: adds a Gaussian correction to the
+    - Laplace approximation around θ̂: adds a Gaussian correction to the
       predictive variance with cost O(P_θ²), where P_θ is the number of
       kernel parameters.
     - VOGP / hyperparameter variational inference: jointly optimizes q(θ)
@@ -393,7 +396,10 @@ class PCASparseGPEmulator:
             likelihood (capped at 1e10 in standardized PC units). The mean
             over n of the full ``Cov_pc`` matrix is stored and used in
             ``predict()`` for the back-projection to the output-space
-            covariance. When None, no extra observation noise is added.
+            covariance (include_obs_noise). The mean noise covariance is also
+            removed from the truncation covariance for predictions without
+            noise (see `predict`). When None, no extra observation noise is
+            added and the truncation covariance is used unchanged.
             Default None.
         steps : int
             Maximum number of ADAM steps (default 25000).
@@ -403,7 +409,8 @@ class PCASparseGPEmulator:
             so that the ELBO remains comparable across batch sizes.
             Recommended: 256-1024 for large N.
         kernel_lr : float
-            Learning rate for the kernel parameters (default 1e-3).
+            Learning rate for the kernel parameters and the nugget
+            (default 1e-3).
         variational_lr : float
             Learning rate for the variational parameters (default 1e-3).
         inducing_lr : float
@@ -452,17 +459,29 @@ class PCASparseGPEmulator:
             Maximum number of learning-rate backoff retries after NaN bursts
             (default 3).
         nan_patience : int
-            Number of consecutive NaN-triggered jitter escalations allowed
-            before either triggering the LR backoff (if enabled) or raising
-            a RuntimeError (default 10).
+            After a non-finite ELBO, the jitter is increased (up to
+            jitter_max), and the parameters and the optimizer state are reset
+            to the best parameters so far (or the initial ones). After more
+            than `nan_patience` consecutive non-finite steps, the learning
+            rates are reduced (if auto_lr_backoff) or a RuntimeError is
+            raised (default 10).
 
         Returns
         -------
         dict
-            Training history with the keys 'elbos', 'steps', 'converged',
-            'n_steps', 'best_step', 'jitter', 'lr_backoff_retries',
-            'kernel_lr_final', 'variational_lr_final' and
-            'inducing_lr_final'. Also stored as ``self.training_history``.
+            Training history, also stored as ``self.training_history``:
+
+            - 'elbos': the finite ELBO values (mini-batch estimates with
+              batch_size < N), 'steps': their iteration numbers, 'n_steps':
+              their number.
+            - 'best_step', 'best_score': iteration and score of the returned
+              parameters (the ELBO, or its EMA with mini-batches), None if no
+              step had a finite ELBO.
+            - 'converged': True if the early stopping stopped the training.
+            - 'jitter': the final jitter, 'lr_backoff_retries': the number of
+              learning-rate reductions, 'kernel_lr_final',
+              'variational_lr_final', 'inducing_lr_final': the final learning
+              rates.
 
         Raises
         ------
@@ -476,6 +495,21 @@ class PCASparseGPEmulator:
             startup, or if the loss stays NaN after all jitter increases and
             learning-rate backoff retries.
         """
+        if not (0.0 < lr_backoff_factor < 1.0):
+            raise ValueError(
+                f"lr_backoff_factor must be in (0, 1), got {lr_backoff_factor}"
+            )
+        if max_lr_backoff_retries < 0:
+            raise ValueError("max_lr_backoff_retries must be >= 0")
+        if nan_patience < 1:
+            raise ValueError("nan_patience must be >= 1")
+        if not (0.0 <= ema_alpha < 1.0):
+            raise ValueError(f"ema_alpha must be in [0, 1), got {ema_alpha}")
+        if not (0.0 < jitter_init <= jitter_max):
+            raise ValueError(
+                f"jitter_init must be in (0, jitter_max], got jitter_init="
+                f"{jitter_init} and jitter_max={jitter_max}"
+            )
         if verbose:
             logger.info("=" * 60)
             logger.info("PCASparseGPEmulator Training")
@@ -688,12 +722,12 @@ class PCASparseGPEmulator:
             Lz_test = jnp.linalg.cholesky(Kzz_test)
             if not bool(jnp.any(~jnp.isfinite(Lz_test))):
                 break
-            jitter *= 10.0
-            if jitter > jitter_max:
+            if jitter >= jitter_max:
                 raise RuntimeError(
-                    f"Kzz Cholesky failed at jitter={jitter_max:.1e}. "
+                    f"Kzz Cholesky failed up to jitter={jitter:.1e} (jitter_max). "
                     f"Try reducing M or using a different init_strategy."
                 )
+            jitter = min(jitter * 10.0, jitter_max)
         if verbose:
             if jitter > jitter_init:
                 logger.info(f"  Increased jitter to {jitter:.1e} for stable Cholesky")
@@ -752,14 +786,6 @@ class PCASparseGPEmulator:
             "m": "variational",
             "L_unconstrained": "variational",
         }
-        if not (0.0 < lr_backoff_factor < 1.0):
-            raise ValueError(
-                f"lr_backoff_factor must be in (0, 1), got {lr_backoff_factor}."
-            )
-        if max_lr_backoff_retries < 0:
-            raise ValueError("max_lr_backoff_retries must be >= 0.")
-        if nan_patience < 1:
-            raise ValueError("nan_patience must be >= 1.")
 
         current_kernel_lr = float(kernel_lr)
         current_variational_lr = float(variational_lr)
@@ -795,8 +821,11 @@ class PCASparseGPEmulator:
         p = self.params
         p_init = {k: np.array(v) for k, v in p.items()}
         elbos = []
-        best_elbo = -np.inf
+        # best_score is the ELBO, or its EMA for mini-batches; step_ids are
+        # the iteration numbers of the finite ELBO values
+        best_score = -np.inf
         best_step = None
+        step_ids = []
         best_params = None
         converged = False
         nan_count = 0
@@ -887,6 +916,7 @@ class PCASparseGPEmulator:
 
             elbo_val_f = float(elbo_val)
             elbos.append(elbo_val_f)
+            step_ids.append(i)
             # nan_patience counts consecutive non-finite steps
             nan_count = 0
 
@@ -901,9 +931,9 @@ class PCASparseGPEmulator:
             # The best parameters are therefore selected on the EMA. With the
             # full batch the ELBO is exact and used directly.
             score = ema if B < N_full else elbo_val_f
-            if score > best_elbo:
-                best_elbo = score
-                best_step = len(elbos) - 1
+            if score > best_score:
+                best_score = score
+                best_step = i
                 best_params = {k: np.array(v) for k, v in p_eval.items()}
 
             if early_stopping and len(ema_history) > es_check_interval:
@@ -925,7 +955,7 @@ class PCASparseGPEmulator:
                             f"\nEarly stopping: EMA gain over "
                             f"{es_check_interval} steps stayed below "
                             f"{es_rel_tol:.1e} for {patience} steps "
-                            f"at step {i + 1}"
+                            f"at step {i}"
                         )
                     break
 
@@ -946,10 +976,11 @@ class PCASparseGPEmulator:
         actual_steps = len(elbos)
         self.training_history = {
             "elbos": elbos,
-            "steps": list(range(actual_steps)),
+            "steps": step_ids,
             "converged": converged,
             "n_steps": actual_steps,
             "best_step": best_step,
+            "best_score": best_score if best_step is not None else None,
             "jitter": jitter,
             "lr_backoff_retries": lr_backoff_count,
             "kernel_lr_final": current_kernel_lr,
@@ -960,7 +991,7 @@ class PCASparseGPEmulator:
         if verbose:
             elbo_str = "Best ELBO (EMA)" if B < N_full else "Best ELBO"
             logger.info(
-                f"\nTraining complete. {elbo_str}: {best_elbo:.3f} "
+                f"\nTraining complete. {elbo_str}: {best_score:.3f} "
                 f"at step {best_step} (converged: {converged})"
             )
             logger.info(
@@ -993,22 +1024,18 @@ class PCASparseGPEmulator:
         X_star : array (N_test, D)
             Test inputs.
         include_noise : bool
-            Whether to add the learned per-PC nugget/noise term (log_noise) to
-            the predictive variance (default False). The nugget plays a dual
-            role during training: (a) it models observation noise, and (b) it
-            absorbs emulation error that M inducing points cannot represent
-            exactly. Guidance:
-
-            - Y_err provided AND emulation RMSE >> obs noise (typical for
-              physics simulators with a dense design and small measurement
-              error): use include_noise=True. The nugget mostly captures
-              emulation uncertainty and MUST be in σ_pred for calibrated
-              intervals.
-            - Y_err provided AND emulation RMSE ≈ obs noise (well-converged
-              emulator with M → N): use include_noise=False to avoid
-              double-counting the observation noise.
-            - Y_err not provided: use include_noise=True; the nugget is the
-              only available estimate of the noise floor.
+            Add the learned per-PC nugget (log_noise) to the predictive
+            variance (default False). The nugget is fitted in addition to the
+            known observation noise Y_err, so it describes the variance of
+            the training data beyond Y_err: unmodelled noise and emulation
+            error that the inducing points cannot represent. Without it, the
+            prediction is the uncertainty of the emulated model function, as
+            needed for the comparison with experimental data. With it (and
+            include_obs_noise for the known noise), the prediction is the
+            uncertainty of a new noisy simulation. If the nugget is large
+            compared with the GP variance, the emulator does not describe the
+            training data well, and include_noise=True gives more
+            conservative intervals.
         include_truncation : bool
             Add the exact PCA truncation uncertainty (default True): the
             covariance contribution of all discarded PCA components, computed
@@ -1092,10 +1119,8 @@ class PCASparseGPEmulator:
         # Accumulate variance in standardized PC space
         vars_total = vars_gp
 
-        # 1. Learned nugget / homoscedastic noise.
-        # For deterministic simulators this is a training regularizer, NOT real
-        # observation noise -> set include_noise=False to exclude it from predictions.
-        # For stochastic simulators / experiments without Y_err, use True.
+        # 1. Learned nugget: variance of the training data beyond Y_err, only
+        #    included with include_noise (see the docstring).
         noise = jax.nn.softplus(p["log_noise"]) + 1e-6  # (n_pc,)
         if include_noise:
             vars_total = vars_total + noise[None, :]
@@ -1344,9 +1369,8 @@ class PCASparseGPEnsemble:
         Y_err : array (N, P) or (N, P, P) or None
             Per-point observation uncertainty, forwarded to each member
             (default None). (N, P): independent standard deviations.
-            (N, P, P): full per-point covariance matrices. When provided,
-            use include_noise=False in predict() so that the nugget (training
-            regularizer) does not double-count the known noise floor.
+            (N, P, P): full per-point covariance matrices (see
+            PCASparseGPEmulator.fit).
         verbose : bool
             Log an ensemble-level progress summary (default True).
         verbose_members : bool
@@ -1449,10 +1473,11 @@ class PCASparseGPEnsemble:
             self.training_histories.append(emu.training_history)
             if verbose:
                 h = emu.training_history
-                best = h.get("best_step")
-                best_elbo = h["elbos"][best] if best is not None else float("nan")
+                best_score = h.get("best_score")
+                if best_score is None:
+                    best_score = float("nan")
                 logger.info(
-                    f"  ELBO of the selected parameters={best_elbo:.2f}, "
+                    f"  ELBO of the selected parameters={best_score:.2f}, "
                     f"steps={h['n_steps']}, "
                     f"converged={h['converged']}, "
                     f"jitter={h['jitter']:.1e}"
