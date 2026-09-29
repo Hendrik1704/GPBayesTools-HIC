@@ -15,8 +15,10 @@ logger = logging.getLogger(__name__)
 
 # This function is taken from the surmise package (version 1.0.0) and
 # modified: the number of initial draws is set by nstartparameters, the
-# tuning phase is longer (fractunning = 2), progress is logged, and the
-# unflattened chains of the temperature-1 walkers are returned.
+# tuning phase is longer (fractunning = 2), progress is logged, the
+# unflattened chains of the temperature-1 walkers are returned, and the
+# perturbation of the optimized starting points uses the inverse Hessian as
+# covariance and stops after a few step reductions.
 def sampler(
     logpostfunc,
     draw_func,
@@ -209,16 +211,15 @@ def sampler(
         stepadj = 4
         l0 = neglogpostf_nograd(opval.x)
         while notmoved:
-            if (W > 0).all():
-                r = (V.T * np.sqrt(W)) @ (
-                    V @ rng.standard_normal(size=thetacen.shape[0])
-                )
-            else:
+            if stepadj < 1 / 16:
+                # no acceptable perturbation, keep the optimized point
+                thetaop[k, :] = thetacen + thetas * opval.x
+                break
+            if not (W > 0).all():
                 stepadj /= 2
-                if stepadj < 1 / 16:
-                    thetaop[k, :] = thetacen + thetas * opval.x
-                    notmoved = False
                 continue
+            # random step with the inverse Hessian V diag(W) V^T as covariance
+            r = V @ (np.sqrt(W) * rng.standard_normal(size=thetacen.shape[0]))
 
             if (neglogpostf_nograd(stepadj * r + opval.x) - l0) < 3 * thetacen.shape[0]:
                 thetaop[k, :] = thetacen + thetas * (stepadj * r + opval.x)
