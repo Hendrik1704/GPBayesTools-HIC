@@ -156,7 +156,7 @@ class Design:
 
     Parameters
     ----------
-    parfile : str or path-like
+    parameter_file : str or path-like
         Path to the model parameter file.
     npoints : int, default=500
         Number of design points.
@@ -172,12 +172,12 @@ class Design:
 
     Attributes
     ----------
-    type : str
+    design_type : str
         'main' or 'validation'.
     pardict : dict
         All parameters and their bounds, as returned by
         ``parse_model_parameter_file``.
-    min, max : ndarray
+    param_min, param_max : ndarray
         Minimum and maximum values of the parameters.
     ndim : int
         Number of parameters (i.e. dimensions).
@@ -196,15 +196,15 @@ class Design:
     """
 
     def __init__(
-        self, parfile, npoints=500, validation=False, seed=None, method="maxpro"
+        self, parameter_file, npoints=500, validation=False, seed=None, method="maxpro"
     ):
         if method not in design_generators:
             raise ValueError(
                 f"Unknown design method '{method}', "
                 f"use one of {list(design_generators)}"
             )
-        self.pardict = parse_model_parameter_file(parfile)
-        self.type = "validation" if validation else "main"
+        self.pardict = parse_model_parameter_file(parameter_file)
+        self.design_type = "validation" if validation else "main"
 
         self.ndim = len(self.pardict.keys())
 
@@ -220,18 +220,18 @@ class Design:
             logger.info(f"seed = {seed}")
         self.seed = seed
 
-        self.min = []
-        self.max = []
+        self.param_min = []
+        self.param_max = []
         for val in self.pardict.values():
-            self.min.append(val[1])
-            self.max.append(val[2])
-        self.min = np.array(self.min)
-        self.max = np.array(self.max)
+            self.param_min.append(val[1])
+            self.param_max.append(val[2])
+        self.param_min = np.array(self.param_min)
+        self.param_max = np.array(self.param_max)
 
         # generate the Latin-Hypercube samples
-        self.array = self.min + (self.max - self.min) * design_generators[method](
-            npoints, self.ndim, seed
-        )
+        self.array = self.param_min + (
+            self.param_max - self.param_min
+        ) * design_generators[method](npoints, self.ndim, seed)
 
     def __array__(self, dtype=None, copy=None):
         """Return the design array (numpy array interface)."""
@@ -252,7 +252,7 @@ class Design:
             Base directory of the input files. It is created if it does not
             exist.
         """
-        outdir = basedir / self.type
+        outdir = basedir / self.design_type
         outdir.mkdir(parents=True, exist_ok=True)
 
         for point, row in zip(self.points, self.array, strict=True):

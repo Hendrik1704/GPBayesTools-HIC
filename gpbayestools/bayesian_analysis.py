@@ -165,14 +165,41 @@ class BayesianAnalysis:
     mcmc_path : str or path-like, default="./mcmc/chain.pkl"
         Base path of the chain files. The parent directory is created if it
         does not exist.
-    expdata_path : str or path-like, default="./exp_data.dat"
+    exp_data_path : str or path-like, default="./exp_data.pkl"
         Path of the pickle file with the experimental data. It must contain a
         dictionary with exactly one data set, whose ``"obs"`` entry holds the
         values and the errors of the data points (see
         :meth:`_read_in_exp_data_pickle`).
-    model_parafile : str or path-like, default="./model.dat"
+    parameter_file : str or path-like, default="./model.dat"
         Path of the model parameter file with the label and the range
         (minimum and maximum) of each parameter.
+
+    Attributes
+    ----------
+    pardict : dict
+        The parameters of the parameter file, see
+        ``parse_model_parameter_file``.
+    ndim : int
+        Number of parameters.
+    labels : list of str
+        Labels of the parameters.
+    param_min, param_max : ndarray of shape (ndim,)
+        Ranges of the parameters (bounds of the uniform prior).
+    prior_volume : float
+        Volume of the parameter space.
+    exp_data : ndarray of shape (1, nobs)
+        Values of the experimental data points.
+    exp_data_cov : ndarray of shape (nobs, nobs)
+        Diagonal covariance matrix of the experimental data points.
+    nobs : int
+        Number of experimental data points.
+    emulators : list
+        The emulators loaded with `load_emulators`.
+    chain : ndarray or False
+        Samples of the last sampler run with this object or loaded by
+        `compute_log_likelihood_for_chain`, False before.
+    chain_sampler : str or None
+        Name of the sampler of `chain`.
     """
 
     samplers = ("emcee", "pocomc", "ptlmc")
@@ -180,8 +207,8 @@ class BayesianAnalysis:
     def __init__(
         self,
         mcmc_path="./mcmc/chain.pkl",
-        expdata_path="./exp_data.dat",
-        model_parafile="./model.dat",
+        exp_data_path="./exp_data.pkl",
+        parameter_file="./model.dat",
     ):
         logger.info("Initializing MCMC ...")
         self.mcmc_path = Path(mcmc_path)
@@ -193,28 +220,28 @@ class BayesianAnalysis:
         )
 
         # load the model parameter file
-        logger.info(f"Loading the model parameters space from {model_parafile} ...")
-        self.pardict = parse_model_parameter_file(model_parafile)
+        logger.info(f"Loading the model parameters space from {parameter_file} ...")
+        self.pardict = parse_model_parameter_file(parameter_file)
         self.ndim = len(self.pardict.keys())
-        self.label = []
-        self.min = []
-        self.max = []
+        self.labels = []
+        self.param_min = []
+        self.param_max = []
         for val in self.pardict.values():
-            self.label.append(val[0])
-            self.min.append(val[1])
-            self.max.append(val[2])
-        self.min = np.array(self.min)
-        self.max = np.array(self.max)
+            self.labels.append(val[0])
+            self.param_min.append(val[1])
+            self.param_max.append(val[2])
+        self.param_min = np.array(self.param_min)
+        self.param_max = np.array(self.param_max)
 
         # the volume of the uniform prior
-        diff = self.max - self.min
+        diff = self.param_max - self.param_min
         self.prior_volume = np.prod(diff)
 
         logger.info("Run MCMC with emcee...")
         # load the experimental data to be fit
-        logger.info(f"Loading the experiment data from {expdata_path} ...")
-        self.expdata, self.expdata_cov = self._read_in_exp_data_pickle(expdata_path)
-        self.nobs = self.expdata.shape[1]
+        logger.info(f"Loading the experiment data from {exp_data_path} ...")
+        self.exp_data, self.exp_data_cov = self._read_in_exp_data_pickle(exp_data_path)
+        self.nobs = self.exp_data.shape[1]
         self.emulators = []
         self.chain = False
         # sampler that generated self.chain
@@ -286,7 +313,7 @@ class BayesianAnalysis:
 
         The boundaries are included, as in the uniform prior of pocoMC.
         """
-        return np.all((X >= self.min) & (X <= self.max), axis=-1)
+        return np.all((X >= self.param_min) & (X <= self.param_max), axis=-1)
 
     def log_prior(self, X):
         """
@@ -344,9 +371,9 @@ class BayesianAnalysis:
             # allocate difference (model - experiment) and covariance arrays
             dY = np.empty([nsamples, self.nobs])
             cov = np.empty([nsamples, self.nobs, self.nobs])
-            dY = model_Y - self.expdata
+            dY = model_Y - self.exp_data
             # add experiment cov to model cov
-            cov = model_cov + self.expdata_cov
+            cov = model_cov + self.exp_data_cov
 
             # compute log likelihood at each point
             lp[inside] += list(map(mvn_loglike, dY, cov))
@@ -386,9 +413,9 @@ class BayesianAnalysis:
                 # allocate difference (model - experiment) and covariance arrays
                 dY = np.empty([nsamples, self.nobs])
                 cov = np.empty([nsamples, self.nobs, self.nobs])
-                dY = model_Y - self.expdata
+                dY = model_Y - self.exp_data
                 # add experiment cov to model cov
-                cov = model_cov + self.expdata_cov
+                cov = model_cov + self.exp_data_cov
 
                 # compute log likelihood at this point
                 lp[k] += mvn_loglike(dY[0], cov[0])
@@ -465,7 +492,7 @@ class BayesianAnalysis:
         ndarray of shape (n, ndim)
             Random positions.
         """
-        return np.random.uniform(self.min, self.max, (n, self.ndim))
+        return np.random.uniform(self.param_min, self.param_max, (n, self.ndim))
 
     @staticmethod
     def map(f, args):
@@ -733,7 +760,7 @@ class BayesianAnalysis:
         chain_data = {}
 
         def draw_func(n):
-            return rng.uniform(self.min, self.max, (n, self.ndim))
+            return rng.uniform(self.param_min, self.param_max, (n, self.ndim))
 
         logger.info("Starting MCMC ...")
         result_dict = ptlmc.sampler(
@@ -902,7 +929,7 @@ class BayesianAnalysis:
             prior_distributions = []
             for i in range(self.ndim):
                 prior_distributions.append(
-                    uniform(self.min[i], self.max[i] - self.min[i])
+                    uniform(self.param_min[i], self.param_max[i] - self.param_min[i])
                 )
             prior = pocomc.Prior(prior_distributions)
         else:

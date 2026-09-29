@@ -62,7 +62,7 @@ def files(tmp_path):
 @pytest.fixture
 def chain(files):
     c = BayesianAnalysis(
-        mcmc_path=files["mcmc"], expdata_path=files["exp"], model_parafile=files["par"]
+        mcmc_path=files["mcmc"], exp_data_path=files["exp"], parameter_file=files["par"]
     )
     c.load_emulators(files["emus"])
     return c
@@ -124,8 +124,8 @@ def test_exp_data_with_several_sets(files, tmp_path):
     with pytest.raises(ValueError):
         BayesianAnalysis(
             mcmc_path=files["mcmc"],
-            model_parafile=files["par"],
-            expdata_path=write_exp_data(tmp_path / "exp2.pkl", 2),
+            parameter_file=files["par"],
+            exp_data_path=write_exp_data(tmp_path / "exp2.pkl", 2),
         )
 
 
@@ -152,8 +152,8 @@ def test_emcee_seed(files):
     for i in range(2):
         c = BayesianAnalysis(
             mcmc_path=files["mcmc"].replace("chain", f"chain{i}"),
-            expdata_path=files["exp"],
-            model_parafile=files["par"],
+            exp_data_path=files["exp"],
+            parameter_file=files["par"],
         )
         c.load_emulators(files["emus"])
         c.run_emcee(n_steps=50, n_burn_steps=20, n_walkers=8, n_thin=1, seed=3)

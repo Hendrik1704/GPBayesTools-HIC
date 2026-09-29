@@ -106,7 +106,7 @@ def load_emulator(path):
         return _LegacyUnpickler(f).load()
 
 
-def parse_model_parameter_file(parfile):
+def parse_model_parameter_file(parameter_file):
     """
     Read a model parameter file.
 
@@ -115,7 +115,7 @@ def parse_model_parameter_file(parfile):
 
     Parameters
     ----------
-    parfile : str or path-like
+    parameter_file : str or path-like
         Path to the model parameter file.
 
     Returns
@@ -126,7 +126,7 @@ def parse_model_parameter_file(parfile):
         float. Further entries are kept as strings.
     """
     pardict = {}
-    with open(parfile) as f:
+    with open(parameter_file) as f:
         for line in f:
             par = line.split("#")[0].strip()
             if par == "":
