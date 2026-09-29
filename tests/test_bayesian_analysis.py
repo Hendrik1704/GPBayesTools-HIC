@@ -209,7 +209,7 @@ def test_pocomc_and_log_likelihood_of_chain(analysis):
         n_prior=1024,
         n_total=2000,
         n_evidence=0,
-        random_state=1,
+        seed=1,
     )
     assert analysis.chain.ndim == 2 and analysis.chain.shape[1] == 2
     # pocoMC samples are independent
@@ -247,7 +247,7 @@ def test_pocomc_uses_pool(analysis):
         n_prior=256,
         n_total=256,
         n_evidence=0,
-        random_state=1,
+        seed=1,
         pool=CountingPool(),
     )
     assert CountingPool.n_calls > 0

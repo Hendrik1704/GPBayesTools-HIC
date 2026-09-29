@@ -897,7 +897,7 @@ class BayesianAnalysis:
         n_prior=2000,
         sample="tpcn",
         n_max_steps=200,
-        random_state=42,
+        seed=None,
         n_total=5000,
         n_evidence=5000,
         n_ndim_steps=2,
@@ -936,10 +936,12 @@ class BayesianAnalysis:
         n_max_steps : int, default=200
             Maximum number of MCMC steps per iteration (pocoMC's own default
             is ``10 * n_steps``, see `n_ndim_steps`).
-        random_state : int or None, default=42
-            Random seed. pocoMC sets it as the seed of numpy's global random
-            number generator (``np.random.seed``) and of torch, which also
-            affects later code that uses these generators.
+        seed : int or None, default=None
+            Random seed, passed to pocoMC as ``random_state``, which makes the
+            run reproducible. pocoMC sets it as the seed of numpy's global
+            random number generator (``np.random.seed``) and of torch, which
+            also affects later code that uses these generators. None does not
+            change the global random state.
         n_total : int, default=5000
             Total number of effectively independent samples to be collected.
         n_evidence : int, default=5000
@@ -1009,7 +1011,7 @@ class BayesianAnalysis:
             sample=sample,
             n_max_steps=n_max_steps,
             n_steps=n_ndim_steps * self.ndim,
-            random_state=random_state,
+            random_state=seed,
             vectorize=vectorize,
             pool=pool,
         )
