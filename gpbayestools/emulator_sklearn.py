@@ -311,12 +311,13 @@ class EmulatorSklearn(EmulatorBase):
             # part is used for predictions of the model function
             # (include_noise=False).
             scale = self.scaler_.scale_
-            err_std = self.model_data_err[event_mask, :] / scale
-            noise_std = np.diag(np.mean(err_std**2, axis=0))
-            trunc_std = self._cov_trunc / np.outer(scale, scale)
-            self._cov_trunc_signal = truncation_signal(trunc_std, noise_std) * np.outer(
-                scale, scale
-            )
+            # covariances in standardized units
+            err_scaled = self.model_data_err[event_mask, :] / scale
+            noise_cov_scaled = np.diag(np.mean(err_scaled**2, axis=0))
+            trunc_cov_scaled = self._cov_trunc / np.outer(scale, scale)
+            self._cov_trunc_signal = truncation_signal(
+                trunc_cov_scaled, noise_cov_scaled
+            ) * np.outer(scale, scale)
 
             # Add small term to diagonal for numerical stability.
             self._cov_trunc.flat[:: self.nobs + 1] += 1e-4 * self.scaler_.var_

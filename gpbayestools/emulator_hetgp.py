@@ -123,15 +123,16 @@ class EmulatorHetGP(EmulatorBase):
         """
         standardized_outputs = self.scaler_.transform(data)
         residuals = standardized_outputs - self.pca_.inverse_transform(data_pca)
-        scales = self.scaler_.scale_
-        self._cov_trunc = np.cov(residuals, rowvar=False) * np.outer(scales, scales)
+        scale = self.scaler_.scale_
+        # covariances in standardized units
+        trunc_cov_scaled = np.cov(residuals, rowvar=False)
+        self._cov_trunc = trunc_cov_scaled * np.outer(scale, scale)
         self._cov_trunc_signal = self._cov_trunc
         if data_err is not None:
-            noise_std = np.diag(np.mean((data_err / scales) ** 2, axis=0))
-            trunc_std = np.cov(residuals, rowvar=False)
-            self._cov_trunc_signal = truncation_signal(trunc_std, noise_std) * np.outer(
-                scales, scales
-            )
+            noise_cov_scaled = np.diag(np.mean((data_err / scale) ** 2, axis=0))
+            self._cov_trunc_signal = truncation_signal(
+                trunc_cov_scaled, noise_cov_scaled
+            ) * np.outer(scale, scale)
 
     def __getstate__(self):
         """
