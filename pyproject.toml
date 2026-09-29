@@ -22,10 +22,12 @@ dependencies = [
     "pocomc==1.2.6",
     "hetgpy==1.0.4",
     "emcee>=3.1.4",
-    "numpy>=1.26.0",
-    "scipy>=1.10.1",
+    # jax requires numpy >= 2.0 and scipy >= 1.14
+    "numpy>=2.0",
+    "scipy>=1.14",
     "dill>=0.3.8",
     "scikit-learn>=1.4.0",
+    # process pool of pocoMC (run_pocomc with an integer pool)
     "multiprocess>=0.70.16",
     "jax>=0.10.2",
     "optax>=0.2.4",
@@ -34,6 +36,8 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8.3.4"]
 dev = ["pytest>=8.3.4", "ruff>=0.6"]
+# for the notebooks in examples/
+examples = ["matplotlib>=3.8", "jupyter"]
 
 [project.urls]
 Repository = "https://github.com/Hendrik1704/GPBayesTools-HIC"

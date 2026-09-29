@@ -77,8 +77,15 @@ The package can be installed with pip from the root directory of the repository:
 pip install .
 ```
 
+pocoMC depends on PyTorch, which pip installs with CUDA support by default (several GB). Without
+a GPU, install the CPU version of PyTorch first:
+
+```
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
 Use `pip install -e ".[dev]"` for an editable installation with the dependencies for the tests
-and the code formatting. The modules are then imported from `gpbayestools`, e.g.
+and the code formatting, and `pip install ".[examples]"` for the notebooks in `examples/`. The modules are then imported from `gpbayestools`, e.g.
 `from gpbayestools.emulator_band import EmulatorBAND`.
 Emulators saved with versions < 3.0.0, in which the package was called `src`, can be loaded
 with `gpbayestools.load_emulator`.

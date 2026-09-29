@@ -99,6 +99,7 @@ Development:
 - Consistent code style: module loggers (`logging.getLogger(__name__)`) instead of the root logger and `print`, importing the package no longer configures the logging of the program, NumPy-style docstrings for all public classes and functions, and lint rules (ruff) that are checked in the workflow.
 - GitHub workflows run the tests (Python 3.11 and 3.12) and format the code with ruff on pushes and pull requests to `main` and `devel`. On pull requests, the formatting is only checked.
 - The code is formatted with ruff.
+- The minimum versions of numpy (2.0) and scipy (1.14) are the ones required by jax, and the new `examples` extra installs matplotlib and jupyter for the notebooks. The README explains how to install the CPU version of PyTorch.
 
 Tests:
 - Add tests in `tests/` for all emulators, the emulator base class and the MCMC module, which can be run with `python -m pytest tests`. The MCMC tests compare the samples of emcee, PTLMC and pocoMC with an analytically known posterior.
