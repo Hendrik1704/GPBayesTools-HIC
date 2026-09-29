@@ -54,13 +54,10 @@ def keep_trained_state(method):
 _LEGACY_MODULES = {
     "emulator": "emulator_sklearn",
     "emulator_BAND": "emulator_band",
-    "emulator_hetGPy": "emulator_hetgp",
-    "emulator_sparseGP": "emulator_sparse_gp",
     "mcmc": "bayesian_analysis",
 }
 _LEGACY_CLASSES = {
     ("emulator_sklearn", "Emulator"): "EmulatorSklearn",
-    ("emulator_hetgp", "EmulatorHETGPy"): "EmulatorHetGP",
     ("bayesian_analysis", "Chain"): "BayesianAnalysis",
 }
 

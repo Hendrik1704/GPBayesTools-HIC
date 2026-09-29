@@ -9,7 +9,7 @@ import logging
 import pickle
 
 import numpy as np
-from hetgpy import hetGP, homGP
+from hetgpy import hetGP
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
@@ -57,15 +57,6 @@ class EmulatorHetGP(EmulatorBase):
         If `npc` is neither an int nor a float.
     """
 
-    _legacy_attributes = [
-        ("npc", "npc_"),
-        ("npc_requested_", "npc"),
-        ("targetVariance", "npc"),
-        ("outputScaler", "output_scaler_"),
-        ("outputPCA", "output_pca_"),
-        ("model_data_pca", "model_data_pca_"),
-    ]
-
     def __init__(
         self,
         training_set_path=".",
@@ -98,21 +89,21 @@ class EmulatorHetGP(EmulatorBase):
         and `data_err` their statistical errors.
         """
         logger.info("Performing output PCA for hetGP emulator ...")
-        self.output_scaler_ = StandardScaler()
-        standardized_outputs = self.output_scaler_.fit_transform(data)
+        self.scaler_ = StandardScaler()
+        standardized_outputs = self.scaler_.fit_transform(data)
         npc = self.npc
         if isinstance(npc, (int, np.integer)) and npc > min(data.shape):
             logger.warning(
                 f"Only {min(data.shape)} PCs available, using npc = {min(data.shape)}"
             )
             npc = min(data.shape)
-        self.output_pca_ = PCA(n_components=npc)
-        self.model_data_pca_ = self.output_pca_.fit_transform(standardized_outputs)
-        self.npc_ = self.output_pca_.n_components_
-        self._compute_truncation_cov(data, self.model_data_pca_, data_err)
+        self.pca_ = PCA(n_components=npc)
+        self.train_pcs_ = self.pca_.fit_transform(standardized_outputs)
+        self.npc_ = self.pca_.n_components_
+        self._compute_truncation_cov(data, self.train_pcs_, data_err)
         logger.info(
             f"Output PCA uses {self.npc_} PCs to explain "
-            f"{100.0 * self.output_pca_.explained_variance_ratio_.sum():.1f}% "
+            f"{100.0 * self.pca_.explained_variance_ratio_.sum():.1f}% "
             "of the variance ..."
         )
 
@@ -130,9 +121,9 @@ class EmulatorHetGP(EmulatorBase):
         this noise, _cov_trunc_signal, is used for predictions of the model
         function (include_noise=False).
         """
-        standardized_outputs = self.output_scaler_.transform(data)
-        residuals = standardized_outputs - self.output_pca_.inverse_transform(data_pca)
-        scales = self.output_scaler_.scale_
+        standardized_outputs = self.scaler_.transform(data)
+        residuals = standardized_outputs - self.pca_.inverse_transform(data_pca)
+        scales = self.scaler_.scale_
         self._cov_trunc = np.cov(residuals, rowvar=False) * np.outer(scales, scales)
         self._cov_trunc_signal = self._cov_trunc
         if data_err is not None:
@@ -153,96 +144,18 @@ class EmulatorHetGP(EmulatorBase):
         exactly the trained models.
         """
         state = self.__dict__.copy()
-        emu = state.pop("emu_", None)
-        if emu is not None:
-            state["_emu_list_pickle"] = pickle.dumps(emu)
+        gps = state.pop("gps_", None)
+        if gps is not None:
+            state["_gps_pickle"] = pickle.dumps(gps)
         return state
 
     def __setstate__(self, state):
         """Restore state after unpickling."""
-        state = self._migrate_legacy_state(state)
-        emu_list_pickle = state.pop("_emu_list_pickle", None)
-        hyperparams = state.pop("_gp_hyperparams", None)
-        state.pop("emu_list", None)
+        gps_pickle = state.pop("_gps_pickle", None)
         self.__dict__.update(state)
-        if "_cov_trunc" not in self.__dict__ and "model_data_pca_" in self.__dict__:
-            # older versions fitted the output PCA to all training data
-            self._compute_truncation_cov(self.model_data, self.model_data_pca_)
-        if "_cov_trunc" in self.__dict__ and "_cov_trunc_signal" not in self.__dict__:
-            self._cov_trunc_signal = self._cov_trunc
-        if emu_list_pickle is not None:
-            self.emu_ = pickle.loads(emu_list_pickle)
-        elif hyperparams is not None:
-            # emulators saved with older versions only contain the
-            # hyperparameters of the GP models
-            logger.warning(
-                "Emulator saved with an older version: rebuilding "
-                "GP models from saved hyperparameters. The "
-                "predictions can differ from the trained models. "
-                "Save the emulator again to avoid this."
-            )
-            self._rebuild_from_hyperparams(hyperparams)
+        if gps_pickle is not None:
+            self.gps_ = pickle.loads(gps_pickle)
         # otherwise the emulator was not trained and stays untrained
-
-    def _rebuild_from_hyperparams(self, hyperparams, maxit=0):
-        """
-        Rebuild GP models of emulators saved with older versions.
-
-        These emulators only contain the hyperparameters of the GP models,
-        which are used as initial values of a new fit to all training points.
-        With the default ``maxit=0`` the saved hyperparameters are used
-        without optimization, the predictions can still differ from the
-        originally trained models.
-
-        Parameters
-        ----------
-        hyperparams : list of dict
-            One dict per principal component with 'model_type' ('hetGP' or
-            'homGP'), 'theta', and 'g' for homGP models or 'Delta' for hetGP
-            models.
-        maxit : int, default=0
-            Maximum number of optimizer iterations.
-        """
-        design_points_masked = self.design_points
-        data_pca_masked = self.model_data_pca_
-
-        self.emu_ = []
-        for j in range(self.npc_):
-            Z_train = data_pca_masked[:, j]
-            hp = hyperparams[j]
-
-            if hp.get("model_type", "hetGP") == "homGP":
-                # Rebuild as a homoskedastic GP
-                model = homGP()
-                model.mleHomGP(
-                    X=design_points_masked,
-                    Z=Z_train,
-                    init={"theta": hp["theta"], "g": hp["g"]},
-                    settings={"return_Ki": True},
-                    covtype="Matern3_2",
-                    maxit=maxit,
-                )
-            else:
-                # Rebuild as a heteroskedastic GP
-                init_dict = {"theta": hp["theta"], "Delta": hp["Delta"]}
-                model = hetGP()
-                model.mleHetGP(
-                    X=design_points_masked,
-                    Z=Z_train,
-                    init=init_dict,
-                    noiseControl={
-                        "g_min": 1e-8,
-                        "g_max": 100,
-                        "k_theta_g_bounds": (1, 100),
-                        "g_bounds": (1e-6, 1),
-                    },
-                    settings={"return_matrices": True},
-                    covtype="Matern3_2",
-                    maxit=maxit,
-                )
-            self.emu_.append(model)
-
-        logger.info(f"Rebuilt {self.npc_} GP models via warm-start (maxit={maxit}).")
 
     def train_emulator(self, event_mask):
         """
@@ -264,7 +177,7 @@ class EmulatorHetGP(EmulatorBase):
         self._fit_output_pca(
             self.model_data[event_mask, :], self.model_data_err[event_mask, :]
         )
-        data_pca_masked = self.model_data_pca_
+        data_pca_masked = self.train_pcs_
 
         nev_train = design_points_masked.shape[0]
         logger.info(
@@ -273,7 +186,7 @@ class EmulatorHetGP(EmulatorBase):
         )
 
         # Train one hetGP model per principal component of the outputs.
-        self.emu_ = []
+        self.gps_ = []
         for j in range(self.npc_):
             Z_train = data_pca_masked[:, j]
             model = hetGP()
@@ -284,7 +197,7 @@ class EmulatorHetGP(EmulatorBase):
                 covtype="Matern3_2",
                 maxit=100,
             )
-            self.emu_.append(model)
+            self.gps_.append(model)
 
     def predict(self, X, return_cov=True, include_noise=False):
         """
@@ -320,7 +233,7 @@ class EmulatorHetGP(EmulatorBase):
         pc_means = np.zeros((self.npc_, n_theta))
         pc_vars = np.zeros((self.npc_, n_theta))
 
-        for j, model in enumerate(self.emu_):
+        for j, model in enumerate(self.gps_):
             pred = model.predict(x=X)
             mean_j = np.asarray(pred["mean"]).reshape(-1)
             var_j = np.asarray(pred["sd2"]).reshape(-1)
@@ -331,15 +244,13 @@ class EmulatorHetGP(EmulatorBase):
 
         # Reconstruct observables from PCs
         Z_pred = pc_means.T  # (n_theta, npc)
-        standardized_pred = self.output_pca_.inverse_transform(Z_pred)
-        Y_pred = self.output_scaler_.inverse_transform(
-            standardized_pred
-        )  # (n_theta, nobs)
+        standardized_pred = self.pca_.inverse_transform(Z_pred)
+        Y_pred = self.scaler_.inverse_transform(standardized_pred)  # (n_theta, nobs)
 
         # Build covariance matrices in observable space
-        components = self.output_pca_.components_  # (npc, nobs)
+        components = self.pca_.components_  # (npc, nobs)
         W = components.T  # (nobs, npc)
-        scales = self.output_scaler_.scale_  # (nobs,)
+        scales = self.scaler_.scale_  # (nobs,)
         D = np.diag(scales)
 
         covs = np.zeros((n_theta, self.nobs, self.nobs))

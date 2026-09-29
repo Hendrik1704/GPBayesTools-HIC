@@ -43,22 +43,6 @@ class EmulatorSparseGP(EmulatorBase):
     in the original scale of the observables (see __init__).
     """
 
-    _legacy_attributes = [
-        ("M_", "n_inducing"),
-        ("bootstrap_", "bootstrap"),
-        ("init_strategy_", "init_strategy"),
-        ("n_ensemble_", "n_ensemble"),
-        ("npc", "npc_"),
-        ("npc_requested_", "npc"),
-        ("n_pc_", "npc"),
-        ("seed_", "seed"),
-    ]
-    # older versions always transformed log-space predictions back
-    _legacy_defaults = {
-        "exp_and_cov_diagonal": lambda state: state["log_trafo"],
-        "seed": None,
-    }
-
     def __init__(
         self,
         training_set_path=".",

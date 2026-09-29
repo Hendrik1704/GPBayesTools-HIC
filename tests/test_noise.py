@@ -178,8 +178,11 @@ def test_sample_y_log_normal(noisy_training_file, param_file, test_points):
 
 def test_legacy_attribute_names(trained, test_points):
     # emulators saved with versions < 3.0.0 have other attribute names, which
-    # are renamed when they are loaded
+    # are renamed when they are loaded; only the emulators of the published
+    # analyses (EmulatorSklearn and EmulatorBAND) can be loaded
     name, emu, _ = trained
+    if name not in ("EmulatorSklearn", "PCGP", "PCSK"):
+        pytest.skip("old versions can only be loaded for EmulatorSklearn and BAND")
     state = emu.__getstate__() if hasattr(type(emu), "__getstate__") else None
     state = dict(state if state is not None else emu.__dict__)
     renames = [
