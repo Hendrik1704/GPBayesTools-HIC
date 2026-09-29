@@ -5,6 +5,7 @@ Date: not released yet
 
 New features:
 - `Design` takes a `method` argument to choose between maximum projection Latin-hypercube designs (`'maxpro'`, R package MaxPro, default as before) and maximin designs (`'maximin'`, R package lhs).
+- `run_mcmc` (emcee) and `run_MCMC_PTLMC` take an optional `seed` for reproducible chains.
 
 New emulators:
 - Add the `EmulatorHETGPy` emulator, a wrapper for the heteroskedastic GPs of the [hetgpy](https://hetgpy.readthedocs.io) package combined with a PCA of the outputs.
@@ -15,6 +16,10 @@ Changes that are not backward compatible:
 - Remove the `parameterTrafoPCA` option of `Emulator` and `EmulatorBAND` (PCA transformation of the $\zeta/s(T)$, $\eta/s(\mu_B)$ and $\langle y_{\rm loss}\rangle(y_{\rm init})$ parameters). It was specific to the parametrization of one analysis. Use version v2.0.1 or older to reproduce results obtained with it.
 - Remove the constant prior term of the unused `extra_std` parameter from the log-likelihood and log-posterior. The log-likelihood values and the pocoMC evidence (`logl`, `logz`) are shifted by +73.68 compared to older versions. Posterior samples are not affected.
 - Raise an error in the MCMC likelihood if the covariance matrix is not positive definite, instead of returning NaN.
+- Each sampler writes its chain to its own file derived from `mcmc_path`, e.g. `./mcmc/chain_emcee.pkl`, `./mcmc/chain_pocoMC.pkl` and `./mcmc/chain_PTLMC.pkl` (`Chain.chain_path(sampler)`), instead of all samplers overwriting `./mcmc/chain.pkl`. `compute_log_likelihood_for_chain` takes the sampler of the chain as first argument (default: the last sampler run) and writes the result next to the chain file by default.
+- All emulators raise a `ValueError` for negative observables with `logTrafo=True`. Previously `log(|x|)` was used, so the sign was lost.
+- The sparse GP emulator computes in 64-bit floats. Importing `src.emulator_sparseGP` enables `jax_enable_x64` for the whole Python process.
+- With mini-batches, the SVGP training returns the parameters with the best exponential moving average of the ELBO instead of the best single-batch ELBO, which selected the parameters of the luckiest batch.
 
 Bug fixes:
 - Fix `Emulator.predict` with `return_cov=True`, which failed with NumPy 2 (`np.array(..., copy=False)`). The same applies to the log prior, likelihood and posterior in `mcmc.py` for list inputs.
@@ -40,6 +45,7 @@ Bug fixes:
 - PTLMC draws at least one starting point per chain.
 - `compute_log_likelihood_for_chain` creates its output directory before the computation.
 - Empty lines in parameter files are skipped, and keys are stripped.
+- The default seed of `Design` is an integer from the current time (stored in `Design.seed`). The float timestamp was truncated by R, so the printed seed was not the one used.
 - Fix the chain loading and the error bars in the `ClosureTest` notebook, and the log-likelihood output in the `RunBayesianAnalysis` notebook.
 
 Tests:
