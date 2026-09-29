@@ -47,30 +47,35 @@ class EmulatorHETGPy:
         self.nev, self.nobs = self.model_data.shape
         self.nparameters = self.design_points.shape[1]
 
-        # Perform PCA on the outputs to reduce dimensionality while
-        # retaining 99% of the variance. The GP emulators are then
+        # The outputs are standardized and transformed with a PCA retaining
+        # 99% of the variance in trainEmulator(). The GP emulators are then
         # trained on the resulting principal components.
         self.targetVariance = 0.99
+
+    def _fit_output_pca(self, data):
+        """Fit the output standardization and PCA to the training data
+        `data`, and compute the truncation covariance."""
         logging.info("Performing output PCA for hetGP emulator ...")
         self.outputScaler = StandardScaler()
-        standardized_outputs = self.outputScaler.fit_transform(self.model_data)
+        standardized_outputs = self.outputScaler.fit_transform(data)
         self.outputPCA = PCA(n_components=self.targetVariance)
         self.model_data_pca = self.outputPCA.fit_transform(standardized_outputs)
         self.npc = self.outputPCA.n_components_
-        self._compute_truncation_cov()
+        self._compute_truncation_cov(data, self.model_data_pca)
         logging.info(
             "Output PCA uses {} PCs to explain {:.1f}% of the variance ...".format(
                 self.npc, self.targetVariance * 100.0
             )
         )
 
-    def _compute_truncation_cov(self):
+    def _compute_truncation_cov(self, data, data_pca):
         """Covariance of the PCs discarded by the output PCA in observable
         units. It is added to the predicted covariance, since the emulator
-        cannot resolve this part of the variance."""
-        standardized_outputs = self.outputScaler.transform(self.model_data)
+        cannot resolve this part of the variance. `data` are the training
+        data and `data_pca` their principal components."""
+        standardized_outputs = self.outputScaler.transform(data)
         residuals = standardized_outputs - self.outputPCA.inverse_transform(
-            self.model_data_pca)
+            data_pca)
         scales = self.outputScaler.scale_
         self._cov_trunc = (np.cov(residuals, rowvar=False)
                            * np.outer(scales, scales))
@@ -96,7 +101,8 @@ class EmulatorHETGPy:
         hyperparams = state.pop("_gp_hyperparams", None)
         self.__dict__.update(state)
         if "_cov_trunc" not in self.__dict__:
-            self._compute_truncation_cov()
+            # older versions fitted the output PCA to all training data
+            self._compute_truncation_cov(self.model_data, self.model_data_pca)
         if emu_list_pickle is not None:
             self.emu_list = pickle.loads(emu_list_pickle)
         elif hyperparams is not None:
@@ -229,7 +235,9 @@ class EmulatorHETGPy:
         # Subselect training data
         event_mask = np.asarray(event_mask, dtype=bool)
         design_points_masked = self.design_points[event_mask, :]
-        data_pca_masked = self.model_data_pca[event_mask, :]
+        # fit the output PCA only to the training points
+        self._fit_output_pca(self.model_data[event_mask, :])
+        data_pca_masked = self.model_data_pca
 
         nev_train = design_points_masked.shape[0]
         logging.info(
