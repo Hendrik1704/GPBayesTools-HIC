@@ -27,7 +27,7 @@ import optax
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
-from .emulator_base import EmulatorBase, check_npc
+from .emulator_base import EmulatorBase, check_npc, truncation_signal
 
 
 # =============================================================================
@@ -476,6 +476,17 @@ class PCASparseGPEmulator:
             obs_var_full = jnp.zeros((N_full, self.n_pc))
             self.mean_obs_cov_pc_ = None
 
+        # The truncation covariance also contains the observation noise of the
+        # training data in the discarded PCA directions. Its signal part, the
+        # truncation covariance without this noise, is used for predictions
+        # of the model function (include_noise=False).
+        self.trunc_cov_signal_yn_ = self.trunc_cov_yn_
+        if Y_err is not None and self.trunc_cov_yn_ is not None:
+            _noise_yn = _mean_C_Y / np.outer(_Ys_np, _Ys_np)
+            self.trunc_cov_signal_yn_ = jnp.array(
+                truncation_signal(np.array(self.trunc_cov_yn_), _noise_yn)
+            )
+
         B = min(batch_size, N_full) if batch_size is not None else N_full
 
         if verbose:
@@ -848,7 +859,9 @@ class PCASparseGPEmulator:
             from all discarded PCA components, computed in fit() as
             Sigma_trunc = Sigma_data - W_ret^T diag(Lambda_ret) W_ret.
             This is exact under the linear PCA model (no PPCA isotropy
-            assumption). Default True.
+            assumption). With Y_err, the observation noise of the training
+            data in the discarded directions is removed from it, unless
+            include_noise or include_obs_noise is True. Default True.
         include_pca_sampling : bool
             Add finite-training-data uncertainty from PCA mean estimation:
             Var(pc_mean_i) = pc_std_i^2 / N_train per component. Default False.
@@ -947,7 +960,12 @@ class PCASparseGPEmulator:
         # a Linear Model of Coregionalization (LMC) with a joint variational
         # distribution over all (n_pc * M) inducing variables simultaneously,
         # which is a fundamental architectural change to the ELBO.
-        trunc_cov_yn = self.trunc_cov_yn_  # (P, P), exact, PSD, set in fit()
+        # (P, P), exact, PSD, set in fit(). Without noise, the observation
+        # noise of the training data in the discarded directions is removed.
+        if include_noise or include_obs_noise:
+            trunc_cov_yn = self.trunc_cov_yn_
+        else:
+            trunc_cov_yn = getattr(self, "trunc_cov_signal_yn_", self.trunc_cov_yn_)
         if include_truncation and trunc_cov_yn is not None:
             full_cov = full_cov + trunc_cov_yn[None, :, :]
         else:

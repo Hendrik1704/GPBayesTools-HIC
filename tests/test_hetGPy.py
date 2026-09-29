@@ -163,13 +163,19 @@ def test_pickle_roundtrip_is_exact(emulator, test_params, tmp_path):
 
 def test_covariance_includes_truncation(emulator, test_params):
     assert emulator.npc < N_OBS
-    _, pred_cov = emulator.predict(test_params)
-    for cov in pred_cov:
-        np.testing.assert_allclose(cov, cov.T)
-        # the truncation covariance is positive semi-definite, so it can
-        # only increase the predicted variances
-        assert np.all(np.diag(cov) >= np.diag(emulator._cov_trunc))
-        assert np.linalg.eigvalsh(cov).min() > -1e-10 * np.abs(cov).max()
+    # by default, the truncation covariance without the noise of the training
+    # data is used, with include_noise=True the full truncation covariance
+    for include_noise, trunc in (
+        (False, emulator._cov_trunc_signal),
+        (True, emulator._cov_trunc),
+    ):
+        _, pred_cov = emulator.predict(test_params, include_noise=include_noise)
+        for cov in pred_cov:
+            np.testing.assert_allclose(cov, cov.T)
+            # the truncation covariance is positive semi-definite, so it can
+            # only increase the predicted variances
+            assert np.all(np.diag(cov) >= np.diag(trunc) - 1e-12)
+            assert np.linalg.eigvalsh(cov).min() > -1e-10 * np.abs(cov).max()
 
 
 def test_validation(data_files):

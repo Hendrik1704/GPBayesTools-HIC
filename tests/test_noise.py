@@ -81,10 +81,38 @@ def test_emulator_noise_is_the_white_kernel(trained, test_points):
     _, cov_noise = emu.predict(test_points, include_noise=True)
     noise_pc = np.array([emu._gp_noise(gp.kernel_) for gp in emu.gps])
     A = emu._trans_matrix[: emu.npc]
+    # the WhiteKernel noise of the GPs and the noise part of the truncation
+    # covariance
+    noise_trunc = np.diag(emu._cov_trunc - emu._cov_trunc_signal)
     np.testing.assert_allclose(
         np.diagonal(cov_noise - cov_latent, axis1=1, axis2=2),
-        np.tile(noise_pc @ A**2, (len(test_points), 1)),
+        np.tile(noise_pc @ A**2 + noise_trunc, (len(test_points), 1)),
         rtol=1e-8,
+    )
+
+
+def test_truncation_signal():
+    from gpbayestools.emulator_base import truncation_signal
+
+    rng = np.random.default_rng(0)
+    V = np.linalg.qr(rng.normal(size=(6, 6)))[0]
+    # truncation covariance of 3 discarded directions
+    trunc = (V[:, :3] * [0.5, 0.2, 0.05]) @ V[:, :3].T
+    # isotropic noise: the signal is the truncation minus the noise in each
+    # direction, down to zero
+    signal = truncation_signal(trunc, 0.1 * np.eye(6))
+    np.testing.assert_allclose(
+        signal, (V[:, :3] * [0.4, 0.1, 0.0]) @ V[:, :3].T, atol=1e-12
+    )
+    # for any noise, 0 <= signal <= truncation
+    noise = rng.normal(size=(6, 6))
+    noise = noise @ noise.T
+    signal = truncation_signal(trunc, noise)
+    assert np.linalg.eigvalsh(signal).min() > -1e-12
+    assert np.linalg.eigvalsh(trunc - signal).min() > -1e-12
+    # without noise, the truncation covariance is unchanged
+    np.testing.assert_allclose(
+        truncation_signal(trunc, np.zeros((6, 6))), trunc, atol=1e-12
     )
 
 

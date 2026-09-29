@@ -27,6 +27,13 @@ expectation value of the model. With `include_noise=True`, the noise that the GP
 simulation. The validation functions `testEmulatorErrors` and
 `testEmulatorErrorsWithTrainingPoints` compare with such simulations and include the noise.
 
+The covariance also contains the variance of the principal components that are not emulated
+(truncation). With noisy training data, these components contain the statistical noise of the
+training data. By default, `Emulator`, `EmulatorHETGPy` and `EmulatorSparseGP` remove this noise,
+estimated from the statistical errors of the training data, from the truncation covariance; with
+`include_noise=True` the full truncation covariance is used. `EmulatorBAND` uses the truncation
+variance of surmise, which is zero for PCSK.
+
 ## Emulators trained on the log of the observables
 
 All emulators have a `logTrafo` option to train them on the logarithm of the observables.

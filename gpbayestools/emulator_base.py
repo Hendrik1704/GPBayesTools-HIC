@@ -45,6 +45,21 @@ def number_of_pcs(npc, explained_variance_ratio):
     return int(min(npc, n_available))
 
 
+def truncation_signal(trunc_cov, noise_cov):
+    """
+    Remove the statistical noise of the training data from the truncation
+    covariance `trunc_cov` of the discarded PCs. In each eigendirection of
+    `trunc_cov`, the noise variance of `noise_cov` in that direction is
+    subtracted, down to zero. The result is positive semi-definite and not
+    larger than `trunc_cov`. Both matrices must be in the same (e.g.
+    standardized) units.
+    """
+    vals, vecs = np.linalg.eigh(0.5 * (trunc_cov + trunc_cov.T))
+    noise = np.einsum("ik,ij,jk->k", vecs, noise_cov, vecs)
+    signal = np.clip(vals - noise, 0.0, None)
+    return (vecs * signal) @ vecs.T
+
+
 class EmulatorBase:
     """
     Base class of the emulators.

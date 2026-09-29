@@ -132,6 +132,9 @@ class EmulatorBAND(EmulatorBase):
         By default, the covariance is the uncertainty of the emulated model
         function. With `include_noise`, the noise (nugget) of the GPs is
         included, i.e. the uncertainty of a new noisy simulation.
+
+        The variance of the discarded PCs is surmise's extravar, which is
+        zero for PCSK and not corrected for the noise of the training data.
         """
         x = np.arange(self.nobs).reshape(-1, 1)
 

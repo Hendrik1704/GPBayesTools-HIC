@@ -15,7 +15,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process import kernels
 
-from .emulator_base import EmulatorBase, check_npc, number_of_pcs
+from .emulator_base import EmulatorBase, check_npc, number_of_pcs, truncation_signal
 
 
 class Emulator(EmulatorBase):
@@ -223,8 +223,21 @@ class Emulator(EmulatorBase):
             B = self._trans_matrix[self.npc :]
             self._cov_trunc = np.dot(B.T, B)
 
+            # The truncation covariance also contains the statistical noise of
+            # the training data in the discarded PC directions. Its signal
+            # part is used for predictions of the model function
+            # (include_noise=False).
+            scale = self.scaler.scale_
+            err_std = self.model_data_err[eventMask, :] / scale
+            noise_std = np.diag(np.mean(err_std**2, axis=0))
+            trunc_std = self._cov_trunc / np.outer(scale, scale)
+            self._cov_trunc_signal = truncation_signal(trunc_std, noise_std) * np.outer(
+                scale, scale
+            )
+
             # Add small term to diagonal for numerical stability.
             self._cov_trunc.flat[:: self.nobs + 1] += 1e-4 * self.scaler.var_
+            self._cov_trunc_signal.flat[:: self.nobs + 1] += 1e-4 * self.scaler.var_
 
     def _inverse_transform(self, Z):
         """
@@ -293,7 +306,10 @@ class Emulator(EmulatorBase):
                 cov = np.dot(gp_var, self._var_trans).reshape(
                     X.shape[0], self.nobs, self.nobs
                 )
-                cov += self._cov_trunc
+                if include_noise:
+                    cov += self._cov_trunc
+                else:
+                    cov += getattr(self, "_cov_trunc_signal", self._cov_trunc)
             else:
                 # Create a covariance matrix for each sample point from gp_var,
                 # transformed from standardized units back to observable units
@@ -329,9 +345,18 @@ class Emulator(EmulatorBase):
         """
         if not self.perform_no_PCA_:
             rng = np.random.default_rng(random_state)
+            n_trunc = self.pca.n_components_ - self.npc
+            signal = getattr(self, "_cov_trunc_signal", None)
+            full_trunc = include_noise or signal is None
             # Sample the GP for each emulated PC, with independent random
-            # numbers for each GP.  The remaining components are assumed to
-            # have a standard normal distribution.
+            # numbers for each GP.  With noise, the remaining components have
+            # a standard normal distribution. Without noise, they are set to
+            # zero and the signal part of the truncation covariance is sampled
+            # in the space of the observables.
+            if full_trunc:
+                trunc = rng.standard_normal((X.shape[0], n_samples, n_trunc))
+            else:
+                trunc = np.zeros((X.shape[0], n_samples, n_trunc))
             samples = self._inverse_transform(
                 np.concatenate(
                     [
@@ -340,14 +365,17 @@ class Emulator(EmulatorBase):
                         ]
                         for gp in self.gps
                     ]
-                    + [
-                        rng.standard_normal(
-                            (X.shape[0], n_samples, self.pca.n_components_ - self.npc)
-                        )
-                    ],
+                    + [trunc],
                     axis=2,
                 )
             )
+            if not full_trunc:
+                samples += rng.multivariate_normal(
+                    np.zeros(self.nobs),
+                    signal,
+                    size=(X.shape[0], n_samples),
+                    method="eigh",
+                )
             if self.exp_and_cov_diagonal_:
                 samples = np.exp(samples)
             return samples

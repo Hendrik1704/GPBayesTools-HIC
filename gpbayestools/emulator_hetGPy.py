@@ -11,7 +11,7 @@ import pickle
 from hetgpy import hetGP, homGP
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from .emulator_base import EmulatorBase, check_npc
+from .emulator_base import EmulatorBase, check_npc, truncation_signal
 
 
 class EmulatorHETGPy(EmulatorBase):
@@ -52,9 +52,10 @@ class EmulatorHETGPy(EmulatorBase):
         check_npc(npc)
         self.npc_requested_ = npc
 
-    def _fit_output_pca(self, data):
+    def _fit_output_pca(self, data, data_err=None):
         """Fit the output standardization and PCA to the training data
-        `data`, and compute the truncation covariance."""
+        `data`, and compute the truncation covariance. `data_err` are the
+        statistical errors of the training data."""
         logging.info("Performing output PCA for hetGP emulator ...")
         self.outputScaler = StandardScaler()
         standardized_outputs = self.outputScaler.fit_transform(data)
@@ -70,22 +71,35 @@ class EmulatorHETGPy(EmulatorBase):
         self.outputPCA = PCA(n_components=npc)
         self.model_data_pca = self.outputPCA.fit_transform(standardized_outputs)
         self.npc = self.outputPCA.n_components_
-        self._compute_truncation_cov(data, self.model_data_pca)
+        self._compute_truncation_cov(data, self.model_data_pca, data_err)
         logging.info(
             "Output PCA uses {} PCs to explain {:.1f}% of the variance ...".format(
                 self.npc, 100.0 * self.outputPCA.explained_variance_ratio_.sum()
             )
         )
 
-    def _compute_truncation_cov(self, data, data_pca):
+    def _compute_truncation_cov(self, data, data_pca, data_err=None):
         """Covariance of the PCs discarded by the output PCA in observable
         units. It is added to the predicted covariance, since the emulator
         cannot resolve this part of the variance. `data` are the training
-        data and `data_pca` their principal components."""
+        data, `data_pca` their principal components and `data_err` their
+        statistical errors.
+
+        The truncation covariance also contains the statistical noise of the
+        training data in the discarded PC directions. Its signal part without
+        this noise, _cov_trunc_signal, is used for predictions of the model
+        function (include_noise=False)."""
         standardized_outputs = self.outputScaler.transform(data)
         residuals = standardized_outputs - self.outputPCA.inverse_transform(data_pca)
         scales = self.outputScaler.scale_
         self._cov_trunc = np.cov(residuals, rowvar=False) * np.outer(scales, scales)
+        self._cov_trunc_signal = self._cov_trunc
+        if data_err is not None:
+            noise_std = np.diag(np.mean((data_err / scales) ** 2, axis=0))
+            trunc_std = np.cov(residuals, rowvar=False)
+            self._cov_trunc_signal = truncation_signal(trunc_std, noise_std) * np.outer(
+                scales, scales
+            )
 
     def __getstate__(self):
         """Prepare a pickleable state.
@@ -190,7 +204,9 @@ class EmulatorHETGPy(EmulatorBase):
         event_mask = np.asarray(event_mask, dtype=bool)
         design_points_masked = self.design_points[event_mask, :]
         # fit the output PCA only to the training points
-        self._fit_output_pca(self.model_data[event_mask, :])
+        self._fit_output_pca(
+            self.model_data[event_mask, :], self.model_data_err[event_mask, :]
+        )
         data_pca_masked = self.model_data_pca
 
         nev_train = design_points_masked.shape[0]
@@ -258,7 +274,10 @@ class EmulatorHETGPy(EmulatorBase):
             var_z = np.maximum(pc_vars[:, k], 0.0)
             Sigma_S = W @ np.diag(var_z) @ W.T
             Sigma_Y = D @ Sigma_S @ D
-            covs[k] = Sigma_Y + self._cov_trunc
+            if include_noise:
+                covs[k] = Sigma_Y + self._cov_trunc
+            else:
+                covs[k] = Sigma_Y + getattr(self, "_cov_trunc_signal", self._cov_trunc)
 
         fpredmean = Y_pred
         fpredcov = covs
