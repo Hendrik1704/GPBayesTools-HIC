@@ -25,6 +25,20 @@ Bug fixes:
 - Add the covariance of the PCs discarded by the output PCA to the `EmulatorHETGPy` covariance. This increases the predicted emulator uncertainty.
 - `EmulatorSparseGP.predict` accepts a scalar `extra_std` for several parameter points.
 - The SVGP training now keeps the parameters that belong to the best ELBO, and the NaN recovery restarts from parameters with a finite ELBO.
+- Add the variance of the PCs discarded by surmise to the `EmulatorBAND` covariance. surmise's `covx()` does not contain it, which underestimated the emulator uncertainty, strongly for PCGP with `logTrafo=True`.
+- `EmulatorBAND.predict` with `exp_and_cov_diagonal=True` works for a single 1D parameter vector.
+- `Emulator` limits `npc` to the number of available PCs instead of failing when fewer observables or training points than `npc` are given.
+- `Emulator.outputPCAvsParam()` and `Emulator.print_learning_curve()` no longer refit the scaler and PCA of the trained emulator, which changed later predictions.
+- Raise a `ValueError` in `Emulator` for unknown kernel types.
+- Training points with NaN or infinite observables are discarded when loading the training data in all emulators. Previously they passed the relative-error filter.
+- The SVGP training caps observation errors that are more than 1e5 times larger than the spread of the training data. They overflowed in float32 and made the training fail. `nan_patience` now counts consecutive NaN steps only.
+- `EmulatorSparseGP` accepts the `verbose_members` training argument also for a single emulator.
+- MCMC with emcee: fix crashes for `nsteps < 10`, give a clear error for `nburnsteps < 2`, and check an existing chain before continuing it (pocoMC chains or a different number of walkers raise a `ValueError`; `nwalkers` is taken from the chain if not given). The burn-in restart only uses distinct points with finite probability.
+- PTLMC draws at least one starting point per chain.
+- `compute_log_likelihood_for_chain` creates its output directory before the computation.
+- Empty lines in parameter files are skipped, and keys are stripped.
+- Fix the chain loading and the error bars in the `ClosureTest` notebook, and the log-likelihood output in the `RunBayesianAnalysis` notebook.
+- The Latin-hypercube designs need the R package MaxPro (not lhs), as now stated in the documentation.
 
 Tests:
 - Add tests for the hetGP and sparse GP emulators in `tests/`, which can be run with pytest.
