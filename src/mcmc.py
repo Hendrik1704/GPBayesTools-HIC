@@ -436,10 +436,13 @@ class Chain:
             logging.info('burn-in complete, starting production')
         else:
             logging.info('restarting from last point of existing chain')
-            X0 = chain_data['chain'][:, -1, :]
+            # the last walker positions of the previous run, or for chains
+            # saved with older versions, the last thinned sample
+            X0 = chain_data.get('last_position', chain_data['chain'][:, -1, :])
 
-        sampler.run_mcmc(X0, nsteps, status=status, 
-                         skip_initial_state_check=skip_initial_state_check)
+        state = sampler.run_mcmc(X0, nsteps, status=status,
+                                 skip_initial_state_check=skip_initial_state_check)
+        chain_data['last_position'] = state.coords
 
         thinedChain = sampler.chain[:, ::nthin, :]
         if 'chain' in chain_data:
