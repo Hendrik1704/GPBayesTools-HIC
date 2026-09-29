@@ -637,12 +637,12 @@ class BayesianAnalysis:
             # Reposition walkers to the most likely points in the chain,
             # then run the second half of burn-in.  This significantly
             # accelerates burn-in and helps prevent stuck walkers.
-            lnprob = sampler.flatlnprobability
+            lnprob = sampler.get_log_prob(flat=True)
             # indices of the distinct log-probabilities in ascending order
             idx = np.unique(lnprob, return_index=True)[1]
             idx = idx[np.isfinite(lnprob[idx])]
             if len(idx) >= n_walkers:
-                X0 = sampler.flatchain[idx[-n_walkers:]]
+                X0 = sampler.get_chain(flat=True)[idx[-n_walkers:]]
             else:
                 logger.warning(
                     f"only {len(idx)} distinct points with finite probability in the "
@@ -673,7 +673,8 @@ class BayesianAnalysis:
         )
         chain_data["last_position"] = state.coords
 
-        thinned_chain = sampler.chain[:, ::n_thin, :]
+        # shape (n_walkers, n_steps, ndim)
+        thinned_chain = np.swapaxes(sampler.get_chain(), 0, 1)[:, ::n_thin, :]
         if "chain" in chain_data:
             chain_data["chain"] = np.concatenate(
                 (chain_data["chain"], thinned_chain), axis=1
