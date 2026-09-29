@@ -27,7 +27,7 @@ class EmulatorBAND(EmulatorBase):
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt", 
                  method='PCGP',logTrafo=False,
-                 max_rel_uncertainty_data=0.1, exp_and_cov_diagonal=False,
+                 max_rel_uncertainty_data=None, exp_and_cov_diagonal=False,
                  seed=None):
         self.method_ = method
         # surmise (>=1.0.0) requires a global RNG to be set before training

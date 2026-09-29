@@ -51,7 +51,7 @@ class Emulator(EmulatorBase):
     """
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
                  npc=10, nrestarts=0, logTrafo=False,
-                 max_rel_uncertainty_data=0.1, exp_and_cov_diagonal=False,
+                 max_rel_uncertainty_data=None, exp_and_cov_diagonal=False,
                  perform_no_PCA=False):
         super().__init__(training_set_path, parameter_file, logTrafo,
                          max_rel_uncertainty_data, exp_and_cov_diagonal)

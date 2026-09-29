@@ -25,7 +25,7 @@ class EmulatorHETGPy(EmulatorBase):
     and a diagonal covariance in the original scale of the observables.
     """
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
-                 logTrafo=False, max_rel_uncertainty_data=0.1, 
+                 logTrafo=False, max_rel_uncertainty_data=None, 
                  exp_and_cov_diagonal=False):
         super().__init__(training_set_path, parameter_file, logTrafo,
                          max_rel_uncertainty_data, exp_and_cov_diagonal)
