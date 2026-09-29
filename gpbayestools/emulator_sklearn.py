@@ -38,7 +38,7 @@ class EmulatorSklearn(EmulatorBase):
     The classes would also need to handle transforming uncertainties, which
     could be tricky.
 
-    With `logTrafo` set to True, the emulator is trained on the log of the
+    With `log_trafo` set to True, the emulator is trained on the log of the
     observables and predict() returns the mean and covariance in log space.
     Experimental data used with the emulator must then be log-transformed as
     well. The parameter `exp_and_cov_diagonal` can be set to True to
@@ -47,11 +47,11 @@ class EmulatorSklearn(EmulatorBase):
     in the original scale of the observables, but with diagonal covariance
     matrices.
 
-    The parameter `perform_no_PCA` can be set to True to switch off the PCA
+    The parameter `perform_no_pca` can be set to True to switch off the PCA
     transformation and use the raw data for the Gaussian process emulation.
 
     `seed` sets the random state of the restarts of the GP hyperparameter
-    optimization (with nrestarts > 0), for reproducible training.
+    optimization (with n_restarts > 0), for reproducible training.
 
     `alpha` is added to the diagonal of the GP kernel matrices in the
     training. It is only meant for numerical stability (default 1e-8), the
@@ -66,27 +66,27 @@ class EmulatorSklearn(EmulatorBase):
         training_set_path=".",
         parameter_file="ABCD.txt",
         npc=10,
-        nrestarts=0,
-        logTrafo=False,
+        n_restarts=0,
+        log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
-        perform_no_PCA=False,
+        perform_no_pca=False,
         seed=None,
         alpha=1e-8,
     ):
         super().__init__(
             training_set_path,
             parameter_file,
-            logTrafo,
+            log_trafo,
             max_rel_uncertainty_data,
             exp_and_cov_diagonal,
         )
-        self.perform_no_PCA_ = perform_no_PCA
+        self.perform_no_PCA_ = perform_no_pca
 
         check_npc(npc)
         self.npc_requested_ = npc
         self.npc = npc
-        self.nrestarts = nrestarts
+        self.n_restarts = n_restarts
         # random state of the restarts of the GP hyperparameter optimizer
         self.seed_ = seed
         # value added to the diagonal of the GP kernel matrices in the
@@ -109,12 +109,12 @@ class EmulatorSklearn(EmulatorBase):
         )
         return Z[:, :npc]
 
-    def outputPCAvsParam(self):
+    def output_pca_vs_param(self):
         logging.info("Performing PCA ...")
         Z = self._pca_of_all_data()
         return (self.design_points, Z.T)
 
-    def trainEmulator(self, eventMask, kernel_type="RBF"):
+    def train_emulator(self, eventMask, kernel_type="RBF"):
         data_to_use = self.model_data[eventMask, :]
         # Standardize the input data. New scaler and PCA objects are used,
         # so that the previously trained ones are not modified.
@@ -177,7 +177,7 @@ class EmulatorSklearn(EmulatorBase):
             GPR(
                 kernel=kernel,
                 alpha=getattr(self, "alpha_", 0.1),
-                n_restarts_optimizer=self.nrestarts,
+                n_restarts_optimizer=self.n_restarts,
                 copy_X_train=False,
                 random_state=getattr(self, "seed_", None),
             ).fit(design_points, z)

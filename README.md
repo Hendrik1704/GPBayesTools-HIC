@@ -24,8 +24,8 @@ The `predict` function of all emulators returns by default the uncertainty of th
 model function, which is used in the MCMC, since the experimental data are compared with the
 expectation value of the model. With `include_noise=True`, the noise that the GPs fitted to the
 (statistically noisy) training data is included as well, i.e. the uncertainty of a new noisy
-simulation. The validation functions `testEmulatorErrors` and
-`testEmulatorErrorsWithTrainingPoints` compare with such simulations and include the noise.
+simulation. The validation functions `test_emulator_errors` and
+`test_emulator_errors_with_training_points` compare with such simulations and include the noise.
 
 The covariance also contains the variance of the principal components that are not emulated
 (truncation). With noisy training data, these components contain the statistical noise of the
@@ -36,7 +36,7 @@ variance of surmise, which is zero for PCSK.
 
 ## Emulators trained on the log of the observables
 
-All emulators have a `logTrafo` option to train them on the logarithm of the observables.
+All emulators have a `log_trafo` option to train them on the logarithm of the observables.
 This requires non-negative observables, and the relative statistical errors of the training data
 are used as errors in log space.
 What the `predict` function returns depends on the `exp_and_cov_diagonal` option:

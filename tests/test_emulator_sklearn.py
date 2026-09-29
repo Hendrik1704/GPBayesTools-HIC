@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore", module="sklearn")
 @pytest.fixture(scope="module")
 def emulator(training_file, param_file):
     emu = EmulatorSklearn(training_file, param_file, npc=4)
-    emu.trainEmulatorAutoMask()
+    emu.train_emulator_auto_mask()
     return emu
 
 
@@ -44,8 +44,8 @@ def test_no_pca_covariance_in_observable_units(training_file, param_file, test_p
     # standard deviations must scale accordingly with and without PCA, i.e.
     # relative to the scale of the observables they are of similar size
     for no_pca in (False, True):
-        emu = EmulatorSklearn(training_file, param_file, npc=4, perform_no_PCA=no_pca)
-        emu.trainEmulatorAutoMask()
+        emu = EmulatorSklearn(training_file, param_file, npc=4, perform_no_pca=no_pca)
+        emu.train_emulator_auto_mask()
         _, cov = emu.predict(test_points)
         rel_std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2)).mean(axis=0) / OBS_SCALE
         assert rel_std.max() / rel_std.min() < 10
@@ -54,7 +54,7 @@ def test_no_pca_covariance_in_observable_units(training_file, param_file, test_p
 @pytest.mark.parametrize("npc, expected", [(2, 2), (0.99, None), (50, N_OBS)])
 def test_npc(training_file, param_file, npc, expected):
     emu = EmulatorSklearn(training_file, param_file, npc=npc)
-    emu.trainEmulatorAutoMask()
+    emu.train_emulator_auto_mask()
     if expected is None:
         # smallest number of PCs explaining more than 99% of the variance
         evr = np.cumsum(emu.pca.explained_variance_ratio_)
@@ -69,16 +69,16 @@ def test_invalid_npc(training_file, param_file, npc):
 
 
 def test_log_transformation(training_file, param_file, test_points):
-    emu_log = EmulatorSklearn(training_file, param_file, npc=4, logTrafo=True)
-    emu_log.trainEmulatorAutoMask()
+    emu_log = EmulatorSklearn(training_file, param_file, npc=4, log_trafo=True)
+    emu_log.train_emulator_auto_mask()
     mean_log, cov_log = emu_log.predict(test_points)
     # predictions in log space by default
     assert np.abs(np.exp(mean_log) / true_model(test_points) - 1).mean() < 0.02
 
     emu_exp = EmulatorSklearn(
-        training_file, param_file, npc=4, logTrafo=True, exp_and_cov_diagonal=True
+        training_file, param_file, npc=4, log_trafo=True, exp_and_cov_diagonal=True
     )
-    emu_exp.trainEmulatorAutoMask()
+    emu_exp.train_emulator_auto_mask()
     mean_exp, cov_exp = emu_exp.predict(test_points)
     np.testing.assert_allclose(mean_exp, np.exp(mean_log))
     for c_exp, c_log, m in zip(cov_exp, cov_log, mean_exp):
@@ -106,7 +106,7 @@ def test_sample_y(emulator, test_points):
 
 def test_output_pca_does_not_change_emulator(emulator, test_points):
     before = emulator.predict(test_points)
-    design_points, Z = emulator.outputPCAvsParam()
+    design_points, Z = emulator.output_pca_vs_param()
     assert Z.shape == (emulator.npc, emulator.nev)
     after = emulator.predict(test_points)
     for a, b in zip(before, after):
@@ -116,13 +116,13 @@ def test_output_pca_does_not_change_emulator(emulator, test_points):
 def test_unknown_kernel(training_file, param_file):
     emu = EmulatorSklearn(training_file, param_file, npc=2)
     with pytest.raises(ValueError):
-        emu.trainEmulator(np.ones(emu.nev, dtype=bool), kernel_type="rbf")
+        emu.train_emulator(np.ones(emu.nev, dtype=bool), kernel_type="rbf")
 
 
 def test_seed(training_file, param_file, test_points):
     def predict(seed):
-        emu = EmulatorSklearn(training_file, param_file, npc=3, nrestarts=2, seed=seed)
-        emu.trainEmulatorAutoMask()
+        emu = EmulatorSklearn(training_file, param_file, npc=3, n_restarts=2, seed=seed)
+        emu.train_emulator_auto_mask()
         return emu.predict(test_points)[0]
 
     np.testing.assert_array_equal(predict(1), predict(1))
@@ -131,13 +131,15 @@ def test_seed(training_file, param_file, test_points):
 # ── Validation (base class) ──────────────────────────────────────────
 def test_validation(emulator, test_points):
     before = emulator.predict(test_points)
-    pred, pred_err, data, data_err = emulator.testEmulatorErrors(number_test_points=10)
+    pred, pred_err, data, data_err = emulator.test_emulator_errors(
+        number_test_points=10
+    )
     for arr in (pred, pred_err, data, data_err):
         assert arr.shape == (10, N_OBS)
     np.testing.assert_array_equal(data, emulator.model_data[-10:])
     assert np.abs(pred / data - 1).mean() < 0.05
 
-    train = emulator.testEmulatorErrorsWithTrainingPoints(number_test_points=10)
+    train = emulator.test_emulator_errors_with_training_points(number_test_points=10)
     assert train[0].shape == (emulator.nev - 10, N_OBS)
     assert np.abs(train[0] / train[2] - 1).mean() < 0.05
 
@@ -152,16 +154,16 @@ def test_validation_random_points(emulator):
     assert test_mask.sum() == 10 and np.all(train_mask == ~test_mask)
     np.testing.assert_array_equal(test_mask, emulator._validation_masks(10, True, 5)[1])
     assert not np.array_equal(test_mask, emulator._validation_masks(10, True, 6)[1])
-    data = emulator.testEmulatorErrors(10, random_points=True, seed=5)[2]
+    data = emulator.test_emulator_errors(10, random_points=True, seed=5)[2]
     np.testing.assert_array_equal(data, emulator.model_data[test_mask])
     with pytest.raises(ValueError):
-        emulator.testEmulatorErrors(emulator.nev)
+        emulator.test_emulator_errors(emulator.nev)
 
 
 def test_validation_untrained_emulator_stays_untrained(training_file, param_file):
     emu = EmulatorSklearn(training_file, param_file, npc=3)
     attributes = set(emu.__dict__)
-    emu.testEmulatorErrors(5)
+    emu.test_emulator_errors(5)
     assert set(emu.__dict__) == attributes
 
 
@@ -211,7 +213,7 @@ def test_relative_error_filter(modified_data, param_file):
     assert emu.nev == 59
     # log transformation requires positive observables
     with pytest.raises(ValueError):
-        EmulatorSklearn(path, param_file, logTrafo=True)
+        EmulatorSklearn(path, param_file, log_trafo=True)
 
 
 def test_negative_values_with_log_trafo(modified_data, param_file):
@@ -221,7 +223,7 @@ def test_negative_values_with_log_trafo(modified_data, param_file):
     path = modified_data(modify)
     assert EmulatorSklearn(path, param_file).nev == 60
     with pytest.raises(ValueError):
-        EmulatorSklearn(path, param_file, logTrafo=True)
+        EmulatorSklearn(path, param_file, log_trafo=True)
 
 
 def test_all_points_discarded(modified_data, param_file):

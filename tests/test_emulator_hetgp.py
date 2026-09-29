@@ -9,7 +9,7 @@ The emulator is trained on these data and tested for
   - the accuracy of the predictions compared to the true model,
   - identical predictions after saving and reloading the emulator,
   - the covariance of the discarded PCs in the predicted covariance,
-  - the built-in validation (testEmulatorErrors).
+  - the built-in validation (test_emulator_errors).
 
 Run with ``python -m pytest tests/test_emulator_hetgp.py``.
 """
@@ -66,7 +66,7 @@ def true_model(params, n_obs=N_OBS):
         + gamma**2 * np.cos(2.0 * np.pi * frac)
         + 0.5 * alpha * beta * frac
     )
-    # Shift so all values are strictly positive (needed for logTrafo)
+    # Shift so all values are strictly positive (needed for log_trafo)
     values += 3.0
     return values
 
@@ -114,7 +114,7 @@ def make_emulator(data_files):
     return EmulatorHetGP(
         training_set_path=training_file,
         parameter_file=par_file,
-        logTrafo=False,
+        log_trafo=False,
         max_rel_uncertainty_data=0.5,
     )
 
@@ -122,7 +122,7 @@ def make_emulator(data_files):
 @pytest.fixture(scope="module")
 def emulator(data_files):
     emu = make_emulator(data_files)
-    emu.trainEmulatorAutoMask()
+    emu.train_emulator_auto_mask()
     return emu
 
 
@@ -181,7 +181,7 @@ def test_covariance_includes_truncation(emulator, test_params):
 def test_validation(data_files):
     emu = make_emulator(data_files)
     n_test = 5
-    emu_pred, emu_pred_err, vali_data, vali_data_err = emu.testEmulatorErrors(
+    emu_pred, emu_pred_err, vali_data, vali_data_err = emu.test_emulator_errors(
         number_test_points=n_test
     )
     for arr in (emu_pred, emu_pred_err, vali_data, vali_data_err):

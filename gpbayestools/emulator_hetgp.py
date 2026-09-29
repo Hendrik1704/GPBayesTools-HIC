@@ -21,7 +21,7 @@ class EmulatorHetGP(EmulatorBase):
     (int) or the fraction of the explained variance (float in (0, 1),
     default 0.99).
 
-    With `logTrafo` set to True, the emulator is trained on the log of the
+    With `log_trafo` set to True, the emulator is trained on the log of the
     observables and predict() returns the mean and covariance in log space.
     Experimental data used with the emulator must then be log-transformed as
     well. With `exp_and_cov_diagonal` set to True, predict() returns exp(mean)
@@ -32,7 +32,7 @@ class EmulatorHetGP(EmulatorBase):
         self,
         training_set_path=".",
         parameter_file="ABCD.txt",
-        logTrafo=False,
+        log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
         npc=0.99,
@@ -40,13 +40,13 @@ class EmulatorHetGP(EmulatorBase):
         super().__init__(
             training_set_path,
             parameter_file,
-            logTrafo,
+            log_trafo,
             max_rel_uncertainty_data,
             exp_and_cov_diagonal,
         )
 
         # The outputs are standardized and transformed with a PCA in
-        # trainEmulator(), keeping npc PCs (int) or the PCs explaining the
+        # train_emulator(), keeping npc PCs (int) or the PCs explaining the
         # fraction npc (float) of the variance. The GP emulators are then
         # trained on the resulting principal components.
         check_npc(npc)
@@ -198,7 +198,7 @@ class EmulatorHetGP(EmulatorBase):
             "Rebuilt {} GP models via warm-start (maxit={}).".format(self.npc, maxit)
         )
 
-    def trainEmulator(self, event_mask):
+    def train_emulator(self, event_mask):
         logging.info("Performing emulator training ...")
         # Subselect training data
         event_mask = np.asarray(event_mask, dtype=bool)

@@ -20,7 +20,7 @@ class EmulatorBAND(EmulatorBase):
     the BAND collaboration. The number of principal components is chosen by
     surmise, so there is no npc argument.
 
-    With `logTrafo` set to True, the emulator is trained on the log of the
+    With `log_trafo` set to True, the emulator is trained on the log of the
     observables and predict() returns the mean and covariance in log space.
     Experimental data used with the emulator must then be log-transformed as
     well. With `exp_and_cov_diagonal` set to True, predict() returns exp(mean)
@@ -32,7 +32,7 @@ class EmulatorBAND(EmulatorBase):
         training_set_path=".",
         parameter_file="ABCD.txt",
         method="PCGP",
-        logTrafo=False,
+        log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
         seed=None,
@@ -43,12 +43,12 @@ class EmulatorBAND(EmulatorBase):
         super().__init__(
             training_set_path,
             parameter_file,
-            logTrafo,
+            log_trafo,
             max_rel_uncertainty_data,
             exp_and_cov_diagonal,
         )
 
-    def trainEmulator(self, event_mask):
+    def train_emulator(self, event_mask):
         logging.info("Performing emulator training ...")
         nev, nobs = self.model_data[event_mask, :].shape
         logging.info("Train GP emulators with {} training points ...".format(nev))

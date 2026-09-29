@@ -3,7 +3,7 @@ Common base class of the emulators.
 
 It loads the training data and the model parameter file, applies the quality
 filter and the log transformation of the training data, and implements the
-validation functions. The emulators implement ``trainEmulator(event_mask)``
+validation functions. The emulators implement ``train_emulator(event_mask)``
 and ``predict(X, return_cov=True)``.
 """
 
@@ -72,7 +72,7 @@ class EmulatorBase:
         'obs': array (2, nobs) with the values and statistical errors}}.
     parameter_file : str
         Path to the model parameter file.
-    logTrafo : bool
+    log_trafo : bool
         If True, the emulator is trained on the log of the observables, which
         must be positive. predict() then returns the mean and covariance in log
         space, and experimental data used with the emulator must be
@@ -81,7 +81,7 @@ class EmulatorBase:
         Training points with a larger relative statistical error of any
         observable are discarded. None (default) disables this filter.
     exp_and_cov_diagonal : bool
-        Only with logTrafo=True: predict() returns the predictions transformed
+        Only with log_trafo=True: predict() returns the predictions transformed
         back to the original scale of the observables.
     """
 
@@ -89,16 +89,16 @@ class EmulatorBase:
         self,
         training_set_path=".",
         parameter_file="ABCD.txt",
-        logTrafo=False,
+        log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
     ):
-        self.logTrafo_ = logTrafo
+        self.logTrafo_ = log_trafo
         self.max_rel_uncertainty_data_ = max_rel_uncertainty_data
         self.exp_and_cov_diagonal_ = exp_and_cov_diagonal
         if not self.logTrafo_ and self.exp_and_cov_diagonal_:
             raise ValueError(
-                "exp_and_cov_diagonal can only be set to True if logTrafo is True."
+                "exp_and_cov_diagonal can only be set to True if log_trafo is True."
             )
 
         self._load_training_data_pickle(training_set_path)
@@ -150,7 +150,7 @@ class EmulatorBase:
                 continue
             if self.logTrafo_ and np.any(temp_data[:, 0] <= 0):
                 raise ValueError(
-                    "logTrafo requires positive observables, but "
+                    "log_trafo requires positive observables, but "
                     "parameter point {} has values <= 0".format(event_id)
                 )
             if self.max_rel_uncertainty_data_ is not None:
@@ -185,9 +185,9 @@ class EmulatorBase:
             )
         )
 
-    def trainEmulatorAutoMask(self, **train_kwargs):
+    def train_emulator_auto_mask(self, **train_kwargs):
         """Train the emulator on all training points."""
-        self.trainEmulator(np.ones(self.nev, dtype=bool), **train_kwargs)
+        self.train_emulator(np.ones(self.nev, dtype=bool), **train_kwargs)
 
     # -------------------------
     # Validation
@@ -291,14 +291,14 @@ class EmulatorBase:
         )
 
     @keep_trained_state
-    def testEmulatorErrors(
+    def test_emulator_errors(
         self, number_test_points=1, random_points=False, seed=None, **train_kwargs
     ):
         """
         Train the emulator without number_test_points test points and predict
         at the test points. The test points are the last points of the
         training data, or randomly chosen points if random_points is True
-        (reproducible with seed). train_kwargs are passed to trainEmulator.
+        (reproducible with seed). train_kwargs are passed to train_emulator.
         The trained emulator is not changed.
 
         Returns the emulator predictions, their errors, the values of the
@@ -310,23 +310,23 @@ class EmulatorBase:
         train_mask, test_mask = self._validation_masks(
             number_test_points, random_points, seed
         )
-        self.trainEmulator(train_mask, **train_kwargs)
+        self.train_emulator(train_mask, **train_kwargs)
         return self._validation_output(test_mask)
 
     @keep_trained_state
-    def testEmulatorErrorsWithTrainingPoints(
+    def test_emulator_errors_with_training_points(
         self, number_test_points=1, random_points=False, seed=None, **train_kwargs
     ):
         """
         Train the emulator without number_test_points test points (chosen as
-        in testEmulatorErrors) and predict at the training points. The
+        in test_emulator_errors) and predict at the training points. The
         resulting errors should be very small. The trained emulator is not
         changed.
 
-        Returns the same four arrays as testEmulatorErrors, with
+        Returns the same four arrays as test_emulator_errors, with
         (nev - number_test_points) rows.
         """
         logging.info("Validating emulator at the training points ...")
         train_mask, _ = self._validation_masks(number_test_points, random_points, seed)
-        self.trainEmulator(train_mask, **train_kwargs)
+        self.train_emulator(train_mask, **train_kwargs)
         return self._validation_output(train_mask)

@@ -388,9 +388,9 @@ def test_t10(tmp_path):
         training_set_path=str(training_pkl),
         parameter_file=str(par_file),
         npc=2,
-        M=20,
+        n_inducing=20,
         n_ensemble=1,
-        logTrafo=False,
+        log_trafo=False,
         max_rel_uncertainty_data=0.5,
     )
     fit_kwargs = dict(
@@ -403,7 +403,7 @@ def test_t10(tmp_path):
         patience=30,
         verbose=False,
     )
-    emu.trainEmulatorAutoMask(**fit_kwargs)
+    emu.train_emulator_auto_mask(**fit_kwargs)
     check(
         "Emulator trained (emu_ attribute set)",
         hasattr(emu, "emu_") and emu.emu_ is not None,
@@ -420,11 +420,11 @@ def test_t10(tmp_path):
         bool(np.all(np.diagonal(pred_cov, axis1=1, axis2=2) >= 0)),
     )
 
-    # 4. testEmulatorErrors
-    emu_pred, emu_pred_err, vali_data, vali_data_err = emu.testEmulatorErrors(
+    # 4. test_emulator_errors
+    emu_pred, emu_pred_err, vali_data, vali_data_err = emu.test_emulator_errors(
         number_test_points=2, **fit_kwargs
     )
-    check("testEmulatorErrors shapes match", emu_pred.shape == vali_data.shape)
+    check("test_emulator_errors shapes match", emu_pred.shape == vali_data.shape)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
 """
-Markov chain Monte Carlo model calibration. The following methods are available
-- run_mcmc: run MCMC model calibration with emcee
-- run_MCMC_ptemcee: run MCMC model calibration with parallel tempering ptemcee
-- run_MCMC_PTLMC: run MCMC model calibration with PTLMC sampler
-- run_pocoMC: run MCMC model calibration with pocoMC sampler (recommended)
+Bayesian model calibration with the emulators. The BayesianAnalysis class has
+the following samplers:
+- run_emcee: affine-invariant ensemble MCMC sampler emcee
+- run_ptlmc: parallel tempering Langevin Monte Carlo (PTLMC) from surmise
+- run_pocomc: preconditioned Monte Carlo with pocoMC (recommended)
 """
 
 import logging
@@ -103,7 +103,7 @@ class BayesianAnalysis:
     system designs have the same parameters and ranges (except for the norms).
 
     The experimental data are used as they are given. For emulators that
-    return predictions in log space (``logTrafo=True`` and
+    return predictions in log space (``log_trafo=True`` and
     ``exp_and_cov_diagonal=False``), the experimental data must be
     log-transformed by the user as well.
 
@@ -115,7 +115,7 @@ class BayesianAnalysis:
 
     """
 
-    samplers = ("emcee", "pocoMC", "PTLMC")
+    samplers = ("emcee", "pocomc", "ptlmc")
 
     def __init__(
         self,
@@ -162,7 +162,7 @@ class BayesianAnalysis:
         # sampler that generated self.chain
         self.chain_sampler = None
 
-    def loadEmulator(self, emulatorPathList):
+    def load_emulators(self, emulatorPathList):
         """
         Load the emulators from the files in `emulatorPathList`, replacing
         previously loaded emulators. The order of the emulators must be the
@@ -326,7 +326,7 @@ class BayesianAnalysis:
 
     def chain_path(self, sampler):
         """
-        Path of the chain file of `sampler` ('emcee', 'pocoMC' or 'PTLMC').
+        Path of the chain file of `sampler` ('emcee', 'pocomc' or 'ptlmc').
         """
         if sampler not in self.samplers:
             raise ValueError(
@@ -336,7 +336,7 @@ class BayesianAnalysis:
             "{}_{}{}".format(self.mcmc_path.stem, sampler, self.mcmc_path.suffix)
         )
 
-    def run_mcmc(
+    def run_emcee(
         self,
         nsteps=500,
         nburnsteps=None,
@@ -471,7 +471,7 @@ class BayesianAnalysis:
     # modified: the number of initial draws is set by nstartparameters, the
     # tuning phase is longer (fractunning = 2), progress is logged, and the
     # unflattened chains of the temperature-1 walkers are returned.
-    def samplerPTLMC(
+    def _sampler_ptlmc(
         self,
         logpostfunc,
         draw_func,
@@ -750,7 +750,7 @@ class BayesianAnalysis:
             # do some swaps along the temperatures
             fvaln = fval * temps
             # go through 5 times, swapping where needed
-            orderprop = self.tempexchange(fvaln, temps, iters=5, rng=rng)
+            orderprop = self._temp_exchange(fvaln, temps, iters=5, rng=rng)
             fval = fvaln[orderprop] / temps
             thetac = thetac[orderprop, :]
             if logpostf_grad is not None:
@@ -771,7 +771,7 @@ class BayesianAnalysis:
 
     # This function is taken from the surmise package (version 1.0.0) and
     # modified to skip swaps between chains with the same temperature
-    def tempexchange(self, lpostf, temps, iters=1, rng=None):
+    def _temp_exchange(self, lpostf, temps, iters=1, rng=None):
         # This function will swap values along the chain given the log pdf values in an
         # array lpostf with temperature array temps. It will do it iters number of times.
         # It returns the (random) revised order.
@@ -796,7 +796,7 @@ class BayesianAnalysis:
                     order[rt] = 1 * temporder
         return order
 
-    def run_MCMC_PTLMC(
+    def run_ptlmc(
         self,
         nsteps=500,
         nwalkers=16,
@@ -819,7 +819,7 @@ class BayesianAnalysis:
             return rng.uniform(self.min, self.max, (n, self.ndim))
 
         logging.info("Starting MCMC ...")
-        result_dict = self.samplerPTLMC(
+        result_dict = self._sampler_ptlmc(
             logpostfunc=self.log_posterior,
             draw_func=draw_func,
             rng=rng,
@@ -835,12 +835,12 @@ class BayesianAnalysis:
         # This reshape should not be necessary, just done to match the format of the other MCMC
         self.chain = self.chain.reshape((nwalkers, nsteps, self.ndim))
 
-        self.chain_sampler = "PTLMC"
+        self.chain_sampler = "ptlmc"
 
         # Write the chain to file (nwalkers, nsteps, self.ndim)
         chain_data["chain"] = self.chain
-        logging.info("Writing MCMC chains to {}".format(self.chain_path("PTLMC")))
-        with open(self.chain_path("PTLMC"), "wb") as file:
+        logging.info("Writing MCMC chains to {}".format(self.chain_path("ptlmc")))
+        with open(self.chain_path("ptlmc"), "wb") as file:
             pickle.dump(chain_data, file)
 
     def compute_log_likelihood_for_chain(self, sampler=None, output_path=None):
@@ -848,7 +848,7 @@ class BayesianAnalysis:
         This function computes the log likelihood for each point in a chain and
         stores it in a new pkl file.
 
-        The chain of `sampler` ('emcee', 'pocoMC' or 'PTLMC') is loaded from
+        The chain of `sampler` ('emcee', 'pocomc' or 'ptlmc') is loaded from
         its chain file. If `sampler` is None, the chain of the last sampler run
         with this object is used. By default, the output is written next to the
         chain file with the suffix ``_log_likelihood``, e.g.
@@ -885,7 +885,7 @@ class BayesianAnalysis:
         with open(output_path, "wb") as file:
             pickle.dump(likelihood_data, file)
 
-    def run_pocoMC(
+    def run_pocomc(
         self,
         n_effective=1000,
         n_active=250,
@@ -969,7 +969,7 @@ class BayesianAnalysis:
         logging.info("Log evidence error: {}".format(logz_err))
 
         self.chain = samples
-        self.chain_sampler = "pocoMC"
+        self.chain_sampler = "pocomc"
         chain_data = {
             "chain": samples,
             "logl": logl,
@@ -977,6 +977,6 @@ class BayesianAnalysis:
             "logz": logz,
             "logz_err": logz_err,
         }
-        logging.info("Writing pocoMC chains to {}".format(self.chain_path("pocoMC")))
-        with open(self.chain_path("pocoMC"), "wb") as file:
+        logging.info("Writing pocoMC chains to {}".format(self.chain_path("pocomc")))
+        with open(self.chain_path("pocomc"), "wb") as file:
             pickle.dump(chain_data, file)

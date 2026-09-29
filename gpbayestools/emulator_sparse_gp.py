@@ -1380,7 +1380,7 @@ class EmulatorSparseGP(EmulatorBase):
     * ``n_ensemble=1`` — single PCASparseGPEmulator.
     * ``n_ensemble>1`` — PCASparseGPEnsemble of that many members.
 
-    With ``logTrafo=True``, the emulator is trained on the log of the
+    With ``log_trafo=True``, the emulator is trained on the log of the
     observables and predict() returns the mean and covariance in log space.
     Experimental data used with the emulator must then be log-transformed as
     well. With ``exp_and_cov_diagonal=True``, predict() returns the predictions
@@ -1392,11 +1392,11 @@ class EmulatorSparseGP(EmulatorBase):
         training_set_path=".",
         parameter_file="ABCD.txt",
         npc=0.999,
-        M=200,
+        n_inducing=200,
         n_ensemble=1,
         init_strategy="maxmin",
         bootstrap=False,
-        logTrafo=False,
+        log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
         seed=None,
@@ -1412,7 +1412,7 @@ class EmulatorSparseGP(EmulatorBase):
             Number of principal components: int for a fixed number, float in
             (0, 1) for the fraction of the explained variance (default 0.999).
             Passed to the inner emulator as n_pc.
-        M : int
+        n_inducing : int
             Number of inducing points.
         n_ensemble : int
             Number of ensemble members.  Use 1 for a single emulator.
@@ -1420,7 +1420,7 @@ class EmulatorSparseGP(EmulatorBase):
             Inducing-point initialisation strategy.
         bootstrap : bool
             Bootstrap resampling for ensemble members.
-        logTrafo : bool
+        log_trafo : bool
             If True, the emulator is trained on the log of the outputs and
             predict() returns the mean and covariance in log space, like the
             other emulators. The experimental data used with the emulator must
@@ -1429,7 +1429,7 @@ class EmulatorSparseGP(EmulatorBase):
             Maximum relative statistical uncertainty; training points with
             larger values are discarded. Set to None to disable this filter.
         exp_and_cov_diagonal : bool
-            Only with logTrafo=True: predict() returns the predictions
+            Only with log_trafo=True: predict() returns the predictions
             transformed back to the original scale, exp(mean) and the
             covariance cov_ij * exp(mean_i) * exp(mean_j) (delta method).
             Unlike the other emulators, the correlations between the
@@ -1441,14 +1441,14 @@ class EmulatorSparseGP(EmulatorBase):
         check_npc(npc)
         self.npc_requested_ = npc
         self.seed_ = seed
-        self.M_ = M
+        self.M_ = n_inducing
         self.n_ensemble_ = n_ensemble
         self.init_strategy_ = init_strategy
         self.bootstrap_ = bootstrap
         super().__init__(
             training_set_path,
             parameter_file,
-            logTrafo,
+            log_trafo,
             max_rel_uncertainty_data,
             exp_and_cov_diagonal,
         )
@@ -1461,7 +1461,7 @@ class EmulatorSparseGP(EmulatorBase):
         seed = getattr(self, "seed_", None)
         return None if seed is None else jax.random.PRNGKey(seed)
 
-    def trainEmulator(self, event_mask, **fit_kwargs):
+    def train_emulator(self, event_mask, **fit_kwargs):
         """
         Train the (ensemble) emulator on the masked subset of training data.
 
@@ -1540,7 +1540,7 @@ class EmulatorSparseGP(EmulatorBase):
         fpredcov  : array (N_test, nobs, nobs), only when return_cov=True
         """
         if not hasattr(self, "emu_"):
-            raise RuntimeError("Call trainEmulator() before predict().")
+            raise RuntimeError("Call train_emulator() before predict().")
 
         X = np.atleast_2d(X)
         Y_pred, full_cov = self.emu_.predict(
