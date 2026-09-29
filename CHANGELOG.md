@@ -40,6 +40,7 @@ Changes that are not backward compatible:
 - `BayesianAnalysis.load_emulators` replaces previously loaded emulators instead of appending to them, and checks that the numbers of observables of the emulators add up to the number of experimental data points. The experimental data file must contain exactly one data set.
 - The sparse GP emulator computes in 64-bit floats. Importing `gpbayestools.emulator_sparse_gp` enables `jax_enable_x64` for the whole Python process.
 - With mini-batches, the SVGP training returns the parameters with the best exponential moving average of the ELBO instead of the best single-batch ELBO, which selected the parameters of the luckiest batch.
+- The spread between the members of the sparse GP ensemble (`PCASparseGPEnsemble`) is the covariance of the equal-weight mixture (divided by K instead of K-1), as the law of total variance in the docstring, which gives a slightly smaller ensemble uncertainty for few members. The keys of the variance decomposition are `within_members` and `between_members` (were `aleatoric` and `epistemic`; the GP posterior variance is not aleatoric).
 
 Bug fixes:
 - Fix `EmulatorSklearn.predict` with `return_cov=True`, which failed with NumPy 2 (`np.array(..., copy=False)`). The same applies to the log prior, likelihood and posterior of `BayesianAnalysis` for list inputs.

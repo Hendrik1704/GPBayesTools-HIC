@@ -1269,7 +1269,8 @@ class PCASparseGPEmulator:
 
 class PCASparseGPEnsemble:
     """
-    Ensemble of PCASparseGPEmulator for epistemic uncertainty quantification.
+    Ensemble of PCASparseGPEmulator for an estimate of the emulator
+    uncertainty from the spread between the members.
 
     All members share one PCA basis, fitted on the full training data. Each
     member is trained with a different JAX random key, which gives
@@ -1280,15 +1281,17 @@ class PCASparseGPEnsemble:
     - ADAM optimizer trajectories / local optima,
     - bootstrap resamples of the training data (with ``bootstrap=True``).
 
-    Predictions are combined via the law of total variance::
+    The predictions are the mean and covariance of the equal-weight mixture
+    of the members (law of total variance)::
 
         E[Y | x*]   = (1/K) sum_k  mu_k(x*)
-        Cov[Y | x*] = (1/K) sum_k  Sigma_k(x*)                      # aleatoric
-                    + (1/(K-1)) sum_k (mu_k - E[Y])(mu_k - E[Y])^T  # epistemic
+        Cov[Y | x*] = (1/K) sum_k  Sigma_k(x*)                  # within members
+                    + (1/K) sum_k (mu_k - E[Y])(mu_k - E[Y])^T  # between members
 
-    The aleatoric term is the mean of the individual predictive covariances
-    (GP posterior, observation noise, PCA truncation, PCA sampling). The
-    epistemic term is the sample covariance of the per-member means.
+    The within-members term is the mean of the individual predictive
+    covariances (GP posterior and, depending on the options, nugget,
+    observation noise, PCA truncation and PCA sampling). The between-members
+    term is the covariance of the per-member means.
 
     Notes
     -----
@@ -1326,7 +1329,7 @@ class PCASparseGPEnsemble:
 
     For Bayesian inference (MCMC / likelihood emulation) this is generally
     fine: slightly over-dispersed uncertainty is conservative and safe. If
-    you need calibrated epistemic uncertainty for active learning or
+    you need a calibrated emulator uncertainty for active learning or
     decision-making, consider treating the ensemble spread as an upper bound
     and validating on held-out data.
     """
@@ -1346,9 +1349,9 @@ class PCASparseGPEnsemble:
         Parameters
         ----------
         n_ensemble : int
-            Number of ensemble members (default 5). The epistemic uncertainty
-            estimate converges as 1/sqrt(K); 5-10 members are usually
-            sufficient.
+            Number of ensemble members (default 5). The estimate of the
+            spread between the members converges as 1/sqrt(K); 5-10 members
+            are usually sufficient.
         n_pc : float or int
             Number of PCA components of the shared PCA basis: float in (0, 1)
             for the fraction of the explained variance, int for a fixed
@@ -1365,8 +1368,8 @@ class PCASparseGPEnsemble:
             If True, each member is trained on a bootstrap resample (N draws
             with replacement from the N training points) instead of the full
             dataset (default False). This increases the diversity between
-            members and typically improves the calibration of the epistemic
-            uncertainty estimate, at the cost of each member seeing ~63%
+            members and typically improves the calibration of the uncertainty
+            estimate from their spread, at the cost of each member seeing ~63%
             unique points on average. The shared PCA basis is always fitted
             on the FULL dataset, regardless of this flag, to keep all members
             in a common output space.
@@ -1415,11 +1418,11 @@ class PCASparseGPEnsemble:
 
         # ------------------------------------------------------------------
         # Compute ONE shared preprocessing state for all members.
-        # If each member fit its own PCA the ensemble epistemic variance would
+        # If each member fit its own PCA the spread between the members would
         # mix genuine emulator uncertainty with PCA gauge freedom (sign flips,
         # arbitrary rotations).  By fixing the basis here, the per-member
         # predictions lie in the same output space and the sample covariance
-        # of their means is a statistically clean epistemic uncertainty estimate.
+        # of their means is a statistically clean uncertainty estimate.
         # ------------------------------------------------------------------
         _Xm = X.mean(0)
         _Xs = X.std(0) + 1e-8
@@ -1544,22 +1547,22 @@ class PCASparseGPEnsemble:
         include_obs_noise : bool
             Add the observation noise propagated from Y_err (default False).
         return_var_decomposition : bool
-            If True, also return a dict with the 'aleatoric' and 'epistemic'
-            covariances (default False).
+            If True, also return a dict with the 'within_members' and
+            'between_members' covariances (default False).
 
         Returns
         -------
         Y_pred : array (N_test, P)
             Ensemble mean.
         full_cov : array (N_test, P, P)
-            Total predictive covariance (aleatoric + epistemic).
+            Total predictive covariance (within + between members).
         var_decomp : dict
             Only returned if return_var_decomposition=True. Keys:
 
-            - 'aleatoric' (N_test, P, P): average of the per-member
+            - 'within_members' (N_test, P, P): average of the per-member
               predictive covariances.
-            - 'epistemic' (N_test, P, P): sample covariance of the
-              per-member means (zeros for a single member).
+            - 'between_members' (N_test, P, P): covariance of the per-member
+              means (zeros for a single member).
 
         Raises
         ------
@@ -1587,25 +1590,21 @@ class PCASparseGPEnsemble:
         covs_arr = np.stack(all_covs, axis=0)  # (K, N, P, P)
         # Ensemble mean
         Y_pred = means_arr.mean(axis=0)  # (N, P)
-        # Aleatoric: average of per-member covariances
-        aleatoric = covs_arr.mean(axis=0)  # (N, P, P)
-
-        # Epistemic: sample covariance of per-member means (Bessel-corrected)
+        # average of the per-member covariances
+        within_members = covs_arr.mean(axis=0)  # (N, P, P)
+        # covariance of the per-member means of the equal-weight mixture
         residuals = means_arr - Y_pred[None]  # (K, N, P)
-        if K > 1:
-            epistemic = np.einsum("knp,knq->npq", residuals, residuals) / (K - 1)
-        else:
-            epistemic = np.zeros_like(aleatoric)
+        between_members = np.einsum("knp,knq->npq", residuals, residuals) / K
 
-        full_cov = aleatoric + epistemic  # (N, P, P)
+        full_cov = within_members + between_members  # (N, P, P)
 
         if return_var_decomposition:
             return (
                 Y_pred,
                 full_cov,
                 {
-                    "aleatoric": aleatoric,
-                    "epistemic": epistemic,
+                    "within_members": within_members,
+                    "between_members": between_members,
                 },
             )
         return Y_pred, full_cov

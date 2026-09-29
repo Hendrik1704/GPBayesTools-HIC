@@ -9,9 +9,9 @@ Tests covered
   T1  PCASparseGPEmulator smoke test — shapes and training_history keys
   T2  Y_err increases predictive variance
   T3  PCASparseGPEnsemble shapes, shared PCA basis, Y_err effect
-  T4  Variance decomposition identity  aleatoric + epistemic == full_cov (diag)
+  T4  Variance decomposition identity  within + between members == full_cov
   T5  predict_members consistency  mean(member means) == ensemble Y_pred
-  T6  OOD aleatoric uncertainty higher than in-domain
+  T6  OOD within-members uncertainty higher than in-domain
   T7  Calibration: empirical 1σ / 2σ coverage within generous bounds
   T8  API contract  return_var_decomposition=False returns 2-tuple
   T9  Y_err shape mismatch raises ValueError
@@ -87,7 +87,7 @@ _FIT_KW = dict(
 # ── Configuration ─────────────────────────────────────────────────────────────
 N_PC = 2  # fixed integer PCA components (fast)
 M = 30  # inducing points per emulator
-N_ENSEMBLE = 3  # ensemble members (minimum for epistemic variance)
+N_ENSEMBLE = 3  # ensemble members
 
 
 # ── Analytical ground-truth model (for high-level wrapper test) ───────────────
@@ -208,8 +208,8 @@ def test_ensemble_shapes_and_shared_pca(ensembles):
     N_te = _X_te.shape[0]
     check("Y_pred shape", yp_yes.shape == (N_te, _P))
     check("full_cov shape", cov_yes.shape == (N_te, _P, _P))
-    check("aleatoric shape", dec_yes["aleatoric"].shape == (N_te, _P, _P))
-    check("epistemic shape", dec_yes["epistemic"].shape == (N_te, _P, _P))
+    check("within_members shape", dec_yes["within_members"].shape == (N_te, _P, _P))
+    check("between_members shape", dec_yes["between_members"].shape == (N_te, _P, _P))
 
     var_no = float(jnp.diagonal(ensembles["cov_no"], axis1=1, axis2=2).mean())
     var_yes = float(jnp.diagonal(cov_yes, axis1=1, axis2=2).mean())
@@ -235,16 +235,16 @@ def test_ensemble_shapes_and_shared_pca(ensembles):
 def test_variance_decomposition(ensembles):
     cov_yes, dec_yes = ensembles["cov_yes"], ensembles["dec_yes"]
     tot_diag = jnp.diagonal(cov_yes, axis1=1, axis2=2)
-    ale_diag = jnp.diagonal(dec_yes["aleatoric"], axis1=1, axis2=2)
-    epi_diag = jnp.diagonal(dec_yes["epistemic"], axis1=1, axis2=2)
+    ale_diag = jnp.diagonal(dec_yes["within_members"], axis1=1, axis2=2)
+    epi_diag = jnp.diagonal(dec_yes["between_members"], axis1=1, axis2=2)
     max_err = float(jnp.max(jnp.abs(tot_diag - (ale_diag + epi_diag))))
     check(
-        "aleatoric + epistemic == full_cov diag (tol=1e-5)",
+        "within + between members == full_cov diag (tol=1e-5)",
         max_err < 1e-5,
         f"max_abs_err={max_err:.2e}",
     )
-    check("aleatoric diag ≥ 0", bool(jnp.all(ale_diag >= 0)))
-    check("epistemic diag ≥ 0", bool(jnp.all(epi_diag >= 0)))
+    check("within_members diag ≥ 0", bool(jnp.all(ale_diag >= 0)))
+    check("between_members diag ≥ 0", bool(jnp.all(epi_diag >= 0)))
 
 
 # =============================================================================
@@ -267,17 +267,17 @@ def test_predict_members(ensembles):
 
 
 # =============================================================================
-# T6 — OOD aleatoric uncertainty higher than in-domain
+# T6 — OOD within-members uncertainty higher than in-domain
 # =============================================================================
 def test_out_of_domain_uncertainty(ensembles):
     ens_yes = ensembles["ens_yes"]
     _, cov_id, dec_id = ens_yes.predict(_X_te, return_var_decomposition=True)
     _, cov_ood, dec_ood = ens_yes.predict(_X_ood, return_var_decomposition=True)
 
-    ale_id = float(jnp.diagonal(dec_id["aleatoric"], axis1=1, axis2=2).mean())
-    ale_ood = float(jnp.diagonal(dec_ood["aleatoric"], axis1=1, axis2=2).mean())
+    ale_id = float(jnp.diagonal(dec_id["within_members"], axis1=1, axis2=2).mean())
+    ale_ood = float(jnp.diagonal(dec_ood["within_members"], axis1=1, axis2=2).mean())
     check(
-        "GP aleatoric uncertainty higher OOD than in-domain",
+        "GP within-members uncertainty higher OOD than in-domain",
         ale_ood > ale_id,
         f"in-domain={ale_id:.4e}  OOD={ale_ood:.4e}",
     )
