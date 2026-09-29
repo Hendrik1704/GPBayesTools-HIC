@@ -1,8 +1,9 @@
 """
 Generates Latin-hypercube parameter designs.
 
-When run as a script, writes input files for use with the physics model
-Run ``python -m src.design --help`` for usage information.
+The :class:`Design` class generates a design for the parameters in a
+parameter file and writes the input files for the physics model, see
+``examples/generate_LHD_Bayes.py``.
 
 .. warning::
 

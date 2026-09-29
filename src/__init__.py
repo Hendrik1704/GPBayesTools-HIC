@@ -18,8 +18,8 @@ logging.basicConfig(
 
 workdir = Path(os.getenv('WORKDIR', '.'))
 
+# created when it is needed (see design.py)
 cachedir = workdir / 'cache'
-cachedir.mkdir(parents=True, exist_ok=True)
 
 
 def keep_trained_state(method):
