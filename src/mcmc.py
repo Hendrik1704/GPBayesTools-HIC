@@ -378,7 +378,7 @@ class Chain:
 
             # Run first half of burn-in starting from random positions.
             nburn0 = nburnsteps // 2
-            sampler.run_mcmc(
+            state = sampler.run_mcmc(
                 self.random_pos(nwalkers),
                 nburn0,
                 status=status,
@@ -388,12 +388,18 @@ class Chain:
             # Reposition walkers to the most likely points in the chain,
             # then run the second half of burn-in.  This significantly
             # accelerates burn-in and helps prevent stuck walkers.
-            X0 = sampler.flatchain[
-                np.unique(
-                    sampler.flatlnprobability,
-                    return_index=True
-                )[1][-nwalkers:]
-            ]
+            lnprob = sampler.flatlnprobability
+            # indices of the distinct log-probabilities in ascending order
+            idx = np.unique(lnprob, return_index=True)[1]
+            idx = idx[np.isfinite(lnprob[idx])]
+            if len(idx) >= nwalkers:
+                X0 = sampler.flatchain[idx[-nwalkers:]]
+            else:
+                logging.warning(
+                    'only {} distinct points with finite probability in the '
+                    'first half of the burn-in, continuing from the current '
+                    'walker positions'.format(len(idx)))
+                X0 = state.coords
             sampler.reset()
             X0 = sampler.run_mcmc(
                 X0,
