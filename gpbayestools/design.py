@@ -11,8 +11,8 @@ parameter file and writes the input files for the physics model, see
     the `MaxPro package <https://cran.r-project.org/package=MaxPro>`_
     (maximum projection designs) or with the
     `lhs package <https://cran.r-project.org/package=lhs>`_ (maximin
-    designs).  As far as I know, there are no equivalent libraries for
-    Python.
+    designs). scipy (``scipy.stats.qmc.LatinHypercube``) has optimized
+    Latin hypercubes, but no maximum projection designs.
 
     This means that R must be installed with the package of the chosen method
     (run ``install.packages('MaxPro')`` or ``install.packages('lhs')`` in an
