@@ -21,7 +21,8 @@ Changes that are not backward compatible:
 - Raise an error in the MCMC likelihood if the covariance matrix is not positive definite, instead of returning NaN.
 - Each sampler writes its chain to its own file derived from `mcmc_path`, e.g. `./mcmc/chain_emcee.pkl`, `./mcmc/chain_pocoMC.pkl` and `./mcmc/chain_PTLMC.pkl` (`Chain.chain_path(sampler)`), instead of all samplers overwriting `./mcmc/chain.pkl`. `compute_log_likelihood_for_chain` takes the sampler of the chain as first argument (default: the last sampler run) and writes the result next to the chain file by default.
 - `max_rel_uncertainty_data` is `None` (no filtering of the training data) by default in all emulators. Before, it was 0.1 in `Emulator`, `EmulatorBAND` and `EmulatorHETGPy`.
-- Remove `Emulator.print_learning_curve()`, which did not use the settings of the trained emulator.
+- Remove `Emulator.print_learning_curve()`, which did not use the settings of the trained emulator, and the unused `Emulator.getAvgTrainingDataRelError()`.
+- `log_posterior` is the sum of `log_prior` and `log_likelihood`, i.e. it includes the constant log(1/prior volume). Points on the boundaries of the parameter ranges are inside the prior, as for pocoMC.
 - The number of principal components is given by `npc` in all emulators except `EmulatorBAND`, where surmise chooses it: an int for the number of PCs or a float in (0, 1) for the fraction of the explained variance. `EmulatorSparseGP` used `n_pc`, and `EmulatorHETGPy` always used 99% of the variance (still the default).
 - Remove `predict_test_emu_errors` from `EmulatorBAND` and `EmulatorHETGPy`, `predict` gives the same results.
 - Remove the `extra_std` option from the `predict` functions of all emulators and from the MCMC. It was always 0 in the MCMC and ignored or treated differently by the emulators.
@@ -59,6 +60,11 @@ Bug fixes:
 - Observables that are exactly zero are ignored in the relative-error filter of the training data, instead of discarding the whole training point.
 - `generate_posterior_clusters.py` no longer overwrites its input file when the chain file name does not contain `.pkl`.
 - Unpickling or copying an untrained `EmulatorHETGPy` no longer trains it.
+- PTLMC no longer swaps chains with the same temperature, which shuffled the temperature-1 walkers in every iteration, so that the saved walker traces are continuous. The sampled distribution is unchanged.
+- A continued emcee chain starts from the last walker positions of the previous run (saved as `last_position` in the chain file) instead of the last thinned sample.
+- Refitting a `PCASparseGPEmulator` uses the requested number or fraction of PCs again instead of the number found in the previous fit.
+- Importing the package no longer creates a `./cache` directory; it is only created for the Latin-hypercube designs.
+- Fix the imports in the `EmulatorValidation` notebook and several docstrings of the sparse GP emulator (`patience`, `include_noise`).
 - The default seed of `Design` is an integer from the current time (stored in `Design.seed`). The float timestamp was truncated by R, so the printed seed was not the one used.
 - Fix the chain loading and the error bars in the `ClosureTest` notebook, and the log-likelihood output in the `RunBayesianAnalysis` notebook.
 
