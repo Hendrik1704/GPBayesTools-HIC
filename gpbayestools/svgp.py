@@ -35,6 +35,14 @@ from .emulator_base import number_of_pcs, truncation_signal
 
 _INIT_STRATEGIES = ("maxmin", "kmeans", "kmeans_pp", "random", "sobol")
 
+# independent random subkeys of a key for the different random steps
+_SUBKEY_IDS = {"init": 0, "numpy": 1, "train": 2, "bootstrap": 3}
+
+
+def _subkey(key, purpose):
+    """Independent subkey of `key` for `purpose` (see `_SUBKEY_IDS`)."""
+    return jax.random.fold_in(key, _SUBKEY_IDS[purpose])
+
 
 def _fit_pca(Yn, n_pc):
     """
@@ -196,8 +204,9 @@ class PCASparseGPEmulator:
             accuracy at O(M²) cost in memory and O(M³) per Cholesky
             decomposition.
         key : jax.random.PRNGKey or None
-            Random key for reproducibility. None uses ``PRNGKey(0)``
-            (default None).
+            Random key for reproducibility. Independent subkeys are derived
+            from it for the inducing-point initialization and the
+            mini-batches. None uses ``PRNGKey(0)`` (default None).
         init_strategy : str
             Inducing-point initialization strategy: 'maxmin' (default, best
             coverage in moderate D), 'kmeans', 'kmeans_pp', 'random' or
@@ -312,12 +321,12 @@ class PCASparseGPEmulator:
         Ensemble members with different keys thus get different
         initializations.
         """
-        return int(jax.random.randint(self.key, (), 0, 2**31 - 1))
+        return int(jax.random.randint(_subkey(self.key, "numpy"), (), 0, 2**31 - 1))
 
     def _init_inducing_maxmin(self, X):
         """Select M training points by greedy max-min distance selection."""
         N, _ = X.shape
-        idx = jax.random.randint(self.key, (), 0, N)
+        idx = jax.random.randint(_subkey(self.key, "init"), (), 0, N)
         Z = X[idx : idx + 1]
         min_dists = jnp.sum((X - Z[0]) ** 2, axis=-1)
         for _ in range(1, self.M):
@@ -333,7 +342,7 @@ class PCASparseGPEmulator:
             np.array(X)
         )
         Z = jnp.array(kmeans.cluster_centers_)
-        Z += 0.01 * jax.random.normal(self.key, Z.shape)
+        Z += 0.01 * jax.random.normal(_subkey(self.key, "init"), Z.shape)
         return Z
 
     def _init_inducing_kmeans_pp(self, X):
@@ -346,7 +355,7 @@ class PCASparseGPEmulator:
     def _init_inducing_random(self, X):
         """Select M training points at random without replacement."""
         N = X.shape[0]
-        idx = jax.random.choice(self.key, N, (self.M,), replace=False)
+        idx = jax.random.choice(_subkey(self.key, "init"), N, (self.M,), replace=False)
         return X[idx]
 
     def _init_inducing_sobol(self, X):
@@ -853,7 +862,8 @@ class PCASparseGPEmulator:
         es_patience_count = 0
         es_check_interval = max(20, int(round(1.0 / (1.0 - ema_alpha))))
         ema_history = []
-        key = self.key
+        # mini-batches, independent of the random initialization
+        key = _subkey(self.key, "train")
 
         if early_stopping:
             logger.debug(
@@ -1479,7 +1489,9 @@ class PCASparseGPEnsemble:
             # subset.  PCA state was fitted on full data and is unchanged.
             if self.bootstrap:
                 N = X.shape[0]
-                boot_idx = np.array(jax.random.choice(key, N, (N,), replace=True))
+                boot_idx = np.array(
+                    jax.random.choice(_subkey(key, "bootstrap"), N, (N,), replace=True)
+                )
                 X_fit = X[boot_idx]
                 Y_fit = Y[boot_idx]
                 Y_err_fit = Y_err[boot_idx] if Y_err is not None else None
