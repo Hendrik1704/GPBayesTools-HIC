@@ -5,6 +5,9 @@ sys.path.insert(0, path.abspath('../'))
 from src.design import Design
 from pathlib import Path
 
-# Create a LHD with 1000 points
-design = Design('./modelDesign_example.txt', npoints=100, validation=False, seed=42)
+# Create a LHD with 100 points
+# method: 'maxpro' (maximum projection design, R package MaxPro) or
+#         'maximin' (maximin design, R package lhs)
+design = Design('./modelDesign_example.txt', npoints=100, validation=False, seed=42,
+                method='maxpro')
 design.write_files(Path('./designs'))

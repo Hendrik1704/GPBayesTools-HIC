@@ -6,13 +6,16 @@ Run ``python -m src.design --help`` for usage information.
 
 .. warning::
 
-    This module uses the R `MaxPro package
-    <https://cran.r-project.org/package=MaxPro>`_ to generate maximum
-    projection Latin-hypercube samples.  As far as I know, there is no
-    equivalent library for Python.
+    This module uses R to generate the Latin-hypercube samples, either with
+    the `MaxPro package <https://cran.r-project.org/package=MaxPro>`_
+    (maximum projection designs) or with the
+    `lhs package <https://cran.r-project.org/package=lhs>`_ (maximin
+    designs).  As far as I know, there are no equivalent libraries for
+    Python.
 
-    This means that R must be installed with the MaxPro package (run
-    ``install.packages('MaxPro')`` in an R session).
+    This means that R must be installed with the package of the chosen method
+    (run ``install.packages('MaxPro')`` or ``install.packages('lhs')`` in an
+    R session).
 
 """
 
@@ -26,10 +29,43 @@ import numpy as np
 from . import cachedir, parse_model_parameter_file
 
 
-def generate_lhs(npoints, ndim, seed):
+def _generate_with_R(method, r_code, npoints, ndim, seed):
     """
-    Generate a maximin Latin-hypercube sample (LHS) with the given number of
-    points, dimensions, and random seed.
+    Run `r_code` in R and return the design it writes to stdout as an array.
+    The design is cached in cachedir/lhs/<method>/.
+
+    """
+    cachefile = (
+        cachedir / 'lhs' / method /
+        'npoints{}_ndim{}_seed{}.npy'.format(npoints, ndim, seed)
+    )
+
+    if cachefile.exists():
+        logging.debug('loading from cache')
+        return np.load(cachefile)
+
+    logging.debug('not found in cache, generating using R')
+    proc = subprocess.run(
+        ['R', '--slave'],
+        input=r_code.encode(),
+        stdout=subprocess.PIPE,
+        check=True
+    )
+    lhs = np.array(
+        [l.split() for l in proc.stdout.decode().splitlines()],
+        dtype=float
+    )
+
+    cachefile.parent.mkdir(parents=True, exist_ok=True)
+    np.save(cachefile, lhs)
+    return lhs
+
+
+def generate_maximin_lhs(npoints, ndim, seed):
+    """
+    Generate a maximin Latin-hypercube sample (LHS) in [0, 1]^ndim with the
+    given number of points, dimensions, and random seed, using the R package
+    lhs.
 
     """
     logging.debug(
@@ -37,49 +73,39 @@ def generate_lhs(npoints, ndim, seed):
         'npoints = %d, ndim = %d, seed = %d',
         npoints, ndim, seed
     )
+    return _generate_with_R('maximin', """
+        library('lhs')
+        set.seed({})
+        write.table(maximinLHS({}, {}), col.names=FALSE, row.names=FALSE)
+        """.format(seed, npoints, ndim), npoints, ndim, seed)
 
-    cachefile = (
-        cachedir / 'lhs' /
-        'npoints{}_ndim{}_seed{}.npy'.format(npoints, ndim, seed)
+
+def generate_maxpro_lhs(npoints, ndim, seed):
+    """
+    Generate a maximum projection Latin-hypercube sample (LHS) in [0, 1]^ndim
+    with the given number of points, dimensions, and random seed, using the R
+    package MaxPro.
+
+    """
+    logging.debug(
+        'generating maximum projection LHS: '
+        'npoints = %d, ndim = %d, seed = %d',
+        npoints, ndim, seed
     )
+    lhs = _generate_with_R('maxpro', """
+        library(MaxPro)
+        set.seed({})
+        write.table(MaxProRunOrder(MaxProLHD({}, {})$Design)$Design, col.names=FALSE, row.names=FALSE)
+        """.format(seed, npoints, ndim), npoints, ndim, seed)
+    # the first column of MaxProRunOrder is the run order
+    return lhs[:, 1:]
 
-    if cachefile.exists():
-        logging.debug('loading from cache')
-        lhs = np.load(cachefile)
-    else:
-        logging.debug('not found in cache, generating using R')
-        '''
-        proc = subprocess.run(
-            ['R', '--slave'],
-            input="""
-            library('lhs')
-            set.seed({})
-            write.table(maximinLHS({}, {}), col.names=FALSE, row.names=FALSE)
-            """.format(seed, npoints, ndim).encode(),
-            stdout=subprocess.PIPE,
-            check=True
-        )
-        '''
-        # Maximum Projection Latin Hypercube sampling
-        proc = subprocess.run(
-            ['R', '--slave'],
-            input="""
-            library(MaxPro)
-            set.seed({})
-            write.table(MaxProRunOrder(MaxProLHD({}, {})$Design)$Design, col.names=FALSE, row.names=FALSE)
-            """.format(seed, npoints, ndim).encode(),
-            stdout=subprocess.PIPE,
-            check=True
-        )
-        lhs = np.array(
-            [l.split() for l in proc.stdout.decode().splitlines()],
-            dtype=float
-        )
 
-        cachefile.parent.mkdir(exist_ok=True)
-        np.save(cachefile, lhs)
-
-    return lhs
+# available design methods for the Design class
+design_generators = {
+    'maxpro': generate_maxpro_lhs,
+    'maximin': generate_maximin_lhs,
+}
 
 
 class Design:
@@ -92,6 +118,9 @@ class Design:
     creates the validation design if `validation` is true.
     If `seed` is not given, a default random seed is used
     (different defaults for the main and validation designs).
+    `method` selects the Latin-hypercube design: 'maxpro' (maximum
+    projection design, R package MaxPro, default) or 'maximin' (maximin
+    design, R package lhs).
 
     Public attributes:
 
@@ -105,7 +134,11 @@ class Design:
     The class also implicitly converts to a numpy array.
 
     """
-    def __init__(self, parfile, npoints=500, validation=False, seed=None):
+    def __init__(self, parfile, npoints=500, validation=False, seed=None,
+                 method='maxpro'):
+        if method not in design_generators:
+            raise ValueError("Unknown design method '{}', use one of {}".format(
+                method, list(design_generators)))
         self.pardict = parse_model_parameter_file(parfile)
         self.type = 'validation' if validation else 'main'
 
@@ -130,11 +163,9 @@ class Design:
         self.max = np.array(self.max)
 
         # generate the Latin-Hypercube samples
-        #self.array = self.min + (self.max - self.min)*generate_lhs(
-        #    npoints=npoints, ndim=self.ndim, seed=seed
-        #)
-        array_tmp = generate_lhs(npoints, self.ndim, seed)
-        self.array = self.min + (self.max - self.min)*array_tmp[:,1:]
+        self.array = self.min + (self.max - self.min)*design_generators[method](
+            npoints, self.ndim, seed
+        )
 
     def __array__(self):
         return self.array
