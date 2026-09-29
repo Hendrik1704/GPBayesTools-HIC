@@ -381,6 +381,10 @@ class BayesianAnalysis:
             lp[inside] += list(map(mvn_loglike, dY, cov))
         return lp
 
+    def _log_likelihood_point(self, x, finite=False):
+        """Log-likelihood at the single point `x` as a float."""
+        return float(self.log_likelihood(x, finite=finite)[0])
+
     def log_likelihood_point_by_point(self, X):
         """
         Evaluate the log-likelihood at `X` point by point.
@@ -791,6 +795,7 @@ class BayesianAnalysis:
         def draw_func(n):
             return rng.uniform(self.param_min, self.param_max, (n, self.ndim))
 
+        self._warn_overwrite("ptlmc")
         logger.info(
             f"Running PTLMC with {n_walkers} chains and {n_temps} temperatures "
             f"(maximum {max_temp}) for {n_steps} samples per chain ..."
@@ -815,7 +820,6 @@ class BayesianAnalysis:
 
         # Write the chain to file (n_walkers, n_steps, self.ndim)
         chain_data["chain"] = self.chain
-        self._warn_overwrite("ptlmc")
         logger.info(f"Writing the PTLMC chains to {self.chain_path('ptlmc')}")
         with open(self.chain_path("ptlmc"), "wb") as file:
             pickle.dump(chain_data, file)
@@ -922,10 +926,12 @@ class BayesianAnalysis:
             sampler for PMC, as it is more efficient and scales better with
             the number of parameters.
         n_max_steps : int, default=200
-            Maximum number of MCMC steps (pocoMC's own default is
-            ``10*n_dim``).
+            Maximum number of MCMC steps per iteration (pocoMC's own default
+            is ``10 * n_steps``, see `n_ndim_steps`).
         random_state : int or None, default=42
-            Initial random seed.
+            Random seed. pocoMC sets it as the seed of numpy's global random
+            number generator (``np.random.seed``) and of torch, which also
+            affects later code that uses these generators.
         n_total : int, default=5000
             Total number of effectively independent samples to be collected.
         n_evidence : int, default=5000
@@ -937,10 +943,13 @@ class BayesianAnalysis:
             plateau, passed to pocoMC as ``n_steps = n_ndim_steps * ndim``. It
             controls the early stopping of the MCMC steps of each iteration.
         pool : int, pool object or None, default=None
-            Parallelization of the likelihood evaluations. If `pool` is an
-            integer greater than 1, a ``multiprocessing`` pool with this number
-            of processes is created; a pool object (e.g. of mpi4py) is used
-            directly.
+            Parallelization of the likelihood evaluations. If None, the
+            likelihood is evaluated for all particles at once (vectorized). If
+            `pool` is an integer greater than 1, a ``multiprocess`` pool with
+            this number of processes is created and closed after the run; a
+            pool object with a ``map`` method (e.g. of mpi4py) is used
+            directly. With a pool, the likelihood is evaluated point by point
+            in the processes of the pool.
         prior : object or None, default=None
             Prior distribution implementing the ``logpdf`` and ``rvs`` methods
             and the ``dim`` and ``bounds`` attributes. If None, a uniform
@@ -975,10 +984,16 @@ class BayesianAnalysis:
                     "model parameters"
                 )
 
-        logger.info(f"Running pocoMC with n_effective={n_effective} ...")
+        self._warn_overwrite("pocomc")
+        # pocoMC uses the pool only for a likelihood that is not vectorized
+        vectorize = pool is None
+        logger.info(
+            f"Running pocoMC with n_effective={n_effective} "
+            f"({'vectorized' if vectorize else 'with a pool'}) ..."
+        )
         sampler = pocomc.Sampler(
             prior=prior,
-            likelihood=self.log_likelihood,
+            likelihood=self.log_likelihood if vectorize else self._log_likelihood_point,
             likelihood_kwargs={"finite": True},
             n_effective=n_effective,
             n_active=n_active,
@@ -987,10 +1002,16 @@ class BayesianAnalysis:
             n_max_steps=n_max_steps,
             n_steps=n_ndim_steps * self.ndim,
             random_state=random_state,
-            vectorize=True,
+            vectorize=vectorize,
             pool=pool,
         )
-        sampler.run(n_total=n_total, n_evidence=n_evidence)
+        try:
+            sampler.run(n_total=n_total, n_evidence=n_evidence)
+        finally:
+            # pocoMC creates a pool for an integer `pool` but does not close it
+            if isinstance(pool, int) and sampler.pool is not None:
+                sampler.pool.close()
+                sampler.pool.join()
 
         samples, logl, logp = sampler.posterior(resample=True)
         logz, logz_err = sampler.evidence()
@@ -1010,7 +1031,6 @@ class BayesianAnalysis:
             "logz": logz,
             "logz_err": logz_err,
         }
-        self._warn_overwrite("pocomc")
         logger.info(f"Writing the pocoMC samples to {self.chain_path('pocomc')}")
         with open(self.chain_path("pocomc"), "wb") as file:
             pickle.dump(chain_data, file)

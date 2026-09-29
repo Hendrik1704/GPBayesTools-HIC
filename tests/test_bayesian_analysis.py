@@ -214,6 +214,28 @@ def test_pocomc_and_log_likelihood_of_chain(chain):
     np.testing.assert_allclose(ll[:10], chain.log_likelihood(samples[:10]))
 
 
+def test_pocomc_uses_pool(chain):
+    # a pool object is used for the likelihood evaluations
+    class CountingPool:
+        n_calls = 0
+
+        def map(self, func, iterable):
+            CountingPool.n_calls += 1
+            return list(map(func, iterable))
+
+    chain.run_pocomc(
+        n_effective=256,
+        n_active=128,
+        n_prior=256,
+        n_total=256,
+        n_evidence=0,
+        random_state=1,
+        pool=CountingPool(),
+    )
+    assert CountingPool.n_calls > 0
+    assert chain.chain.shape[1] == 2
+
+
 def test_log_likelihood_of_chain_requires_chain(chain):
     with pytest.raises(ValueError):
         chain.compute_log_likelihood_for_chain()
