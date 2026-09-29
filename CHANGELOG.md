@@ -8,13 +8,14 @@ New features:
 - `run_mcmc` (emcee) and `run_MCMC_PTLMC` take an optional `seed` for reproducible chains.
 - `Emulator` and `EmulatorSparseGP` take an optional `seed` for reproducible training. For `EmulatorSparseGP`, the KMeans and Sobol initialisations of the inducing points are seeded as well, so that ensemble members start from different inducing points.
 - The validation functions `testEmulatorErrors` and `testEmulatorErrorsWithTrainingPoints` can choose random test points (`random_points=True`, reproducible with `seed`) instead of the last points of the training data.
-- The emulators share the base class `EmulatorBase` (`src/emulator_base.py`), which implements loading and filtering the training data and the validation functions for all of them. It checks that the number of parameters in the parameter file matches the training data.
+- The emulators share the base class `EmulatorBase` (`gpbayestools/emulator_base.py`), which implements loading and filtering the training data and the validation functions for all of them. It checks that the number of parameters in the parameter file matches the training data.
 
 New emulators:
 - Add the `EmulatorHETGPy` emulator, a wrapper for the heteroskedastic GPs of the [hetgpy](https://hetgpy.readthedocs.io) package combined with a PCA of the outputs.
 - Add the `EmulatorSparseGP` emulator, a sparse variational GP emulator (SVGP) with PCA of the outputs, implemented with JAX. It can be trained as a single emulator or as an ensemble.
 
 Changes that are not backward compatible:
+- The package is renamed from `src` to `gpbayestools`, e.g. `from gpbayestools.emulator_BAND import EmulatorBAND`. It can be installed with `pip install .` (`pyproject.toml`, distribution name `gpbayestools-hic`). Emulators saved with older versions refer to the module names `src.*` and can be loaded with `gpbayestools.load_emulator`, which `Chain.loadEmulator` uses.
 - Update the surmise package requirement from version 0.3.0 to version 1.0.0. This includes a major update of the PCSK emulator (surmise 0.4.0). Training now requires a global random number generator, which `EmulatorBAND` sets via `surmise.set_RNG` before each training. Use the new optional `seed` argument of `EmulatorBAND` for reproducible training. Emulators trained and saved with surmise 0.4.0 can still be loaded and give identical predictions.
 - Remove the `parameterTrafoPCA` option of `Emulator` and `EmulatorBAND` (PCA transformation of the $\zeta/s(T)$, $\eta/s(\mu_B)$ and $\langle y_{\rm loss}\rangle(y_{\rm init})$ parameters). It was specific to the parametrization of one analysis. Use version v2.0.1 or older to reproduce results obtained with it.
 - Remove the constant prior term of the unused `extra_std` parameter from the log-likelihood and log-posterior. The log-likelihood values and the pocoMC evidence (`logl`, `logz`) are shifted by +73.68 compared to older versions. Posterior samples are not affected.
@@ -30,7 +31,7 @@ Changes that are not backward compatible:
 - The validation functions `testEmulatorErrors` and `testEmulatorErrorsWithTrainingPoints` no longer change the trained emulator. Previously, the emulator was left trained on the reduced training set. The argument `nTestPoints` of `Emulator` is renamed to `number_test_points` as in the other emulators, and `EmulatorSparseGP` also has `testEmulatorErrorsWithTrainingPoints`.
 - All emulators raise a `ValueError` for observables <= 0 with `logTrafo=True`. Previously `log(|x|)` was used, so the sign was lost, and zeros became `log(1e-30)`.
 - `Chain.loadEmulator` replaces previously loaded emulators instead of appending to them, and checks that the numbers of observables of the emulators add up to the number of experimental data points. The experimental data file must contain exactly one data set.
-- The sparse GP emulator computes in 64-bit floats. Importing `src.emulator_sparseGP` enables `jax_enable_x64` for the whole Python process.
+- The sparse GP emulator computes in 64-bit floats. Importing `gpbayestools.emulator_sparseGP` enables `jax_enable_x64` for the whole Python process.
 - With mini-batches, the SVGP training returns the parameters with the best exponential moving average of the ELBO instead of the best single-batch ELBO, which selected the parameters of the luckiest batch.
 
 Bug fixes:
@@ -71,6 +72,10 @@ Bug fixes:
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `logTrafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
+
+Development:
+- GitHub workflows run the tests (Python 3.11 and 3.12) and format the code with ruff on pushes and pull requests to `main` and `devel`. On pull requests, the formatting is only checked.
+- The code is formatted with ruff.
 
 Tests:
 - Add tests in `tests/` for all emulators, the emulator base class and the MCMC module, which can be run with `python -m pytest tests`. The MCMC tests compare the samples of emcee, PTLMC and pocoMC with an analytically known posterior.
