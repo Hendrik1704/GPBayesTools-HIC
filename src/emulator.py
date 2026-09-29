@@ -77,11 +77,19 @@ class Emulator:
         self.pca = PCA(whiten=True, svd_solver='full')
 
 
+    def _pca_of_all_data(self):
+        """
+        First npc PCs of all training data. Separate scaler and PCA objects
+        are used, so that the trained emulator is not modified.
+        """
+        scaler = StandardScaler()
+        pca = PCA(whiten=True, svd_solver='full')
+        return pca.fit_transform(scaler.fit_transform(self.model_data))[:, :self.npc]
+
+
     def outputPCAvsParam(self):
         logging.info('Performing PCA ...')
-        Z = self.pca.fit_transform(
-                self.scaler.fit_transform(self.model_data)
-        )[:, :self.npc]
+        Z = self._pca_of_all_data()
         return(self.design_points, Z.T)
 
 
@@ -263,8 +271,7 @@ class Emulator:
 
 
     def print_learning_curve(self):
-        Z = self.pca.fit_transform(
-                self.scaler.fit_transform(self.model_data))[:, :self.npc]
+        Z = self._pca_of_all_data()
         # Define kernel (covariance function):
         # Gaussian correlation (RBF) plus a noise term.
         ptp = self.design_max - self.design_min
