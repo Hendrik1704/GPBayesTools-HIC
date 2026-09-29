@@ -180,6 +180,14 @@ class EmulatorHETGPy:
             )
         )
 
+    @staticmethod
+    def _max_rel_error(temp_data):
+        """Largest relative statistical error of a training point. Observables
+        that are exactly zero have no relative error and are ignored."""
+        nonzero = temp_data[:, 0] != 0
+        return np.max(np.abs(temp_data[nonzero, 1] / temp_data[nonzero, 0]),
+                      initial=0.0)
+
     def _load_training_data_pickle(self, dataFile):
         """This function reads in training data sets at every sample point"""
         logging.info("loading training data from {} ...".format(dataFile))
@@ -200,11 +208,11 @@ class EmulatorHETGPy:
                                                     event_id))
                 discarded_points += 1
                 continue
-            if self.logTrafo_ and np.any(temp_data[:, 0] < 0):
+            if self.logTrafo_ and np.any(temp_data[:, 0] <= 0):
                 raise ValueError(
-                    "logTrafo requires non-negative observables, but "
-                    "parameter point {} has negative values".format(event_id))
-            statErrMax = np.abs((temp_data[:, 1]/(temp_data[:, 0]+1e-16))).max()
+                    "logTrafo requires positive observables, but "
+                    "parameter point {} has values <= 0".format(event_id))
+            statErrMax = self._max_rel_error(temp_data)
             if statErrMax > self.max_rel_uncertainty_data_:
                 logging.info("Discard Parameter {}, stat err = {:.2f}".format(
                                                     event_id, statErrMax))
