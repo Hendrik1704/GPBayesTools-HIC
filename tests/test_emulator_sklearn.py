@@ -55,6 +55,8 @@ def test_no_pca_covariance_in_observable_units(training_file, param_file, test_p
     for no_pca in (False, True):
         emu = EmulatorSklearn(training_file, param_file, npc=4, perform_no_pca=no_pca)
         emu.train_emulator_auto_mask()
+        # without PCA, one GP is trained per observable
+        assert emu.npc_ == len(emu.gps_) == (N_OBS if no_pca else 4)
         _, cov = emu.predict(test_points)
         rel_std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2)).mean(axis=0) / OBS_SCALE
         assert rel_std.max() / rel_std.min() < 10

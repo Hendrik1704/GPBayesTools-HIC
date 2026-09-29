@@ -125,16 +125,12 @@ class EmulatorSklearn(EmulatorBase):
 
         check_npc(npc)
         self.npc = npc
-        self.npc_ = npc
         self.n_restarts = n_restarts
         # random state of the restarts of the GP hyperparameter optimizer
         self.seed = seed
         # value added to the diagonal of the GP kernel matrices in the
         # training, for numerical stability
         self.alpha = alpha
-
-        self.scaler_ = StandardScaler()
-        self.pca_ = PCA(whiten=True, svd_solver="full")
 
     def _pca_of_all_data(self):
         """
@@ -195,12 +191,14 @@ class EmulatorSklearn(EmulatorBase):
         # Standardize the input data. New scaler and PCA objects are used,
         # so that the previously trained ones are not modified.
         self.scaler_ = StandardScaler()
-        self.pca_ = PCA(whiten=True, svd_solver="full")
         standardized_data = self.scaler_.fit_transform(data_to_use)
 
         if self.perform_no_pca:
             Z = standardized_data
+            # one GP per standardized observable
+            self.npc_ = Z.shape[1]
         else:
+            self.pca_ = PCA(whiten=True, svd_solver="full")
             # Transform data with PCA. Use the first
             # `npc` components but save the full PC transformation for later.
             Z = self.pca_.fit_transform(standardized_data)
