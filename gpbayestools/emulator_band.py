@@ -95,61 +95,30 @@ class EmulatorBAND(EmulatorBase):
         ----------
         event_mask : ndarray of bool of shape (nev,)
             Mask of the training points to use.
-
-        Raises
-        ------
-        ValueError
-            If `method` is not implemented.
         """
         nev, nobs = self.model_data[event_mask, :].shape
         logger.info(
             f"Training the surmise {self.method} emulator with {nev} training "
             "points ..."
         )
-        X = np.arange(nobs).reshape(-1, 1)
-
-        design_points = self.design_points[event_mask, :]
+        # the observables are the "x" locations of surmise
+        x = np.arange(nobs).reshape(-1, 1)
+        args = {"warnings": True}
+        if self.method == "PCSK":
+            # PCSK uses the statistical errors of the training data
+            args["simsd"] = self.model_data_err[event_mask, :].T
 
         # surmise (>= 1.0.0) requires a global RNG to be set before the
         # training. A new generator is used for each training, so that the
         # same seed always gives the same emulator.
         surmise.set_RNG(np.random.default_rng(self.seed))
-        if self.method == "PCGP":
-            self.emu_ = emulator(
-                x=X,
-                theta=design_points,
-                f=self.model_data[event_mask, :].T,
-                method="PCGP",
-                args={"warnings": True},
-            )
-        elif self.method == "PCSK":
-            sim_sdev = self.model_data_err[event_mask, :].T
-
-            self.emu_ = emulator(
-                x=X,
-                theta=design_points,
-                f=self.model_data[event_mask, :].T,
-                method="PCSK",
-                args={"warnings": True, "simsd": sim_sdev},
-            )
-        elif self.method == "PCGPwImpute":
-            self.emu_ = emulator(
-                x=X,
-                theta=design_points,
-                f=self.model_data[event_mask, :].T,
-                method="PCGPwImpute",
-                args={"warnings": True},
-            )
-        elif self.method == "PCGPwM":
-            self.emu_ = emulator(
-                x=X,
-                theta=design_points,
-                f=self.model_data[event_mask, :].T,
-                method="PCGPwM",
-                args={"warnings": True},
-            )
-        else:
-            raise AssertionError(self.method)
+        self.emu_ = emulator(
+            x=x,
+            theta=self.design_points[event_mask, :],
+            f=self.model_data[event_mask, :].T,
+            method=self.method,
+            args=args,
+        )
         logger.info("Emulator training finished")
 
     def _full_covariance(self, pred):
@@ -214,6 +183,9 @@ class EmulatorBAND(EmulatorBase):
         pred = self.emu_.predict(x=x, theta=X)
 
         mean = pred.mean().T
+        if not return_cov:
+            return np.exp(mean) if self.exp_and_cov_diagonal else mean
+
         cov = self._full_covariance(pred)
         if not include_noise:
             cov = cov - self._noise_covariance()[None, :, :]
@@ -230,6 +202,4 @@ class EmulatorBAND(EmulatorBase):
             idx = np.arange(self.nobs)
             cov[:, idx, idx] = (std * mean) ** 2
 
-        if return_cov:
-            return mean, cov
-        return mean
+        return mean, cov
