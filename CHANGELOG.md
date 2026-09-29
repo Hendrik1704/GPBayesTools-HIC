@@ -6,6 +6,9 @@ Date: not released yet
 New features:
 - `Design` takes a `method` argument to choose between maximum projection Latin-hypercube designs (`'maxpro'`, R package MaxPro, default as before) and maximin designs (`'maximin'`, R package lhs).
 - `run_mcmc` (emcee) and `run_MCMC_PTLMC` take an optional `seed` for reproducible chains.
+- `Emulator` and `EmulatorSparseGP` take an optional `seed` for reproducible training. For `EmulatorSparseGP`, the KMeans and Sobol initialisations of the inducing points are seeded as well, so that ensemble members start from different inducing points.
+- The validation functions `testEmulatorErrors` and `testEmulatorErrorsWithTrainingPoints` can choose random test points (`random_points=True`, reproducible with `seed`) instead of the last points of the training data.
+- The emulators share the base class `EmulatorBase` (`src/emulator_base.py`), which implements loading and filtering the training data and the validation functions for all of them. It checks that the number of parameters in the parameter file matches the training data.
 
 New emulators:
 - Add the `EmulatorHETGPy` emulator, a wrapper for the heteroskedastic GPs of the [hetgpy](https://hetgpy.readthedocs.io) package combined with a PCA of the outputs.
@@ -17,6 +20,9 @@ Changes that are not backward compatible:
 - Remove the constant prior term of the unused `extra_std` parameter from the log-likelihood and log-posterior. The log-likelihood values and the pocoMC evidence (`logl`, `logz`) are shifted by +73.68 compared to older versions. Posterior samples are not affected.
 - Raise an error in the MCMC likelihood if the covariance matrix is not positive definite, instead of returning NaN.
 - Each sampler writes its chain to its own file derived from `mcmc_path`, e.g. `./mcmc/chain_emcee.pkl`, `./mcmc/chain_pocoMC.pkl` and `./mcmc/chain_PTLMC.pkl` (`Chain.chain_path(sampler)`), instead of all samplers overwriting `./mcmc/chain.pkl`. `compute_log_likelihood_for_chain` takes the sampler of the chain as first argument (default: the last sampler run) and writes the result next to the chain file by default.
+- `max_rel_uncertainty_data` is `None` (no filtering of the training data) by default in all emulators. Before, it was 0.1 in `Emulator`, `EmulatorBAND` and `EmulatorHETGPy`.
+- The number of principal components is given by `npc` in all emulators except `EmulatorBAND`, where surmise chooses it: an int for the number of PCs or a float in (0, 1) for the fraction of the explained variance. `EmulatorSparseGP` used `n_pc`, and `EmulatorHETGPy` always used 99% of the variance (still the default).
+- Remove `predict_test_emu_errors` from `EmulatorBAND` and `EmulatorHETGPy`, `predict` gives the same results.
 - Remove the `extra_std` option from the `predict` functions of all emulators and from the MCMC. It was always 0 in the MCMC and ignored or treated differently by the emulators.
 - `EmulatorSparseGP` handles `logTrafo` like the other emulators: by default, `predict` returns the mean and covariance in log space. The new option `exp_and_cov_diagonal=True` returns the predictions in the original scale, keeping the correlations between the observables. Previously, the predictions were always transformed back. Emulators saved with older versions keep the old behavior.
 - The validation functions `testEmulatorErrors` and `testEmulatorErrorsWithTrainingPoints` no longer change the trained emulator. Previously, the emulator was left trained on the reduced training set. The argument `nTestPoints` of `Emulator` is renamed to `number_test_points` as in the other emulators, and `EmulatorSparseGP` also has `testEmulatorErrorsWithTrainingPoints`.
