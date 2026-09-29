@@ -245,8 +245,8 @@ class Chain:
                 # add experiment cov to model cov
                 cov = model_cov + self.expdata_cov
 
-                # compute log likelihood at each point
-                lp[k] += list(map(mvn_loglike, dY, cov))
+                # compute log likelihood at this point
+                lp[k] += mvn_loglike(dY[0], cov[0])
         return lp
 
 
