@@ -18,7 +18,7 @@ from sklearn.gaussian_process import kernels
 from .emulator_base import EmulatorBase, check_npc, number_of_pcs, truncation_signal
 
 
-class Emulator(EmulatorBase):
+class EmulatorSklearn(EmulatorBase):
     """
     Multidimensional Gaussian process emulator using principal component
     analysis. There is the option to switch off the PCA transformation
@@ -267,7 +267,9 @@ class Emulator(EmulatorBase):
         if isinstance(kernel, kernels.WhiteKernel):
             return kernel.noise_level
         if isinstance(kernel, kernels.Sum):
-            return Emulator._gp_noise(kernel.k1) + Emulator._gp_noise(kernel.k2)
+            return EmulatorSklearn._gp_noise(kernel.k1) + EmulatorSklearn._gp_noise(
+                kernel.k2
+            )
         return 0.0
 
     def predict(self, X, return_cov=True, include_noise=False):

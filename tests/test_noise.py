@@ -13,9 +13,9 @@ import numpy as np
 import pytest
 
 from conftest import latin_hypercube, true_model, write_training_data
-from gpbayestools.emulator import Emulator
-from gpbayestools.emulator_hetGPy import EmulatorHETGPy
-from gpbayestools.emulator_sparseGP import EmulatorSparseGP
+from gpbayestools.emulator_sklearn import EmulatorSklearn
+from gpbayestools.emulator_hetgp import EmulatorHetGP
+from gpbayestools.emulator_sparse_gp import EmulatorSparseGP
 
 warnings.filterwarnings("ignore", module="sklearn")
 
@@ -24,16 +24,16 @@ def band_emulator(*args, **kwargs):
     surmise = pytest.importorskip("surmise")
     if not hasattr(surmise, "set_RNG"):
         pytest.skip("requires surmise >= 1.0.0")
-    from gpbayestools.emulator_BAND import EmulatorBAND
+    from gpbayestools.emulator_band import EmulatorBAND
 
     return EmulatorBAND(*args, seed=1, **kwargs)
 
 
 EMULATORS = {
-    "Emulator": (lambda *a: Emulator(*a, npc=4), {}),
+    "EmulatorSklearn": (lambda *a: EmulatorSklearn(*a, npc=4), {}),
     "PCGP": (lambda *a: band_emulator(*a, method="PCGP"), {}),
     "PCSK": (lambda *a: band_emulator(*a, method="PCSK"), {}),
-    "hetGPy": (lambda *a: EmulatorHETGPy(*a), {}),
+    "hetGPy": (lambda *a: EmulatorHetGP(*a), {}),
     "SparseGP": (
         lambda *a: EmulatorSparseGP(*a, npc=0.999, M=30),
         {"steps": 1000, "verbose": False},
@@ -68,15 +68,15 @@ def test_noise_covariance(trained, test_points):
     for n, c in zip(noise, cov_noise):
         # the noise covariance is positive semi-definite
         assert np.linalg.eigvalsh(n).min() > -1e-8 * np.abs(c).max()
-    if name in ("Emulator", "hetGPy", "PCGP"):
+    if name in ("EmulatorSklearn", "hetGPy", "PCGP"):
         # these emulators fit a noise term to the noisy training data
         assert np.all(np.diagonal(noise, axis1=1, axis2=2) > 0)
 
 
 def test_emulator_noise_is_the_white_kernel(trained, test_points):
     name, emu, _ = trained
-    if name != "Emulator":
-        pytest.skip("only for Emulator")
+    if name != "EmulatorSklearn":
+        pytest.skip("only for EmulatorSklearn")
     _, cov_latent = emu.predict(test_points)
     _, cov_noise = emu.predict(test_points, include_noise=True)
     noise_pc = np.array([emu._gp_noise(gp.kernel_) for gp in emu.gps])
@@ -118,7 +118,7 @@ def test_truncation_signal():
 
 def test_validation_includes_noise(trained):
     name, emu, train_kwargs = trained
-    if name not in ("Emulator", "hetGPy"):
+    if name not in ("EmulatorSklearn", "hetGPy"):
         pytest.skip("deterministic training needed to compare")
     pred, pred_err, data, _ = emu.testEmulatorErrors(10, **train_kwargs)
     # the same emulator trained without the test points
@@ -135,7 +135,7 @@ def test_emulator_calibration(noisy_training_file, param_file):
     # with noisy training data, the predicted uncertainty of the model
     # function matches the actual errors (it was overestimated with the
     # alpha = 0.1 of versions < 3.0.0)
-    emu = Emulator(noisy_training_file, param_file, npc=6, nrestarts=2, seed=1)
+    emu = EmulatorSklearn(noisy_training_file, param_file, npc=6, nrestarts=2, seed=1)
     emu.trainEmulatorAutoMask()
     X = np.random.default_rng(3).uniform(0.2, 0.8, size=(200, 3))
     mean, cov = emu.predict(X)
@@ -163,7 +163,7 @@ def test_sample_y(trained, test_points, include_noise):
 
 
 def test_sample_y_log_normal(noisy_training_file, param_file, test_points):
-    emu = EmulatorHETGPy(
+    emu = EmulatorHetGP(
         noisy_training_file, param_file, logTrafo=True, exp_and_cov_diagonal=True
     )
     emu.trainEmulatorAutoMask()

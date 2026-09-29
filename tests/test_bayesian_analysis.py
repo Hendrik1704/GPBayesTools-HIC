@@ -1,5 +1,5 @@
 """
-Tests for the MCMC module (gpbayestools/mcmc.py).
+Tests for the MCMC module (gpbayestools/bayesian_analysis.py).
 
 The emulators are linear models y = A x + b with a constant covariance, and
 the experimental data are the model at X_TRUE. The posterior is then a
@@ -7,7 +7,7 @@ Gaussian with mean X_TRUE and the covariance inv(A^T S^-1 A), with S the sum
 of the experimental and emulator covariances, which the samplers must
 reproduce.
 
-Run with ``python -m pytest tests/test_mcmc.py``.
+Run with ``python -m pytest tests/test_bayesian_analysis.py``.
 """
 
 import pickle
@@ -18,7 +18,7 @@ import pytest
 from scipy.stats import multivariate_normal
 
 from conftest import LinearEmulator, write_param_file
-from gpbayestools.mcmc import Chain, mvn_loglike
+from gpbayestools.bayesian_analysis import BayesianAnalysis, mvn_loglike
 
 A = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, -1.0]])
 B = np.array([1.0, 2.0, 3.0, 4.0])
@@ -61,7 +61,7 @@ def files(tmp_path):
 
 @pytest.fixture
 def chain(files):
-    c = Chain(
+    c = BayesianAnalysis(
         mcmc_path=files["mcmc"], expdata_path=files["exp"], model_parafile=files["par"]
     )
     c.loadEmulator(files["emus"])
@@ -122,7 +122,7 @@ def test_load_emulator_checks_number_of_observables(chain, files):
 
 def test_exp_data_with_several_sets(files, tmp_path):
     with pytest.raises(ValueError):
-        Chain(
+        BayesianAnalysis(
             mcmc_path=files["mcmc"],
             model_parafile=files["par"],
             expdata_path=write_exp_data(tmp_path / "exp2.pkl", 2),
@@ -150,7 +150,7 @@ def test_emcee(chain):
 def test_emcee_seed(files):
     chains = []
     for i in range(2):
-        c = Chain(
+        c = BayesianAnalysis(
             mcmc_path=files["mcmc"].replace("chain", "chain{}".format(i)),
             expdata_path=files["exp"],
             model_parafile=files["par"],

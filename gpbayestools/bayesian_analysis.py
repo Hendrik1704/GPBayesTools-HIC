@@ -94,7 +94,7 @@ class LoggingEnsembleSampler(emcee.EnsembleSampler):
         return result
 
 
-class Chain:
+class BayesianAnalysis:
     """
     High-level interface for running MCMC calibration and accessing results.
 
@@ -127,7 +127,7 @@ class Chain:
         self.mcmc_path = Path(mcmc_path)
         self.mcmc_path.parent.mkdir(parents=True, exist_ok=True)
         logging.info(
-            "Final Markov Chain results will be saved in {}".format(
+            "Final Markov chain results will be saved in {}".format(
                 ", ".join(str(self.chain_path(s)) for s in self.samplers)
             )
         )

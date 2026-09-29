@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from .emulator_base import EmulatorBase, check_npc, truncation_signal
 
 
-class EmulatorHETGPy(EmulatorBase):
+class EmulatorHetGP(EmulatorBase):
     """
     Emulator with heteroskedastic GPs of the hetgpy package for the principal
     components of the (standardized) observables. `npc` is the number of PCs

@@ -47,20 +47,42 @@ def keep_trained_state(method):
     return wrapper
 
 
+# module and class names of versions < 3.0.0
+_LEGACY_MODULES = {
+    "emulator": "emulator_sklearn",
+    "emulator_BAND": "emulator_band",
+    "emulator_hetGPy": "emulator_hetgp",
+    "emulator_sparseGP": "emulator_sparse_gp",
+    "mcmc": "bayesian_analysis",
+}
+_LEGACY_CLASSES = {
+    ("emulator_sklearn", "Emulator"): "EmulatorSklearn",
+    ("emulator_hetgp", "EmulatorHETGPy"): "EmulatorHetGP",
+    ("bayesian_analysis", "Chain"): "BayesianAnalysis",
+}
+
+
 class _LegacyUnpickler(dill.Unpickler):
-    """Unpickler that maps the module names of versions < 3.0.0, in which
-    the package was called src, to gpbayestools."""
+    """Unpickler that maps the module and class names of versions < 3.0.0, in
+    which the package was called src and the modules and classes had other
+    names, to the current names."""
 
     def find_class(self, module, name):
         if module == "src" or module.startswith("src."):
             module = __name__ + module[len("src") :]
+        if module.startswith(__name__ + "."):
+            submodule = module[len(__name__) + 1 :]
+            submodule = _LEGACY_MODULES.get(submodule, submodule)
+            module = __name__ + "." + submodule
+            name = _LEGACY_CLASSES.get((submodule, name), name)
         return super().find_class(module, name)
 
 
 def load_emulator(path):
     """
     Load an emulator saved with dill. Emulators saved with versions < 3.0.0,
-    in which the package was called src, can be loaded as well.
+    in which the package, the modules and some classes had other names, can
+    be loaded as well.
     """
     with open(path, "rb") as f:
         return _LegacyUnpickler(f).load()

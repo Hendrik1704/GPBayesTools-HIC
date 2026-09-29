@@ -11,7 +11,7 @@ The emulator is trained on these data and tested for
   - the covariance of the discarded PCs in the predicted covariance,
   - the built-in validation (testEmulatorErrors).
 
-Run with ``python -m pytest tests/test_hetGPy.py``.
+Run with ``python -m pytest tests/test_emulator_hetgp.py``.
 """
 
 import os
@@ -25,7 +25,7 @@ import pytest
 # Resolve the project root (one level up from tests/)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 sys.path.insert(0, PROJECT_ROOT)
-from gpbayestools.emulator_hetGPy import EmulatorHETGPy
+from gpbayestools.emulator_hetgp import EmulatorHetGP
 
 # ── Configuration ────────────────────────────────────────────────────
 N_DESIGN = 80  # number of training design points
@@ -111,7 +111,7 @@ def data_files(tmp_path_factory):
 
 def make_emulator(data_files):
     training_file, par_file = data_files
-    return EmulatorHETGPy(
+    return EmulatorHetGP(
         training_set_path=training_file,
         parameter_file=par_file,
         logTrafo=False,

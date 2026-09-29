@@ -1,9 +1,9 @@
 """
-Tests for the scikit-learn emulator (gpbayestools/emulator.py) and the functionality
+Tests for the scikit-learn emulator (gpbayestools/emulator_sklearn.py) and the functionality
 of the emulator base class (gpbayestools/emulator_base.py): loading and filtering the
 training data, and the validation functions.
 
-Run with ``python -m pytest tests/test_emulator.py``.
+Run with ``python -m pytest tests/test_emulator_sklearn.py``.
 """
 
 import pickle
@@ -14,14 +14,14 @@ import pytest
 
 from conftest import N_OBS, OBS_SCALE, true_model, write_param_file, write_training_data
 from gpbayestools import parse_model_parameter_file
-from gpbayestools.emulator import Emulator
+from gpbayestools.emulator_sklearn import EmulatorSklearn
 
 warnings.filterwarnings("ignore", module="sklearn")
 
 
 @pytest.fixture(scope="module")
 def emulator(training_file, param_file):
-    emu = Emulator(training_file, param_file, npc=4)
+    emu = EmulatorSklearn(training_file, param_file, npc=4)
     emu.trainEmulatorAutoMask()
     return emu
 
@@ -44,7 +44,7 @@ def test_no_pca_covariance_in_observable_units(training_file, param_file, test_p
     # standard deviations must scale accordingly with and without PCA, i.e.
     # relative to the scale of the observables they are of similar size
     for no_pca in (False, True):
-        emu = Emulator(training_file, param_file, npc=4, perform_no_PCA=no_pca)
+        emu = EmulatorSklearn(training_file, param_file, npc=4, perform_no_PCA=no_pca)
         emu.trainEmulatorAutoMask()
         _, cov = emu.predict(test_points)
         rel_std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2)).mean(axis=0) / OBS_SCALE
@@ -53,7 +53,7 @@ def test_no_pca_covariance_in_observable_units(training_file, param_file, test_p
 
 @pytest.mark.parametrize("npc, expected", [(2, 2), (0.99, None), (50, N_OBS)])
 def test_npc(training_file, param_file, npc, expected):
-    emu = Emulator(training_file, param_file, npc=npc)
+    emu = EmulatorSklearn(training_file, param_file, npc=npc)
     emu.trainEmulatorAutoMask()
     if expected is None:
         # smallest number of PCs explaining more than 99% of the variance
@@ -65,17 +65,17 @@ def test_npc(training_file, param_file, npc, expected):
 @pytest.mark.parametrize("npc", [0, 1.0, -0.5, "3"])
 def test_invalid_npc(training_file, param_file, npc):
     with pytest.raises((ValueError, TypeError)):
-        Emulator(training_file, param_file, npc=npc)
+        EmulatorSklearn(training_file, param_file, npc=npc)
 
 
 def test_log_transformation(training_file, param_file, test_points):
-    emu_log = Emulator(training_file, param_file, npc=4, logTrafo=True)
+    emu_log = EmulatorSklearn(training_file, param_file, npc=4, logTrafo=True)
     emu_log.trainEmulatorAutoMask()
     mean_log, cov_log = emu_log.predict(test_points)
     # predictions in log space by default
     assert np.abs(np.exp(mean_log) / true_model(test_points) - 1).mean() < 0.02
 
-    emu_exp = Emulator(
+    emu_exp = EmulatorSklearn(
         training_file, param_file, npc=4, logTrafo=True, exp_and_cov_diagonal=True
     )
     emu_exp.trainEmulatorAutoMask()
@@ -86,7 +86,7 @@ def test_log_transformation(training_file, param_file, test_points):
         np.testing.assert_array_equal(c_exp, np.diag(np.diag(c_exp)))
 
     with pytest.raises(ValueError):
-        Emulator(training_file, param_file, exp_and_cov_diagonal=True)
+        EmulatorSklearn(training_file, param_file, exp_and_cov_diagonal=True)
 
 
 def test_sample_y(emulator, test_points):
@@ -114,14 +114,14 @@ def test_output_pca_does_not_change_emulator(emulator, test_points):
 
 
 def test_unknown_kernel(training_file, param_file):
-    emu = Emulator(training_file, param_file, npc=2)
+    emu = EmulatorSklearn(training_file, param_file, npc=2)
     with pytest.raises(ValueError):
         emu.trainEmulator(np.ones(emu.nev, dtype=bool), kernel_type="rbf")
 
 
 def test_seed(training_file, param_file, test_points):
     def predict(seed):
-        emu = Emulator(training_file, param_file, npc=3, nrestarts=2, seed=seed)
+        emu = EmulatorSklearn(training_file, param_file, npc=3, nrestarts=2, seed=seed)
         emu.trainEmulatorAutoMask()
         return emu.predict(test_points)[0]
 
@@ -159,7 +159,7 @@ def test_validation_random_points(emulator):
 
 
 def test_validation_untrained_emulator_stays_untrained(training_file, param_file):
-    emu = Emulator(training_file, param_file, npc=3)
+    emu = EmulatorSklearn(training_file, param_file, npc=3)
     attributes = set(emu.__dict__)
     emu.testEmulatorErrors(5)
     assert set(emu.__dict__) == attributes
@@ -191,7 +191,7 @@ def test_non_finite_points_are_discarded(modified_data, param_file, design):
         values[3, 2] = np.nan
         values[5, 1] = np.inf
 
-    emu = Emulator(modified_data(modify), param_file)
+    emu = EmulatorSklearn(modified_data(modify), param_file)
     assert emu.nev == len(design) - 2
     assert np.all(np.isfinite(emu.model_data))
 
@@ -204,14 +204,14 @@ def test_relative_error_filter(modified_data, param_file):
 
     path = modified_data(modify)
     # no filter by default
-    assert Emulator(path, param_file).nev == 60
+    assert EmulatorSklearn(path, param_file).nev == 60
     # only the point with the large relative error is discarded, the zero
     # observable has no relative error
-    emu = Emulator(path, param_file, max_rel_uncertainty_data=0.1)
+    emu = EmulatorSklearn(path, param_file, max_rel_uncertainty_data=0.1)
     assert emu.nev == 59
     # log transformation requires positive observables
     with pytest.raises(ValueError):
-        Emulator(path, param_file, logTrafo=True)
+        EmulatorSklearn(path, param_file, logTrafo=True)
 
 
 def test_negative_values_with_log_trafo(modified_data, param_file):
@@ -219,9 +219,9 @@ def test_negative_values_with_log_trafo(modified_data, param_file):
         values[2, 0] *= -1
 
     path = modified_data(modify)
-    assert Emulator(path, param_file).nev == 60
+    assert EmulatorSklearn(path, param_file).nev == 60
     with pytest.raises(ValueError):
-        Emulator(path, param_file, logTrafo=True)
+        EmulatorSklearn(path, param_file, logTrafo=True)
 
 
 def test_all_points_discarded(modified_data, param_file):
@@ -229,12 +229,12 @@ def test_all_points_discarded(modified_data, param_file):
         errors[:] = values
 
     with pytest.raises(ValueError):
-        Emulator(modified_data(modify), param_file, max_rel_uncertainty_data=0.1)
+        EmulatorSklearn(modified_data(modify), param_file, max_rel_uncertainty_data=0.1)
 
 
 def test_parameter_count_mismatch(training_file, tmp_path):
     with pytest.raises(ValueError):
-        Emulator(training_file, write_param_file(tmp_path / "p2.txt", 2))
+        EmulatorSklearn(training_file, write_param_file(tmp_path / "p2.txt", 2))
 
 
 def test_parse_model_parameter_file(tmp_path):
@@ -249,28 +249,22 @@ def test_parse_model_parameter_file(tmp_path):
 
 
 def test_load_emulator_saved_with_old_package_name(emulator, test_points, tmp_path):
-    # emulators saved with versions < 3.0.0 refer to the module src.emulator
-    import sys
+    # emulators saved with versions < 3.0.0 refer to the class
+    # src.emulator.Emulator; with pickle protocol 2 the reference is stored
+    # as plain text and can be replaced to create such a file
     import dill
-    import gpbayestools
-    import gpbayestools.emulator
+
     from gpbayestools import load_emulator
 
+    data = dill.dumps(emulator, protocol=2)
+    new_ref = b"cgpbayestools.emulator_sklearn\nEmulatorSklearn\n"
+    assert new_ref in data
     path = tmp_path / "old_emulator.dill"
-    cls = gpbayestools.emulator.Emulator
-    sys.modules["src"] = gpbayestools
-    sys.modules["src.emulator"] = gpbayestools.emulator
-    cls.__module__ = "src.emulator"
-    try:
-        with open(path, "wb") as f:
-            dill.dump(emulator, f)
-    finally:
-        cls.__module__ = "gpbayestools.emulator"
-        del sys.modules["src"], sys.modules["src.emulator"]
+    path.write_bytes(data.replace(new_ref, b"csrc.emulator\nEmulator\n"))
     with pytest.raises(ModuleNotFoundError):
         with open(path, "rb") as f:
             dill.load(f)
     loaded = load_emulator(path)
-    assert type(loaded) is cls
+    assert type(loaded) is type(emulator)
     for a, b in zip(loaded.predict(test_points), emulator.predict(test_points)):
         np.testing.assert_array_equal(a, b)

@@ -29,7 +29,7 @@ simulation. The validation functions `testEmulatorErrors` and
 
 The covariance also contains the variance of the principal components that are not emulated
 (truncation). With noisy training data, these components contain the statistical noise of the
-training data. By default, `Emulator`, `EmulatorHETGPy` and `EmulatorSparseGP` remove this noise,
+training data. By default, `EmulatorSklearn`, `EmulatorHetGP` and `EmulatorSparseGP` remove this noise,
 estimated from the statistical errors of the training data, from the truncation covariance; with
 `include_noise=True` the full truncation covariance is used. `EmulatorBAND` uses the truncation
 variance of surmise, which is zero for PCSK.
@@ -42,16 +42,16 @@ are used as errors in log space.
 What the `predict` function returns depends on the `exp_and_cov_diagonal` option:
 
 - `exp_and_cov_diagonal=False` (default): the mean and the covariance are returned in log space.
-  The experimental data used with the emulator in the MCMC (`Chain`) are used as they are given,
+  The experimental data used with the emulator in the MCMC (`BayesianAnalysis`) are used as they are given,
   so they have to be log-transformed by the user as well: `log(y)` for the values and the
   relative errors `sigma/y` for the errors.
 - `exp_and_cov_diagonal=True`: the predictions are transformed back to the original scale,
   i.e. `exp(mean)` and the covariance `(sigma * exp(mean))^2`, and the experimental data
   are used in the original scale.
-  The covariance is diagonal for `Emulator`, `EmulatorBAND` and `EmulatorHETGPy`, while
+  The covariance is diagonal for `EmulatorSklearn`, `EmulatorBAND` and `EmulatorHetGP`, while
   `EmulatorSparseGP` keeps the correlations between the observables.
 
-If emulators with different settings are combined in one `Chain`, the experimental data of each
+If emulators with different settings are combined in one `BayesianAnalysis`, the experimental data of each
 emulator must be given in the scale of its predictions.
 
 ## Latin Hypercube Sampling
@@ -77,7 +77,7 @@ pip install .
 
 Use `pip install -e ".[dev]"` for an editable installation with the dependencies for the tests
 and the code formatting. The modules are then imported from `gpbayestools`, e.g.
-`from gpbayestools.emulator_BAND import EmulatorBAND`.
+`from gpbayestools.emulator_band import EmulatorBAND`.
 Emulators saved with versions < 3.0.0, in which the package was called `src`, can be loaded
 with `gpbayestools.load_emulator`.
 
