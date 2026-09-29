@@ -1465,7 +1465,8 @@ class EmulatorSparseGP:
         Leave-one-out (or leave-n-out) emulator validation.
 
         Uses (nev - number_test_points) points to train the emulator and
-        evaluates it on the held-out points.
+        evaluates it on the held-out points. The trained emulator is not
+        changed.
 
         Returns
         -------
@@ -1475,6 +1476,27 @@ class EmulatorSparseGP:
         validation_data : array (number_test_points, nobs)
         validation_data_err : array (number_test_points, nobs)
         """
+        return self._validate(number_test_points, False, **fit_kwargs)
+
+    @keep_trained_state
+    def testEmulatorErrorsWithTrainingPoints(self, number_test_points=1,
+                                             **fit_kwargs):
+        """
+        Uses (nev - number_test_points) points to train the emulator and
+        evaluates it on the same training points, like
+        testEmulatorErrorsWithTrainingPoints of the other emulators. The
+        resulting errors should be very small. The trained emulator is not
+        changed.
+
+        Returns the same four arrays as testEmulatorErrors, with
+        (nev - number_test_points) rows.
+        """
+        return self._validate(number_test_points, True, **fit_kwargs)
+
+    def _validate(self, number_test_points, on_training_points, **fit_kwargs):
+        """Train on all but the last number_test_points points and predict
+        at the held-out points, or at the training points if
+        on_training_points is True."""
         logging.info("Validating sparse GP emulator ...")
         event_idx_list = range(self.nev - number_test_points, self.nev)
         train_event_mask = [True] * self.nev
@@ -1482,7 +1504,10 @@ class EmulatorSparseGP:
             train_event_mask[event_i] = False
 
         self.trainEmulator(train_event_mask, **fit_kwargs)
-        validate_event_mask = [not i for i in train_event_mask]
+        if on_training_points:
+            validate_event_mask = list(train_event_mask)
+        else:
+            validate_event_mask = [not i for i in train_event_mask]
 
         pred_mean, pred_cov = self.predict(
             self.design_points[validate_event_mask, :],

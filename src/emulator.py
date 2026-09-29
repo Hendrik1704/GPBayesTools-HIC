@@ -433,10 +433,10 @@ class Emulator:
 
 
     @keep_trained_state
-    def testEmulatorErrors(self, nTestPoints=1):
+    def testEmulatorErrors(self, number_test_points=1):
         """
-        This function uses (nev - nTestPoints) points to train the emulator
-        and use nTestPoints points to test the emulator in each iteration.
+        This function uses (nev - number_test_points) points to train the emulator
+        and use number_test_points points to test the emulator in each iteration.
         It returns the emulator predictions, their errors,
         the actual values of observables and their errors as four arrays.
         """
@@ -446,7 +446,7 @@ class Emulator:
         validationDataErr = []
 
         logging.info("Validating GP emulator ...")
-        eventIdxList = range(self.nev - nTestPoints, self.nev)
+        eventIdxList = range(self.nev - number_test_points, self.nev)
         trainEventMask = [True]*self.nev
         for event_i in eventIdxList:
             trainEventMask[event_i] = False
@@ -480,11 +480,10 @@ class Emulator:
 
 
     @keep_trained_state
-    def testEmulatorErrorsWithTrainingPoints(self, nTestPoints=1):
+    def testEmulatorErrorsWithTrainingPoints(self, number_test_points=1):
         """
-        This function uses number_test_points points to train the 
-        emulator and the same points to test the emulator in each 
-        iteration. The resulting errors should be very small.
+        This function uses (nev - number_test_points) points to train the
+        emulator and the same points to test the emulator. The resulting errors should be very small.
         It returns the emulator predictions, their errors,
         the actual values of observables and their errors as four arrays.
         """
@@ -494,7 +493,7 @@ class Emulator:
         validationDataErr = []
 
         logging.info("Validating GP emulator ...")
-        eventIdxList = range(self.nev - nTestPoints, self.nev)
+        eventIdxList = range(self.nev - number_test_points, self.nev)
         trainEventMask = [True]*self.nev
         for event_i in eventIdxList:
             trainEventMask[event_i] = False
