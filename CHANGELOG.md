@@ -17,6 +17,7 @@
 - `EmulatorSparseGP.predict` accepts a scalar `extra_std` for several parameter points.
 - The SVGP training now keeps the parameters that belong to the best ELBO, and the NaN recovery restarts from parameters with a finite ELBO.
 - The tests in `tests/` are now pytest tests that fail on errors.
+- Remove the `parameterTrafoPCA` option of `Emulator` and `EmulatorBAND` (PCA transformation of the $\zeta/s(T)$, $\eta/s(\mu_B)$ and $\langle y_{\rm loss}\rangle(y_{\rm init})$ parameters). It was specific to the parametrization of one analysis. Use version v2.1.0 or older to reproduce results obtained with it.
 
 ## v2.1.0
 Date: 2026-01-14
