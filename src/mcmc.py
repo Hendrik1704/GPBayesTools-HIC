@@ -717,6 +717,11 @@ class Chain:
             rtv = np.random.choice(range(1, lpostf.shape[0]), lpostf.shape[0])  # choose random values to check for swapping
             for rt in rtv:
                 rhoh = (1/temps[rt-1] - 1 / temps[rt])
+                if np.all(rhoh == 0):
+                    # chains with the same temperature (e.g. the temperature-1
+                    # chains) would always be swapped, which only mixes up the
+                    # walkers without changing the sampled distribution
+                    continue
                 if ((lpostf[order[rt]]-lpostf[order[rt - 1]]) * rhoh >
                         np.log(np.random.uniform(size=1))):  # swap via the PT rule
                     temporder = order[rt - 1]
