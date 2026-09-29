@@ -77,6 +77,7 @@ Bug fixes:
 - The default seed of `Design` is an integer from the current time (stored in `Design.seed`). The float timestamp was truncated by R, so the printed seed was not the one used.
 - Fix the chain loading and the error bars in the `ClosureTest` notebook, and the log-likelihood output in the `RunBayesianAnalysis` notebook.
 - `EmulatorSklearn.predict` accepts a single parameter point as a 1D array or a list, like the other emulators, and computes only the variances of the GPs at the points instead of their full covariance between all points. This makes the prediction for many points (e.g. all MCMC walkers) much faster.
+- `EmulatorHetGP` computes the output PCA with the exact (full) SVD like `EmulatorSklearn`. The default of scikit-learn could choose a randomized, approximate solver for more than 500 observables, which made the PCs change between trainings.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.

@@ -13,7 +13,7 @@ from hetgpy import hetGP
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-from .emulator_base import EmulatorBase, check_npc, truncation_signal
+from .emulator_base import EmulatorBase, check_npc, number_of_pcs, truncation_signal
 
 logger = logging.getLogger(__name__)
 
@@ -90,16 +90,12 @@ class EmulatorHetGP(EmulatorBase):
         """
         self.scaler_ = StandardScaler()
         standardized_outputs = self.scaler_.fit_transform(data)
-        npc = self.npc
-        if isinstance(npc, (int, np.integer)) and npc > min(data.shape):
-            logger.warning(
-                f"npc = {npc} is larger than the number of available PCs, using all "
-                f"{min(data.shape)} PCs"
-            )
-            npc = min(data.shape)
-        self.pca_ = PCA(n_components=npc)
+        # the exact (full) SVD is used as in EmulatorSklearn, since sklearn's
+        # default can choose a randomized, approximate solver
+        full_pca = PCA(svd_solver="full").fit(standardized_outputs)
+        self.npc_ = number_of_pcs(self.npc, full_pca.explained_variance_ratio_)
+        self.pca_ = PCA(n_components=self.npc_, svd_solver="full")
         self.train_pcs_ = self.pca_.fit_transform(standardized_outputs)
-        self.npc_ = self.pca_.n_components_
         self._compute_truncation_cov(data, self.train_pcs_, data_err)
         logger.info(
             f"Using {self.npc_} PCs, which explain "
