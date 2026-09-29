@@ -56,6 +56,7 @@ _LEGACY_MODULES = {
     "emulator_BAND": "emulator_band",
     "mcmc": "bayesian_analysis",
 }
+_LEGACY_SRC_MODULES = {"src.design", "src.emulator", "src.emulator_BAND", "src.mcmc"}
 _LEGACY_CLASSES = {
     ("emulator_sklearn", "Emulator"): "EmulatorSklearn",
     ("bayesian_analysis", "Chain"): "BayesianAnalysis",
@@ -72,7 +73,8 @@ class _LegacyUnpickler(dill.Unpickler):
 
     def find_class(self, module, name):
         """Return the class `name` of `module`, mapping old names first."""
-        if module == "src" or module.startswith("src."):
+        # only the modules of the old package, not other packages called src
+        if module == "src" or module in _LEGACY_SRC_MODULES:
             module = __name__ + module[len("src") :]
         if module.startswith(__name__ + "."):
             submodule = module[len(__name__) + 1 :]

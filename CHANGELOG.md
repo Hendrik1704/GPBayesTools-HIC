@@ -82,6 +82,7 @@ Bug fixes:
 - The validation functions check that `n_test_points` leaves at least 2 training points, and `test_emulator_errors` that there is at least one test point. Before, `n_test_points=0` failed after the training, and a single training point gave NaN errors.
 - `EmulatorSklearn.npc_` is the number of trained GPs also with `perform_no_pca=True` (the number of observables) instead of the requested `npc`, and the fitted attributes `npc_`, `scaler_` and `pca_` are only set by the training.
 - Training points that are discarded by `max_rel_uncertainty_data` no longer raise the `log_trafo` error for values <= 0.
+- `gpbayestools.load_emulator` maps only the modules of the old `src` package to `gpbayestools`, not the modules of other packages called `src`.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
