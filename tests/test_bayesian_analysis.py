@@ -140,11 +140,29 @@ def test_emcee(chain):
     np.testing.assert_array_equal(saved["chain"], chain.chain)
     assert saved["last_position"].shape == (16, 2)
 
-    # continue the chain
-    chain.run_emcee(n_steps=100, n_thin=5, seed=2)
+    assert saved["n_thin"] == 5
+
+    # continue the chain, with the thinning of the existing chain
+    chain.run_emcee(n_steps=100, seed=2)
     assert chain.chain.shape == (16, 420, 2)
     with pytest.raises(ValueError):
         chain.run_emcee(n_steps=100, n_walkers=8)
+    with pytest.raises(ValueError):
+        chain.run_emcee(n_steps=100, n_thin=1)
+
+
+def test_emcee_options_are_checked_before_sampling(chain, monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("the sampling started")
+
+    monkeypatch.setattr(chain, "log_posterior", fail)
+    for kwargs in (
+        dict(n_steps=0, n_burn_steps=10, n_walkers=8),
+        dict(n_steps=10, n_burn_steps=10, n_walkers=8, n_thin=0),
+        dict(n_steps=10, n_burn_steps=1, n_walkers=8),
+    ):
+        with pytest.raises(ValueError):
+            chain.run_emcee(**kwargs)
 
 
 def test_emcee_seed(files):

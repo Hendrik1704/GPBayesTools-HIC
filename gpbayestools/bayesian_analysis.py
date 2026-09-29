@@ -570,7 +570,7 @@ class BayesianAnalysis:
         n_burn_steps=None,
         n_walkers=None,
         status=None,
-        n_thin=10,
+        n_thin=None,
         skip_initial_state_check=False,
         seed=None,
     ):
@@ -603,9 +603,12 @@ class BayesianAnalysis:
         status : int or None, default=None
             Number of steps between progress log messages (see
             :meth:`LoggingEnsembleSampler.run_mcmc`).
-        n_thin : int, default=10
+        n_thin : int or None, default=None
             Thinning of the production chain, only every `n_thin`-th step is
-            stored.
+            stored. None uses 10 for a new chain and the thinning of the
+            existing chain when continuing it. The thinning is stored in the
+            chain file (``"n_thin"``) and must be the same for all runs of a
+            chain.
         skip_initial_state_check : bool, default=False
             Passed to emcee. If True, do not check that the initial walker
             positions are linearly independent.
@@ -616,11 +619,17 @@ class BayesianAnalysis:
         Raises
         ------
         ValueError
-            If `n_burn_steps` or `n_walkers` is missing for a new chain, if
-            `n_burn_steps` is smaller than 2, if the existing chain was not
-            generated with emcee, or if `n_walkers` does not match the existing
+            If `n_steps` or `n_thin` is smaller than 1, if `n_burn_steps` or
+            `n_walkers` is missing for a new chain, if `n_burn_steps` is
+            smaller than 2, if the existing chain was not generated with
+            emcee, or if `n_walkers` or `n_thin` does not match the existing
             chain.
         """
+        # checked before the (long) sampling
+        if n_steps < 1:
+            raise ValueError(f"n_steps must be >= 1, got {n_steps}")
+        if n_thin is not None and n_thin < 1:
+            raise ValueError(f"n_thin must be >= 1, got {n_thin}")
         if seed is not None:
             # emcee initializes its random number generator from numpy's
             # global state
@@ -641,24 +650,46 @@ class BayesianAnalysis:
         if burn_in:
             if n_burn_steps is None or n_walkers is None:
                 raise ValueError(
-                    "must specify n_burn_steps and n_walkers to start chain"
+                    "n_burn_steps and n_walkers are required to start a new chain"
                 )
+            if n_burn_steps < 2:
+                raise ValueError(
+                    "n_burn_steps must be >= 2, the burn-in is run in two halves"
+                )
+            if n_thin is None:
+                n_thin = 10
         else:
             # emcee chains have shape (n_walkers, n_steps, ndim), pocoMC samples
             # (nsamples, ndim)
             if chain_data["chain"].ndim != 3:
                 raise ValueError(
-                    f"the chain in {chain_file} was not generated with emcee and "
+                    f"The chain in {chain_file} was not generated with emcee and "
                     "cannot be continued, use a different mcmc_path"
                 )
             if n_walkers is None:
                 n_walkers = chain_data["chain"].shape[0]
             elif n_walkers != chain_data["chain"].shape[0]:
                 raise ValueError(
-                    "the existing chain has {} walkers, but n_walkers = {}".format(
+                    "The existing chain has {} walkers, but n_walkers = {}".format(
                         chain_data["chain"].shape[0], n_walkers
                     )
                 )
+            # chains saved with older versions do not contain the thinning
+            n_thin_chain = chain_data.get("n_thin")
+            if n_thin is None:
+                n_thin = 10 if n_thin_chain is None else n_thin_chain
+            elif n_thin_chain is not None and n_thin != n_thin_chain:
+                raise ValueError(
+                    f"The existing chain was thinned with n_thin = {n_thin_chain}, "
+                    f"but n_thin = {n_thin}"
+                )
+            if n_burn_steps is not None:
+                logger.info("Continuing the existing chain, n_burn_steps is ignored")
+        if n_steps % n_thin != 0:
+            logger.warning(
+                f"n_steps = {n_steps} is not a multiple of n_thin = {n_thin}, the "
+                "thinned samples are not equally spaced where the chain is continued"
+            )
 
         if burn_in:
             logger.info(
@@ -676,10 +707,6 @@ class BayesianAnalysis:
 
         if burn_in:
             logger.info("Starting the burn-in from random positions ...")
-            if n_burn_steps < 2:
-                raise ValueError(
-                    "n_burn_steps must be >= 2, the burn-in is run in two halves"
-                )
 
             # Run first half of burn-in starting from random positions.
             nburn0 = n_burn_steps // 2
@@ -730,6 +757,7 @@ class BayesianAnalysis:
             skip_initial_state_check=skip_initial_state_check,
         )
         chain_data["last_position"] = state.coords
+        chain_data["n_thin"] = n_thin
 
         # shape (n_walkers, n_steps, ndim)
         thinned_chain = np.swapaxes(sampler.get_chain(), 0, 1)[:, ::n_thin, :]
