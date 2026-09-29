@@ -495,7 +495,9 @@ class PCASparseGPEmulator:
 
             - 'elbos': the finite ELBO values (mini-batch estimates with
               batch_size < N), 'steps': their iteration numbers, 'n_steps':
-              their number.
+              their number. The constant -0.5 * N * n_pc * log(2 pi) of the
+              Gaussian log-likelihood is left out, and the ELBO refers to the
+              standardized PCs.
             - 'best_step', 'best_score': iteration and score of the returned
               parameters (the ELBO, or its EMA with mini-batches), None if no
               step had a finite ELBO.
@@ -741,7 +743,7 @@ class PCASparseGPEmulator:
                 )
             jitter = min(jitter * 10.0, jitter_max)
         if jitter > jitter_init:
-            logger.info(
+            logger.warning(
                 f"Increased the jitter from {jitter_init:.1e} to {jitter:.1e} for a "
                 "stable Cholesky decomposition of Kzz"
             )
@@ -882,9 +884,13 @@ class PCASparseGPEmulator:
 
             if not jnp.isfinite(elbo_val):
                 new_jitter = min(jitter * 10.0, jitter_max)
+                if new_jitter > jitter:
+                    jitter_str = f"the jitter {jitter:.1e} -> {new_jitter:.1e}"
+                else:
+                    jitter_str = f"the jitter already at jitter_max = {jitter:.1e}"
                 logger.warning(
                     f"Non-finite ELBO at step {i}, restarting from the best "
-                    f"parameters with the jitter {jitter:.1e} -> {new_jitter:.1e}"
+                    f"parameters with {jitter_str}"
                 )
                 jitter = new_jitter
                 self.jitter = jitter
@@ -916,8 +922,8 @@ class PCASparseGPEmulator:
                         nan_count = 0
                         continue
                     raise RuntimeError(
-                        f"NaN loss after {nan_count} jitter increases "
-                        f"(jitter={jitter:.1e}) and {lr_backoff_count} "
+                        f"Non-finite ELBO in {nan_count} consecutive steps "
+                        f"(jitter={jitter:.1e}) after {lr_backoff_count} "
                         f"LR backoff retries. "
                         f"Current LRs: kernel={current_kernel_lr:.3e}, "
                         f"variational={current_variational_lr:.3e}, "
@@ -1074,9 +1080,9 @@ class PCASparseGPEmulator:
 
         Returns
         -------
-        Y_pred : array (N_test, P)
+        Y_pred : numpy.ndarray (N_test, P)
             Predictive mean in original Y units.
-        full_cov : array (N_test, P, P)
+        full_cov : jax.Array (N_test, P, P)
             Predictive covariance of the outputs at each test point.
         var_decomp : dict
             Only returned if return_var_decomposition=True. Keys:
@@ -1086,8 +1092,10 @@ class PCASparseGPEmulator:
               include_noise=False).
             - 'obs_noise' (1, P, P): Y_err noise projected to output space
               (zeros if include_obs_noise=False or Y_err was not provided).
-            - 'pca_truncation' (1, P, P): exact PCA truncation covariance
-              (zeros if include_truncation=False).
+            - 'pca_truncation' (1, P, P): PCA truncation covariance, without
+              the observation noise of the training data unless include_noise
+              or include_obs_noise is True (zeros if
+              include_truncation=False).
             - 'pca_sampling' (1, P, P): PCA sampling covariance (zeros if
               include_pca_sampling=False).
 
