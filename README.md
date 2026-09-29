@@ -39,7 +39,7 @@ variance of surmise, which is zero for PCSK.
 ## Emulators trained on the log of the observables
 
 All emulators have a `log_trafo` option to train them on the logarithm of the observables.
-This requires non-negative observables, and the relative statistical errors of the training data
+This requires positive observables, and the relative statistical errors of the training data
 are used as errors in log space.
 What the `predict` function returns depends on the `exp_and_cov_diagonal` option:
 
