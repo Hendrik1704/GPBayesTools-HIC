@@ -81,6 +81,16 @@ and the code formatting. The modules are then imported from `gpbayestools`, e.g.
 Emulators saved with versions < 3.0.0, in which the package was called `src`, can be loaded
 with `gpbayestools.load_emulator`.
 
+## Logging
+
+The modules report their progress with the `logging` module (loggers `gpbayestools.<module>`).
+To see the messages, configure logging in your script or notebook, e.g.
+
+```
+import logging
+logging.basicConfig(level=logging.INFO)
+```
+
 ## Requirements
 
 The dependencies are listed in `pyproject.toml` and, for use without installation, in the

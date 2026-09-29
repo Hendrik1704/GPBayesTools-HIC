@@ -13,6 +13,8 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from .emulator_base import EmulatorBase, check_npc, truncation_signal
 
+logger = logging.getLogger(__name__)
+
 
 class EmulatorHetGP(EmulatorBase):
     """
@@ -65,13 +67,13 @@ class EmulatorHetGP(EmulatorBase):
         """Fit the output standardization and PCA to the training data
         `data`, and compute the truncation covariance. `data_err` are the
         statistical errors of the training data."""
-        logging.info("Performing output PCA for hetGP emulator ...")
+        logger.info("Performing output PCA for hetGP emulator ...")
         self.output_scaler_ = StandardScaler()
         standardized_outputs = self.output_scaler_.fit_transform(data)
         # emulators saved with older versions had a fixed targetVariance
         npc = self.npc
         if isinstance(npc, (int, np.integer)) and npc > min(data.shape):
-            logging.warning(
+            logger.warning(
                 "Only {} PCs available, using npc = {}".format(
                     min(data.shape), min(data.shape)
                 )
@@ -81,7 +83,7 @@ class EmulatorHetGP(EmulatorBase):
         self.model_data_pca_ = self.output_pca_.fit_transform(standardized_outputs)
         self.npc_ = self.output_pca_.n_components_
         self._compute_truncation_cov(data, self.model_data_pca_, data_err)
-        logging.info(
+        logger.info(
             "Output PCA uses {} PCs to explain {:.1f}% of the variance ...".format(
                 self.npc_, 100.0 * self.output_pca_.explained_variance_ratio_.sum()
             )
@@ -142,7 +144,7 @@ class EmulatorHetGP(EmulatorBase):
         elif hyperparams is not None:
             # emulators saved with older versions only contain the
             # hyperparameters of the GP models
-            logging.warning(
+            logger.warning(
                 "Emulator saved with an older version: rebuilding "
                 "GP models from saved hyperparameters. The "
                 "predictions can differ from the trained models. "
@@ -207,12 +209,12 @@ class EmulatorHetGP(EmulatorBase):
                 )
             self.emu_.append(model)
 
-        logging.info(
+        logger.info(
             "Rebuilt {} GP models via warm-start (maxit={}).".format(self.npc_, maxit)
         )
 
     def train_emulator(self, event_mask):
-        logging.info("Performing emulator training ...")
+        logger.info("Performing emulator training ...")
         # Subselect training data
         event_mask = np.asarray(event_mask, dtype=bool)
         design_points_masked = self.design_points[event_mask, :]
@@ -223,7 +225,7 @@ class EmulatorHetGP(EmulatorBase):
         data_pca_masked = self.model_data_pca_
 
         nev_train = design_points_masked.shape[0]
-        logging.info(
+        logger.info(
             "Train hetGP emulators for {} training points and {} PCs ...".format(
                 nev_train, self.npc_
             )

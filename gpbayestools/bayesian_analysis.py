@@ -19,6 +19,8 @@ import scipy.optimize as spo
 import pocomc
 from scipy.stats import uniform
 
+logger = logging.getLogger(__name__)
+
 
 def mvn_loglike(y, cov):
     """
@@ -69,7 +71,7 @@ class LoggingEnsembleSampler(emcee.EnsembleSampler):
         nsteps).
 
         """
-        logging.info("running %d walkers for %d steps", self.nwalkers, nsteps)
+        logger.info("running %d walkers for %d steps", self.nwalkers, nsteps)
 
         if nsteps < 1:
             raise ValueError("nsteps must be >= 1")
@@ -81,7 +83,7 @@ class LoggingEnsembleSampler(emcee.EnsembleSampler):
         ):
             if n % status == 0 or n == nsteps:
                 af = self.acceptance_fraction
-                logging.info(
+                logger.info(
                     "step %d: acceptance fraction: "
                     "mean %.4f, std %.4f, min %.4f, max %.4f",
                     n,
@@ -123,17 +125,17 @@ class BayesianAnalysis:
         expdata_path="./exp_data.dat",
         model_parafile="./model.dat",
     ):
-        logging.info("Initializing MCMC ...")
+        logger.info("Initializing MCMC ...")
         self.mcmc_path = Path(mcmc_path)
         self.mcmc_path.parent.mkdir(parents=True, exist_ok=True)
-        logging.info(
+        logger.info(
             "Final Markov chain results will be saved in {}".format(
                 ", ".join(str(self.chain_path(s)) for s in self.samplers)
             )
         )
 
         # load the model parameter file
-        logging.info(
+        logger.info(
             "Loading the model parameters space from {} ...".format(model_parafile)
         )
         self.pardict = parse_model_parameter_file(model_parafile)
@@ -152,9 +154,9 @@ class BayesianAnalysis:
         diff = self.max - self.min
         self.prior_volume = np.prod(diff)
 
-        logging.info("Run MCMC with emcee...")
+        logger.info("Run MCMC with emcee...")
         # load the experimental data to be fit
-        logging.info("Loading the experiment data from {} ...".format(expdata_path))
+        logger.info("Loading the experiment data from {} ...".format(expdata_path))
         self.expdata, self.expdata_cov = self._read_in_exp_data_pickle(expdata_path)
         self.nobs = self.expdata.shape[1]
         self.emulators = []
@@ -179,7 +181,7 @@ class BayesianAnalysis:
                 )
             )
         self.emulators = emuList
-        logging.info("Number of Emulators: {}".format(len(self.emulators)))
+        logger.info("Number of Emulators: {}".format(len(self.emulators)))
 
     def _predict(self, X):
         nPreds = X.shape[0]
@@ -253,7 +255,7 @@ class BayesianAnalysis:
 
         for k in range(X.shape[0]):
             if k % 100 == 0:
-                logging.info("Evaluating log_likelihood at point {}".format(k))
+                logger.info("Evaluating log_likelihood at point {}".format(k))
             Xk = np.atleast_2d(np.asarray(X[k]))
             inside = bool(self._inside(Xk)[0])
             lp[k] = -np.inf if not inside else 0.0
@@ -297,7 +299,7 @@ class BayesianAnalysis:
             temp_data = dataDict[event_id]["obs"].transpose()
             model_data.append(temp_data[:, 0])
             model_data_err.append(temp_data[:, 1])
-        logging.info("Experimental dataset size: {}".format(model_data[0].shape[0]))
+        logger.info("Experimental dataset size: {}".format(model_data[0].shape[0]))
         model_data = np.array(model_data)
         model_data_err = np.nan_to_num(np.abs(np.array(model_data_err)))
         nobs = model_data.shape[1]
@@ -393,13 +395,13 @@ class BayesianAnalysis:
                     )
                 )
 
-        logging.info("Starting MCMC ...")
+        logger.info("Starting MCMC ...")
         sampler = LoggingEnsembleSampler(
             nwalkers, self.ndim, self.log_posterior, pool=self
         )
 
         if burnFlag:
-            logging.info("no existing chain found, starting initial burn-in")
+            logger.info("no existing chain found, starting initial burn-in")
             if nburnsteps < 2:
                 raise ValueError(
                     "nburnsteps must be >= 2, the burn-in is run in two halves"
@@ -413,7 +415,7 @@ class BayesianAnalysis:
                 status=status,
                 skip_initial_state_check=skip_initial_state_check,
             )
-            logging.info("resampling walker positions")
+            logger.info("resampling walker positions")
             # Reposition walkers to the most likely points in the chain,
             # then run the second half of burn-in.  This significantly
             # accelerates burn-in and helps prevent stuck walkers.
@@ -424,7 +426,7 @@ class BayesianAnalysis:
             if len(idx) >= nwalkers:
                 X0 = sampler.flatchain[idx[-nwalkers:]]
             else:
-                logging.warning(
+                logger.warning(
                     "only {} distinct points with finite probability in the "
                     "first half of the burn-in, continuing from the current "
                     "walker positions".format(len(idx))
@@ -438,9 +440,9 @@ class BayesianAnalysis:
                 skip_initial_state_check=skip_initial_state_check,
             )
             sampler.reset()
-            logging.info("burn-in complete, starting production")
+            logger.info("burn-in complete, starting production")
         else:
-            logging.info("restarting from last point of existing chain")
+            logger.info("restarting from last point of existing chain")
             # the last walker positions of the previous run, or for chains
             # saved with older versions, the last thinned sample
             X0 = chain_data.get("last_position", chain_data["chain"][:, -1, :])
@@ -463,7 +465,7 @@ class BayesianAnalysis:
         self.chain_sampler = "emcee"
 
         # Append the new data to the existing file
-        logging.info("writing chain to {}".format(chain_file))
+        logger.info("writing chain to {}".format(chain_file))
         with open(chain_file, "wb") as file:
             pickle.dump(chain_data, file)
 
@@ -601,7 +603,7 @@ class BayesianAnalysis:
         else:
             taracc = 0.60  # close to theoretical result in LMC paper
         # begin preoptimizer
-        logging.info("Begin PTLMC pre-optimization ...")
+        logger.info("Begin PTLMC pre-optimization ...")
         # order the existing initial theta's by log pdf
         ord1 = np.argsort(
             -logpostf_nograd(theta0)
@@ -632,10 +634,10 @@ class BayesianAnalysis:
         bounds = spo.Bounds(boundL, boundU)
         thetaop = theta0
         # now we are ready to optimize for each chain
-        logging.info("Begin PTLMC chain optimization ...")
+        logger.info("Begin PTLMC chain optimization ...")
         for k in range(0, numopt):
             if k % 10 == 0:
-                logging.info(f"Currently working on optimization of k = {k}")
+                logger.info(f"Currently working on optimization of k = {k}")
             if logpostf_grad is None:
                 opval = spo.minimize(
                     neglogpostf_nograd,
@@ -682,7 +684,7 @@ class BayesianAnalysis:
                     stepadj /= 2
         # end preoptimizer
         # initialize the starting point
-        logging.info("Initialize PTLMC starting point ...")
+        logger.info("Initialize PTLMC starting point ...")
         thetac = thetaop
         if logpostf_grad is not None:
             fval, dfval = logpostf(thetac)
@@ -713,10 +715,10 @@ class BayesianAnalysis:
         )  # this adjusts rho across different temperatures
         adjrhoc = adjrho[:, np.newaxis]
         numtimes = 0  # number of times we reject, just to star
-        logging.info("Run over all PTLMC chains and tune ...")
+        logger.info("Run over all PTLMC chains and tune ...")
         for k in range(0, samptunning + sampperchain):  # loop over all chains
             if k % 100 == 0:
-                logging.info(f"Currently working on {k}")
+                logger.info(f"Currently working on {k}")
             rvalo = rng.standard_normal(size=thetac.shape)
             rval = (np.sqrt(2) * adjrho * np.squeeze(rvalo @ hc).T).T
             if thetac.shape[1] > 1:
@@ -818,7 +820,7 @@ class BayesianAnalysis:
         def draw_func(n):
             return rng.uniform(self.min, self.max, (n, self.ndim))
 
-        logging.info("Starting MCMC ...")
+        logger.info("Starting MCMC ...")
         result_dict = self._sampler_ptlmc(
             logpostfunc=self.log_posterior,
             draw_func=draw_func,
@@ -839,7 +841,7 @@ class BayesianAnalysis:
 
         # Write the chain to file (nwalkers, nsteps, self.ndim)
         chain_data["chain"] = self.chain
-        logging.info("Writing MCMC chains to {}".format(self.chain_path("ptlmc")))
+        logger.info("Writing MCMC chains to {}".format(self.chain_path("ptlmc")))
         with open(self.chain_path("ptlmc"), "wb") as file:
             pickle.dump(chain_data, file)
 
@@ -855,7 +857,7 @@ class BayesianAnalysis:
         ``./mcmc/chain_emcee_log_likelihood.pkl``.
         """
         if sampler is not None:
-            logging.info("Loading chain from {}".format(self.chain_path(sampler)))
+            logger.info("Loading chain from {}".format(self.chain_path(sampler)))
             with open(self.chain_path(sampler), "rb") as f:
                 chain_data = pickle.load(f)
             self.chain = chain_data["chain"]
@@ -872,7 +874,7 @@ class BayesianAnalysis:
             )
         # create the output directory before the (expensive) computation
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        logging.info("Computing log likelihood for the chain...")
+        logger.info("Computing log likelihood for the chain...")
         reshape_chain = self.chain.reshape(-1, self.ndim)
         likelihood = self.log_likelihood_point_by_point(reshape_chain)
         # emcee/PTLMC chains have shape (nwalkers, nsteps, ndim),
@@ -880,7 +882,7 @@ class BayesianAnalysis:
         likelihood = likelihood.reshape(self.chain.shape[:-1])
 
         # Write the log_likelihood to file
-        logging.info("Writing log_likelihood for chains to {}".format(output_path))
+        logger.info("Writing log_likelihood for chains to {}".format(output_path))
         likelihood_data = {"log_likelihood": likelihood}
         with open(output_path, "wb") as file:
             pickle.dump(likelihood_data, file)
@@ -927,9 +929,9 @@ class BayesianAnalysis:
         When experiencing issues with the fork() function, set the environment variable ``export RDMAV_FORK_SAFE=1``.
         For more information on customizing the prior, see the PocoMC documentation.
         """
-        logging.info("Generate the prior class for pocoMC ...")
+        logger.info("Generate the prior class for pocoMC ...")
         if prior is None:
-            logging.info("Using uniform prior for all parameters ...")
+            logger.info("Using uniform prior for all parameters ...")
             prior_distributions = []
             for i in range(self.ndim):
                 prior_distributions.append(
@@ -937,13 +939,13 @@ class BayesianAnalysis:
                 )
             prior = pocomc.Prior(prior_distributions)
         else:
-            logging.info("Using custom prior ...")
+            logger.info("Using custom prior ...")
             # Check the dimensions of the prior
             if self.ndim != prior.dim:
-                logging.error("prior.dim does not match the model parameter space")
+                logger.error("prior.dim does not match the model parameter space")
                 raise ValueError("prior.dim does not match the model parameter space")
 
-        logging.info("Starting pocoMC ...")
+        logger.info("Starting pocoMC ...")
         sampler = pocomc.Sampler(
             prior=prior,
             likelihood=self.log_likelihood,
@@ -960,13 +962,13 @@ class BayesianAnalysis:
         )
         sampler.run(n_total=n_total, n_evidence=n_evidence)
 
-        logging.info("Generate the posterior samples ...")
+        logger.info("Generate the posterior samples ...")
         samples, logl, logp = sampler.posterior(resample=True)
 
-        logging.info("Generate the evidence ...")
+        logger.info("Generate the evidence ...")
         logz, logz_err = sampler.evidence()
-        logging.info("Log evidence: {}".format(logz))
-        logging.info("Log evidence error: {}".format(logz_err))
+        logger.info("Log evidence: {}".format(logz))
+        logger.info("Log evidence error: {}".format(logz_err))
 
         self.chain = samples
         self.chain_sampler = "pocomc"
@@ -977,6 +979,6 @@ class BayesianAnalysis:
             "logz": logz,
             "logz_err": logz_err,
         }
-        logging.info("Writing pocoMC chains to {}".format(self.chain_path("pocomc")))
+        logger.info("Writing pocoMC chains to {}".format(self.chain_path("pocomc")))
         with open(self.chain_path("pocomc"), "wb") as file:
             pickle.dump(chain_data, file)

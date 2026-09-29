@@ -13,6 +13,8 @@ import pickle
 
 from . import keep_trained_state, parse_model_parameter_file
 
+logger = logging.getLogger(__name__)
+
 
 def check_npc(npc):
     """Check the number of principal components `npc`: an int >= 1 (number of
@@ -39,7 +41,7 @@ def number_of_pcs(npc, explained_variance_ratio):
         n = np.searchsorted(np.cumsum(explained_variance_ratio), npc, side="right") + 1
         return int(min(n, n_available))
     if npc > n_available:
-        logging.warning(
+        logger.warning(
             "Only {} PCs available, using npc = {}".format(n_available, n_available)
         )
     return int(min(npc, n_available))
@@ -157,7 +159,7 @@ class EmulatorBase:
 
     def _load_training_data_pickle(self, dataFile):
         """This function reads in training data sets at every sample point"""
-        logging.info("loading training data from {} ...".format(dataFile))
+        logger.info("loading training data from {} ...".format(dataFile))
         self.model_data = []
         self.model_data_err = []
         self.design_points = []
@@ -171,7 +173,7 @@ class EmulatorBase:
         for event_id in sorted_event_ids:
             temp_data = dataDict[event_id]["obs"].transpose()
             if not np.all(np.isfinite(temp_data[:, 0])):
-                logging.info(
+                logger.info(
                     "Discard Parameter {}, non-finite observables".format(event_id)
                 )
                 discarded_points += 1
@@ -184,7 +186,7 @@ class EmulatorBase:
             if self.max_rel_uncertainty_data is not None:
                 statErrMax = self._max_rel_error(temp_data)
                 if statErrMax > self.max_rel_uncertainty_data:
-                    logging.info(
+                    logger.info(
                         "Discard Parameter {}, stat err = {:.2f}".format(
                             event_id, statErrMax
                         )
@@ -206,8 +208,8 @@ class EmulatorBase:
         self.design_points = np.array(self.design_points)
         self.model_data = np.array(self.model_data)
         self.model_data_err = np.nan_to_num(np.abs(np.array(self.model_data_err)))
-        logging.info("All training data are loaded.")
-        logging.info(
+        logger.info("All training data are loaded.")
+        logger.info(
             "Training dataset size: {}, discarded points: {}".format(
                 len(self.model_data), discarded_points
             )
@@ -330,7 +332,7 @@ class EmulatorBase:
         shape (number_test_points, nobs) in the original scale of the
         observables.
         """
-        logging.info("Validating emulator ...")
+        logger.info("Validating emulator ...")
         train_mask, test_mask = self._validation_masks(
             number_test_points, random_points, seed
         )
@@ -350,7 +352,7 @@ class EmulatorBase:
         Returns the same four arrays as test_emulator_errors, with
         (nev - number_test_points) rows.
         """
-        logging.info("Validating emulator at the training points ...")
+        logger.info("Validating emulator at the training points ...")
         train_mask, _ = self._validation_masks(number_test_points, random_points, seed)
         self.train_emulator(train_mask, **train_kwargs)
         return self._validation_output(train_mask)

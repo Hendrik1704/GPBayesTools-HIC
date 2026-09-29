@@ -17,6 +17,8 @@ from sklearn.gaussian_process import kernels
 
 from .emulator_base import EmulatorBase, check_npc, number_of_pcs, truncation_signal
 
+logger = logging.getLogger(__name__)
+
 
 class EmulatorSklearn(EmulatorBase):
     """
@@ -127,7 +129,7 @@ class EmulatorSklearn(EmulatorBase):
         return Z[:, :npc]
 
     def output_pca_vs_param(self):
-        logging.info("Performing PCA ...")
+        logger.info("Performing PCA ...")
         Z = self._pca_of_all_data()
         return (self.design_points, Z.T)
 
@@ -140,13 +142,11 @@ class EmulatorSklearn(EmulatorBase):
         standardized_data = self.scaler_.fit_transform(data_to_use)
 
         if self.perform_no_pca:
-            logging.info(
-                "Skipping PCA. Using raw standardized data for GP training ..."
-            )
+            logger.info("Skipping PCA. Using raw standardized data for GP training ...")
             Z = standardized_data
-            logging.info("Standardized data shape: {}".format(Z.shape))
+            logger.info("Standardized data shape: {}".format(Z.shape))
         else:
-            logging.info("Standardizing data and performing PCA ...")
+            logger.info("Standardizing data and performing PCA ...")
             # Transform data with PCA. Use the first
             # `npc` components but save the full PC transformation for later.
             Z = self.pca_.fit_transform(standardized_data)
@@ -157,14 +157,14 @@ class EmulatorSklearn(EmulatorBase):
             )
             Z = Z[:, : self.npc_]
 
-            logging.info(
+            logger.info(
                 "{} PCs explain {:.5f} of variance".format(
                     self.npc_, self.pca_.explained_variance_ratio_[: self.npc_].sum()
                 )
             )
 
         nev, nobs = self.model_data[eventMask, :].shape
-        logging.info("Train GP emulators with {} training points ...".format(nev))
+        logger.info("Train GP emulators with {} training points ...".format(nev))
 
         design_points = self.design_points[eventMask, :]
 
@@ -203,12 +203,12 @@ class EmulatorSklearn(EmulatorBase):
         gpScores = []
         for i, gp in enumerate(self.gps_):
             gpScores.append(gp.score(design_points, Z.T[i]))
-        logging.info("GP scores: {}".format(gpScores))
+        logger.info("GP scores: {}".format(gpScores))
 
         if not self.perform_no_pca:
             for n, gp in enumerate(self.gps_):
                 evr = self.pca_.explained_variance_ratio_[n]
-                logging.info(
+                logger.info(
                     "GP {}: {:.5f} of variance, LML = {:.5g}, Score = {:.2f}, kernel: {}".format(
                         n,
                         evr,

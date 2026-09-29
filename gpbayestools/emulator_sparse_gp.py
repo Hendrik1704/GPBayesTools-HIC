@@ -29,6 +29,8 @@ from sklearn.cluster import KMeans
 
 from .emulator_base import EmulatorBase, check_npc, truncation_signal
 
+logger = logging.getLogger(__name__)
+
 
 # =============================================================================
 # Kernel functions
@@ -332,9 +334,9 @@ class PCASparseGPEmulator:
             Training history: 'elbos', 'steps', 'converged', 'n_steps', 'jitter'
         """
         if verbose:
-            print("=" * 60)
-            print("PCASparseGPEmulator Training")
-            print("=" * 60)
+            logger.info("=" * 60)
+            logger.info("PCASparseGPEmulator Training")
+            logger.info("=" * 60)
 
         if _fixed_pca_state is None:
             self.Xm, self.Xs = X.mean(0), X.std(0) + 1e-8
@@ -344,8 +346,8 @@ class PCASparseGPEmulator:
             Yn = (Y - self.Ym) / self.Ys
 
             if verbose:
-                print(f"Input shape: {X.shape}, Output shape: {Y.shape}")
-                print(
+                logger.info(f"Input shape: {X.shape}, Output shape: {Y.shape}")
+                logger.info(
                     f"Output stats - mean: [{self.Ym.min():.3f}, {self.Ym.max():.3f}], "
                     f"std: [{self.Ys.min():.3f}, {self.Ys.max():.3f}]"
                 )
@@ -356,7 +358,7 @@ class PCASparseGPEmulator:
             explained_var = np.sum(self.pca.explained_variance_ratio_)
 
             if verbose:
-                print(
+                logger.info(
                     f"PCA: {self.n_pc} components, explained variance: {explained_var:.4f}"
                 )
 
@@ -378,14 +380,16 @@ class PCASparseGPEmulator:
                 if verbose:
                     ppca_approx = float(self.pca.noise_variance_) * (P_out - self.n_pc)
                     exact_trace = float(np.sum(vals))
-                    print(
+                    logger.info(
                         f"Truncation covariance: exact trace={exact_trace:.4f} "
                         f"(PPCA approx trace={ppca_approx:.4f})"
                     )
             else:
                 self.trunc_cov_yn_ = jnp.zeros((P_out, P_out))
                 if verbose:
-                    print("Truncation covariance: zero (all PCA components retained)")
+                    logger.info(
+                        "Truncation covariance: zero (all PCA components retained)"
+                    )
         else:
             self.Xm = _fixed_pca_state["Xm"]
             self.Xs = _fixed_pca_state["Xs"]
@@ -425,7 +429,7 @@ class PCASparseGPEmulator:
                 _yerr_max = np.sqrt(max_obs_var) * _Ys_np
                 n_capped = int(np.sum(_yerr > _yerr_max[None, :]))
                 if n_capped > 0:
-                    logging.warning(
+                    logger.warning(
                         f"{n_capped} entries of Y_err are larger than 1e5 times the "
                         f"standard deviation of the training data and are capped."
                     )
@@ -436,7 +440,7 @@ class PCASparseGPEmulator:
                 _mean_C_Y = np.diag(np.mean(_yerr**2, axis=0))
                 _mean_obs_cov_pc = _W_scaled @ _mean_C_Y @ _W_scaled.T
                 if verbose:
-                    print(
+                    logger.info(
                         f"Y_err (N,P): mean obs std = "
                         f"{float(np.sqrt(np.mean(_yerr**2))):.4g} (original Y units)"
                     )
@@ -491,12 +495,12 @@ class PCASparseGPEmulator:
 
         if verbose:
             if B < N_full:
-                print(
+                logger.info(
                     f"Mini-batching: batch_size={B} "
                     f"(N={N_full}, scale={N_full / B:.1f}x per step)"
                 )
             else:
-                print(f"Full-batch training (N={N_full})")
+                logger.info(f"Full-batch training (N={N_full})")
 
         if self.M > N_full:
             raise ValueError(
@@ -531,7 +535,7 @@ class PCASparseGPEmulator:
 
         jitter = jitter_init
         if verbose:
-            print(
+            logger.info(
                 f"\nChecking Kzz stability "
                 f"(range: {jitter_init:.1e} - {jitter_max:.1e})"
             )
@@ -548,9 +552,9 @@ class PCASparseGPEmulator:
                 )
         if verbose:
             if jitter > jitter_init:
-                print(f"  Increased jitter to {jitter:.1e} for stable Cholesky")
+                logger.info(f"  Increased jitter to {jitter:.1e} for stable Cholesky")
             else:
-                print(f"  Kzz stable at jitter={jitter:.1e}")
+                logger.info(f"  Kzz stable at jitter={jitter:.1e}")
 
         self.jitter = jitter
         self.N_train = N_full
@@ -659,15 +663,15 @@ class PCASparseGPEmulator:
         key = self.key
 
         if verbose:
-            print(f"\nTraining progress:")
+            logger.info(f"\nTraining progress:")
             if early_stopping:
-                print(
+                logger.info(
                     f"Early stopping: patience={patience}, "
                     f"es_rel_tol={es_rel_tol:.1e}, "
                     f"ema_alpha={ema_alpha} (window~{es_check_interval} steps)"
                 )
                 if auto_lr_backoff:
-                    print(
+                    logger.info(
                         f"NaN recovery: nan_patience={nan_patience}, "
                         f"max_lr_backoff_retries={max_lr_backoff_retries}, "
                         f"lr_backoff_factor={lr_backoff_factor:.3f}"
@@ -691,7 +695,7 @@ class PCASparseGPEmulator:
             if not jnp.isfinite(elbo_val):
                 new_jitter = min(jitter * 10.0, jitter_max)
                 if verbose:
-                    print(
+                    logger.info(
                         f"  Step {i:5d}: NaN loss -- "
                         f"jitter {jitter:.1e} -> {new_jitter:.1e}"
                     )
@@ -710,7 +714,7 @@ class PCASparseGPEmulator:
                         current_variational_lr *= lr_backoff_factor
                         current_inducing_lr *= lr_backoff_factor
                         if verbose:
-                            print(
+                            logger.info(
                                 f"  NaN recovery attempt {lr_backoff_count}/"
                                 f"{max_lr_backoff_retries}: lowering learning rates to "
                                 f"kernel={current_kernel_lr:.3e}, "
@@ -767,11 +771,11 @@ class PCASparseGPEmulator:
                 if es_patience_count >= patience:
                     converged = True
                     if verbose:
-                        print(
+                        logger.info(
                             f"  Step {i:5d}/{steps}: ELBO = {elbo_val_f:10.3f} "
                             f"(EMA={ema:.3f})"
                         )
-                        print(
+                        logger.info(
                             f"\nEarly stopping: EMA gain over {es_check_interval} steps "
                             f"stayed below {es_rel_tol:.1e} for {patience} steps at step {i + 1}"
                         )
@@ -782,7 +786,7 @@ class PCASparseGPEmulator:
                 es_str = (
                     f", pat={es_patience_count}/{patience}" if early_stopping else ""
                 )
-                print(
+                logger.info(
                     f"  Step {i:5d}/{steps}: ELBO = {elbo_val_f:10.3f}{ema_str}{es_str}"
                 )
 
@@ -807,12 +811,14 @@ class PCASparseGPEmulator:
 
         if verbose:
             elbo_str = "Best ELBO (EMA)" if B < N_full else "Best ELBO"
-            print(
+            logger.info(
                 f"\nTraining complete. {elbo_str}: {best_elbo:.3f} "
                 f"at step {best_step} (converged: {converged})"
             )
-            print(f"Total steps: {actual_steps}/{steps}, jitter used: {jitter:.1e}")
-            print("=" * 60)
+            logger.info(
+                f"Total steps: {actual_steps}/{steps}, jitter used: {jitter:.1e}"
+            )
+            logger.info("=" * 60)
 
         return self.training_history
 
@@ -1215,7 +1221,7 @@ class PCASparseGPEnsemble:
         }
         if verbose:
             ev = float(np.sum(_pca.explained_variance_ratio_))
-            print(
+            logger.info(
                 f"Shared PCA: {_n_pc} components, explained variance: {ev:.4f} "
                 f"(fixed for all {self.n_ensemble} members)"
             )
@@ -1237,17 +1243,14 @@ class PCASparseGPEnsemble:
                 Y_err_fit = Y_err[boot_idx] if Y_err is not None else None
                 if verbose:
                     n_unique = len(np.unique(boot_idx))
-                    print(
+                    logger.info(
                         f"[Ensemble {k + 1}/{self.n_ensemble}] Bootstrap: "
                         f"{n_unique}/{N} unique points ({100 * n_unique / N:.0f}%)",
-                        flush=True,
                     )
             else:
                 X_fit, Y_fit, Y_err_fit = X, Y, Y_err
                 if verbose:
-                    print(
-                        f"[Ensemble {k + 1}/{self.n_ensemble}] Training ...", flush=True
-                    )
+                    logger.info(f"[Ensemble {k + 1}/{self.n_ensemble}] Training ...")
             emu = PCASparseGPEmulator(
                 n_pc=_n_pc,
                 M=self.M,
@@ -1261,7 +1264,7 @@ class PCASparseGPEnsemble:
                 h = emu.training_history
                 best = h.get("best_step")
                 best_elbo = h["elbos"][best] if best is not None else float("nan")
-                print(
+                logger.info(
                     f"  ELBO of the selected parameters={best_elbo:.2f}, "
                     f"steps={h['n_steps']}, "
                     f"converged={h['converged']}, "
@@ -1269,7 +1272,7 @@ class PCASparseGPEnsemble:
                 )
 
         if verbose:
-            print(f"Ensemble of {self.n_ensemble} members trained.")
+            logger.info(f"Ensemble of {self.n_ensemble} members trained.")
         return self
 
     def predict(
@@ -1488,11 +1491,11 @@ class EmulatorSparseGP(EmulatorBase):
         **fit_kwargs
             Forwarded to PCASparseGPEmulator.fit() or PCASparseGPEnsemble.fit().
         """
-        logging.info("Performing sparse GP emulator training ...")
+        logger.info("Performing sparse GP emulator training ...")
         X = self.design_points[event_mask, :]
         Y = self.model_data[event_mask, :]
         Y_err = self.model_data_err[event_mask, :]
-        logging.info("Train sparse GP with {} training points ...".format(X.shape[0]))
+        logger.info("Train sparse GP with {} training points ...".format(X.shape[0]))
         # emulators saved with older versions store the argument as n_pc_
         npc = self.npc
 

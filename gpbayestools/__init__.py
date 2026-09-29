@@ -2,20 +2,12 @@
 
 import copy
 import functools
-import logging
 import os
 from pathlib import Path
-import sys
 
 import dill
 import numpy as np
 
-
-logging.basicConfig(
-    stream=sys.stdout,
-    format="[%(levelname)s][%(module)s] %(message)s",
-    level=os.getenv("LOGLEVEL", "info").upper(),
-)
 
 workdir = Path(os.getenv("WORKDIR", "."))
 

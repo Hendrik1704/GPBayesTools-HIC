@@ -29,6 +29,8 @@ import numpy as np
 
 from . import cachedir, parse_model_parameter_file
 
+logger = logging.getLogger(__name__)
+
 
 def _generate_with_R(method, r_code, npoints, ndim, seed):
     """
@@ -44,10 +46,10 @@ def _generate_with_R(method, r_code, npoints, ndim, seed):
     )
 
     if cachefile.exists():
-        logging.debug("loading from cache")
+        logger.debug("loading from cache")
         return np.load(cachefile)
 
-    logging.debug("not found in cache, generating using R")
+    logger.debug("not found in cache, generating using R")
     proc = subprocess.run(
         ["R", "--slave"], input=r_code.encode(), stdout=subprocess.PIPE, check=True
     )
@@ -65,7 +67,7 @@ def generate_maximin_lhs(npoints, ndim, seed):
     lhs.
 
     """
-    logging.debug(
+    logger.debug(
         "generating maximin LHS: npoints = %d, ndim = %d, seed = %d",
         npoints,
         ndim,
@@ -91,7 +93,7 @@ def generate_maxpro_lhs(npoints, ndim, seed):
     package MaxPro.
 
     """
-    logging.debug(
+    logger.debug(
         "generating maximum projection LHS: npoints = %d, ndim = %d, seed = %d",
         npoints,
         ndim,
@@ -170,7 +172,7 @@ class Design:
             # R's set.seed() requires an integer, positive 32-bit seeds are
             # used here
             seed = int(datetime.now().timestamp() * 1000) % (2**31 - 1)
-            print("seed = {}".format(seed))
+            logger.info("seed = {}".format(seed))
         self.seed = seed
 
         self.min = []
@@ -205,4 +207,4 @@ class Design:
                 for ikey in self.pardict.keys():
                     f.write("{} {}\n".format(ikey, row[idx]))
                     idx += 1
-                logging.debug("wrote %s", filepath)
+                logger.debug("wrote %s", filepath)

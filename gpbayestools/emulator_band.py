@@ -13,6 +13,8 @@ from surmise.emulation import emulator
 
 from .emulator_base import EmulatorBase
 
+logger = logging.getLogger(__name__)
+
 
 class EmulatorBAND(EmulatorBase):
     """
@@ -53,9 +55,9 @@ class EmulatorBAND(EmulatorBase):
         )
 
     def train_emulator(self, event_mask):
-        logging.info("Performing emulator training ...")
+        logger.info("Performing emulator training ...")
         nev, nobs = self.model_data[event_mask, :].shape
-        logging.info("Train GP emulators with {} training points ...".format(nev))
+        logger.info("Train GP emulators with {} training points ...".format(nev))
         X = np.arange(nobs).reshape(-1, 1)
 
         design_points = self.design_points[event_mask, :]
