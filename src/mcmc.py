@@ -479,12 +479,12 @@ class Chain:
         dictionary
             A dictionary that contains the sampled values in the key 'theta'.
         """
-        # If we do not get parameters to start, draw nstartparameters
-        if theta0 is None:
-            theta0 = draw_func(nstartparameters)
-        # Need to make sure the initial draws are sufficent to continue
-        if theta0.shape[0] < 10*theta0.shape[1]:
-            theta0 = draw_func(nstartparameters)
+        # Need at least one starting point per chain and enough points to
+        # estimate their spread. If we do not get enough parameters to start,
+        # draw at least nstartparameters
+        nmin = max(numtemps + numchain, 10 * self.ndim)
+        if theta0 is None or theta0.shape[0] < nmin:
+            theta0 = draw_func(max(nstartparameters, nmin))
         # Setting up some default parameters
         fractunning = 2.0  # number of samples spent tunning the sampler
         # define the number of samples for tunning
