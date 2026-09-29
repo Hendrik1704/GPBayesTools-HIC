@@ -157,3 +157,38 @@ def test_emulator_calibration(noisy_training_file, param_file):
     mean, cov = emu.predict(X)
     z = (mean - true_model(X)) / np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
     assert 0.5 < np.sqrt(np.mean(z**2)) < 2
+
+
+@pytest.mark.parametrize("include_noise", [False, True])
+def test_sample_y(trained, test_points, include_noise):
+    name, emu, _ = trained
+    samples = emu.sample_y(
+        test_points, n_samples=4000, random_state=1, include_noise=include_noise
+    )
+    assert samples.shape == (len(test_points), 4000, emu.nobs)
+    np.testing.assert_array_equal(
+        samples,
+        emu.sample_y(
+            test_points, n_samples=4000, random_state=1, include_noise=include_noise
+        ),
+    )
+    mean, cov = emu.predict(test_points, include_noise=include_noise)
+    std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
+    assert np.all(np.abs(samples.mean(axis=1) - mean) < 5 * std / np.sqrt(4000))
+    # the Emulator prediction contains a small additional term for numerical
+    # stability
+    np.testing.assert_allclose(samples.var(axis=1), std**2, rtol=0.15)
+
+
+def test_sample_y_log_normal(noisy_training_file, param_file, test_points):
+    emu = EmulatorHETGPy(
+        noisy_training_file, param_file, logTrafo=True, exp_and_cov_diagonal=True
+    )
+    emu.trainEmulatorAutoMask()
+    samples = emu.sample_y(test_points, n_samples=4000, random_state=1)
+    assert np.all(samples > 0)
+    # the median of the log-normal samples is exp(mean in log space), which
+    # predict() returns with exp_and_cov_diagonal
+    mean = emu.predict(test_points)[0]
+    np.testing.assert_allclose(np.median(samples, axis=1), mean, rtol=0.01)
+    assert emu.exp_and_cov_diagonal_

@@ -196,6 +196,51 @@ class EmulatorBase:
         """True if predict() returns the mean and covariance in log space."""
         return self.logTrafo_ and not self.exp_and_cov_diagonal_
 
+    def _predict_log_space(self, X, include_noise):
+        """predict() of a log-transformed emulator in log space, also if it
+        returns the predictions in the original scale."""
+        had_flag = "exp_and_cov_diagonal_" in self.__dict__
+        flag = self.__dict__.get("exp_and_cov_diagonal_")
+        self.exp_and_cov_diagonal_ = False
+        try:
+            return self.predict(X, return_cov=True, include_noise=include_noise)
+        finally:
+            if had_flag:
+                self.exp_and_cov_diagonal_ = flag
+            else:
+                del self.exp_and_cov_diagonal_
+
+    def sample_y(self, X, n_samples=1, random_state=None, include_noise=False):
+        """
+        Sample model output at the parameter points `X` from the predicted
+        Gaussian distribution, with the same uncertainty as predict() (see
+        `include_noise`). The points are sampled independently, only the
+        correlations between the observables are taken into account.
+
+        The samples are in the same space as the predictions: in log space for
+        log-transformed emulators, unless exp_and_cov_diagonal is set, in which
+        case the samples are drawn in log space and exponentiated
+        (log-normal).
+
+        Returns an array with shape ``(nsamples_X, n_samples, nobs)``.
+        """
+        X = np.atleast_2d(X)
+        rng = np.random.default_rng(random_state)
+        back_transform = self.logTrafo_ and not self._predictions_in_log_space()
+        if back_transform:
+            mean, cov = self._predict_log_space(X, include_noise)
+        else:
+            mean, cov = self.predict(X, return_cov=True, include_noise=include_noise)
+        samples = np.stack(
+            [
+                rng.multivariate_normal(m, c, size=n_samples, method="eigh")
+                for m, c in zip(np.asarray(mean), np.asarray(cov))
+            ]
+        )
+        if back_transform:
+            samples = np.exp(samples)
+        return samples
+
     def _validation_masks(self, number_test_points, random_points, seed):
         """Boolean masks of the training and test points. The test points are
         the last number_test_points points, or randomly chosen points if

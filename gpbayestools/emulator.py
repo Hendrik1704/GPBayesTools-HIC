@@ -351,6 +351,9 @@ class Emulator(EmulatorBase):
     def sample_y(self, X, n_samples=1, random_state=None, include_noise=False):
         """
         Sample model output at `X`, with the same uncertainty as predict().
+        Unlike the sample_y of the base class, the GP of each PC is sampled
+        jointly at all points in `X`, so that the samples at different points
+        are correlated.
 
         Returns an array with shape ``(nsamples_X, n_samples, nobs)``.
         """
