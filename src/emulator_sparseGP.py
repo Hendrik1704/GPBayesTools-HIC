@@ -1229,6 +1229,12 @@ class EmulatorSparseGP:
 
     * ``n_ensemble=1`` — single PCASparseGPEmulator.
     * ``n_ensemble>1`` — PCASparseGPEnsemble of that many members.
+
+    With ``logTrafo=True``, the emulator is trained on the log of the
+    observables and predict() returns the mean and covariance in log space.
+    Experimental data used with the emulator must then be log-transformed as
+    well. With ``exp_and_cov_diagonal=True``, predict() returns the predictions
+    in the original scale of the observables (see __init__).
     """
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",

@@ -18,6 +18,12 @@ class EmulatorBAND:
     """
     Multidimensional Gaussian Process emulator wrapper for the GP emulators of 
     the BAND collaboration.
+
+    With `logTrafo` set to True, the emulator is trained on the log of the
+    observables and predict() returns the mean and covariance in log space.
+    Experimental data used with the emulator must then be log-transformed as
+    well. With `exp_and_cov_diagonal` set to True, predict() returns exp(mean)
+    and a diagonal covariance in the original scale of the observables.
     """
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt", 

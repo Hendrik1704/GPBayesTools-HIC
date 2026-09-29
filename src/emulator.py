@@ -38,7 +38,10 @@ class Emulator:
     The classes would also need to handle transforming uncertainties, which
     could be tricky.
 
-    The parameter `exp_and_cov_diagonal` can be set to True to
+    With `logTrafo` set to True, the emulator is trained on the log of the
+    observables and predict() returns the mean and covariance in log space.
+    Experimental data used with the emulator must then be log-transformed as
+    well. The parameter `exp_and_cov_diagonal` can be set to True to
     exponentiate the mean and set the off-diagonal elements of the covariance
     matrix to zero. For log trained emulators, this will return predictions
     in the original scale of the observables, but with diagonal covariance

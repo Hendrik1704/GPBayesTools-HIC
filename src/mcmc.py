@@ -102,6 +102,11 @@ class Chain:
     to be the same at all beam energies.  It is assumed (NOT checked) that all
     system designs have the same parameters and ranges (except for the norms).
 
+    The experimental data are used as they are given. For emulators that
+    return predictions in log space (``logTrafo=True`` and
+    ``exp_and_cov_diagonal=False``), the experimental data must be
+    log-transformed by the user as well.
+
     Each sampler writes its chain to its own file, which is derived from
     `mcmc_path` by adding the name of the sampler, e.g. for the default
     ``./mcmc/chain.pkl``: ``./mcmc/chain_emcee.pkl``,
