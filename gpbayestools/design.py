@@ -43,10 +43,10 @@ def _generate_with_r(method, r_code, npoints, ndim, seed):
     )
 
     if cachefile.exists():
-        logger.debug("loading from cache")
+        logger.debug(f"Loading the design from the cache {cachefile}")
         return np.load(cachefile)
 
-    logger.debug("not found in cache, generating using R")
+    logger.debug(f"Design not in the cache {cachefile}, generating it with R ...")
     proc = subprocess.run(
         ["R", "--slave"], input=r_code.encode(), stdout=subprocess.PIPE, check=True
     )
@@ -80,7 +80,7 @@ def generate_maximin_lhs(npoints, ndim, seed):
         The design points in [0, 1]^ndim.
     """
     logger.debug(
-        "generating maximin LHS: npoints = %d, ndim = %d, seed = %d",
+        "Generating a maximin LHS: npoints = %d, ndim = %d, seed = %d",
         npoints,
         ndim,
         seed,
@@ -119,7 +119,7 @@ def generate_maxpro_lhs(npoints, ndim, seed):
         The design points in [0, 1]^ndim.
     """
     logger.debug(
-        "generating maximum projection LHS: npoints = %d, ndim = %d, seed = %d",
+        "Generating a maximum projection LHS: npoints = %d, ndim = %d, seed = %d",
         npoints,
         ndim,
         seed,
@@ -217,7 +217,7 @@ class Design:
             # R's set.seed() requires an integer, positive 32-bit seeds are
             # used here
             seed = int(datetime.now().timestamp() * 1000) % (2**31 - 1)
-            logger.info(f"seed = {seed}")
+            logger.info(f"No seed given, using the seed {seed}")
         self.seed = seed
 
         self.param_min = []
@@ -232,6 +232,10 @@ class Design:
         self.array = self.param_min + (
             self.param_max - self.param_min
         ) * design_generators[method](npoints, self.ndim, seed)
+        logger.info(
+            f"Generated a {method} design with {npoints} points for {self.ndim} "
+            f"parameters (seed {seed})"
+        )
 
     def __array__(self, dtype=None, copy=None):
         """Return the design array (numpy array interface)."""
@@ -262,4 +266,5 @@ class Design:
                 for ikey in self.pardict.keys():
                     f.write(f"{ikey} {row[idx]}\n")
                     idx += 1
-                logger.debug("wrote %s", filepath)
+                logger.debug("Wrote %s", filepath)
+        logger.info(f"Wrote {len(self.points)} design files to {outdir}")

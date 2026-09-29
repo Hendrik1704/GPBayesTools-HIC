@@ -150,7 +150,7 @@ def sampler(
     else:
         taracc = 0.60  # close to theoretical result in LMC paper
     # begin preoptimizer
-    logger.info("Begin PTLMC pre-optimization ...")
+    logger.info(f"Optimizing the starting points of the {numopt} PTLMC chains ...")
     # order the existing initial theta's by log pdf
     ord1 = np.argsort(
         -logpostf_nograd(theta0)
@@ -181,10 +181,8 @@ def sampler(
     bounds = spo.Bounds(boundL, boundU)
     thetaop = theta0
     # now we are ready to optimize for each chain
-    logger.info("Begin PTLMC chain optimization ...")
     for k in range(0, numopt):
-        if k % 10 == 0:
-            logger.info(f"Currently working on optimization of k = {k}")
+        logger.debug(f"Optimizing the starting point {k + 1}/{numopt} ...")
         if logpostf_grad is None:
             opval = spo.minimize(
                 neglogpostf_nograd,
@@ -229,7 +227,6 @@ def sampler(
                 stepadj /= 2
     # end preoptimizer
     # initialize the starting point
-    logger.info("Initialize PTLMC starting point ...")
     thetac = thetaop
     if logpostf_grad is not None:
         fval, dfval = logpostf(thetac)
@@ -258,10 +255,15 @@ def sampler(
     adjrho = rho * temps ** (1 / 3)  # this adjusts rho across different temperatures
     adjrhoc = adjrho[:, np.newaxis]
     numtimes = 0  # accumulated acceptance rate, reset after each tuning update
-    logger.info("Run over all PTLMC chains and tune ...")
-    for k in range(0, samptunning + sampperchain):  # loop over all chains
-        if k % 100 == 0:
-            logger.info(f"Currently working on {k}")
+    n_total = samptunning + sampperchain
+    log_every = max(n_total // 10, 1)
+    logger.info(
+        f"Running {samptunning} tuning and {sampperchain} sampling steps of the "
+        "PTLMC chains ..."
+    )
+    for k in range(0, n_total):  # loop over all chains
+        if k % log_every == 0:
+            logger.info(f"PTLMC step {k + 1}/{n_total} ...")
         rvalo = rng.standard_normal(size=thetac.shape)
         rval = (np.sqrt(2) * adjrho * np.squeeze(rvalo @ hc).T).T
         if thetac.shape[1] > 1:
@@ -311,6 +313,7 @@ def sampler(
             numtimes = 0
         elif k >= samptunning:  # if done with tuning
             thetasave[:, k - samptunning, :] = 1 * thetac[numtemps:,]
+    logger.info("PTLMC sampling finished")
     # return the unflattened values of the temp=1 chains
     sampler_info = {"theta": thetasave}
     return sampler_info
