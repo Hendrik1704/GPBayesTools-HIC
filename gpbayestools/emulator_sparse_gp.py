@@ -168,7 +168,7 @@ class EmulatorSparseGP(EmulatorBase):
                 init_strategy=self.init_strategy,
             )
             self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
-            self.npc_ = int(self.emu_.n_pc)
+            self.npc_ = int(self.emu_.n_pc_)
         else:
             self.emu_ = PCASparseGPEnsemble(
                 n_ensemble=self.n_ensemble,
@@ -179,7 +179,7 @@ class EmulatorSparseGP(EmulatorBase):
                 bootstrap=self.bootstrap,
             )
             self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
-            self.npc_ = int(self.emu_.members[0].n_pc)
+            self.npc_ = int(self.emu_.n_pc_)
 
     # -------------------------
     # Prediction

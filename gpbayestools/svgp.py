@@ -203,13 +203,13 @@ class PCASparseGPEmulator:
             coverage in moderate D), 'kmeans', 'kmeans_pp', 'random' or
             'sobol'.
         """
-        # n_pc is the number of PCs after fit(), n_pc_requested the argument
+        # n_pc is the argument, n_pc_ the number of PCs after fit()
         self.n_pc = n_pc
-        self.n_pc_requested = n_pc
+        self.n_pc_ = None
         self.M = M
         self.key = jax.random.PRNGKey(0) if key is None else key
         self.init_strategy = init_strategy
-        self.training_history = None
+        self.training_history_ = None
         self.trunc_cov_yn_ = (
             None  # set in fit(); exact PCA truncation covariance in Yn space
         )
@@ -493,7 +493,7 @@ class PCASparseGPEmulator:
         Returns
         -------
         dict
-            Training history, also stored as ``self.training_history``:
+            Training history, also stored as ``self.training_history_``:
 
             - 'elbos': the finite ELBO values (mini-batch estimates with
               batch_size < N), 'steps': their iteration numbers, 'n_steps':
@@ -553,43 +553,43 @@ class PCASparseGPEmulator:
                 f"points. Reduce M or provide more training data."
             )
         if _fixed_pca_state is None:
-            self.Xm, self.Xs = X.mean(0), X.std(0) + 1e-8
-            Xn = (X - self.Xm) / self.Xs
+            self.Xm_, self.Xs_ = X.mean(0), X.std(0) + 1e-8
+            Xn = (X - self.Xm_) / self.Xs_
 
-            self.Ym, self.Ys = Y.mean(0), Y.std(0) + 1e-8
-            Yn = (Y - self.Ym) / self.Ys
+            self.Ym_, self.Ys_ = Y.mean(0), Y.std(0) + 1e-8
+            Yn = (Y - self.Ym_) / self.Ys_
 
             logger.debug(
-                f"Output means in [{self.Ym.min():.3g}, {self.Ym.max():.3g}], "
-                f"standard deviations in [{self.Ys.min():.3g}, {self.Ys.max():.3g}]"
+                f"Output means in [{self.Ym_.min():.3g}, {self.Ym_.max():.3g}], "
+                f"standard deviations in [{self.Ys_.min():.3g}, {self.Ys_.max():.3g}]"
             )
 
-            self.pca, Yp = _fit_pca(Yn, self.n_pc_requested)
-            self.n_pc = self.pca.n_components_
-            explained_var = np.sum(self.pca.explained_variance_ratio_)
+            self.pca_, Yp = _fit_pca(Yn, self.n_pc)
+            self.n_pc_ = self.pca_.n_components_
+            explained_var = np.sum(self.pca_.explained_variance_ratio_)
 
             if verbose:
                 logger.info(
-                    f"Using {self.n_pc} PCs, which explain {explained_var:.5f} of "
+                    f"Using {self.n_pc_} PCs, which explain {explained_var:.5f} of "
                     "the variance"
                 )
 
-            self.pc_mean = jnp.mean(Yp, axis=0)
-            self.pc_std = jnp.std(Yp, axis=0) + 1e-8
-            Yp = jnp.array((Yp - np.array(self.pc_mean)) / np.array(self.pc_std))
+            self.pc_mean_ = jnp.mean(Yp, axis=0)
+            self.pc_std_ = jnp.std(Yp, axis=0) + 1e-8
+            Yp = jnp.array((Yp - np.array(self.pc_mean_)) / np.array(self.pc_std_))
 
             Yn_np = np.array(Yn)
             P_out = Yn_np.shape[1]
-            W_ret = self.pca.components_
-            lam_ret = self.pca.explained_variance_
-            if self.n_pc < P_out:
+            W_ret = self.pca_.components_
+            lam_ret = self.pca_.explained_variance_
+            if self.n_pc_ < P_out:
                 Sigma_data = np.cov(Yn_np.T)
                 Sigma_ret = (W_ret * lam_ret[:, None]).T @ W_ret
                 Sigma_trunc = Sigma_data - Sigma_ret
                 vals, vecs = np.linalg.eigh(Sigma_trunc)
                 vals = np.maximum(vals, 0.0)
                 self.trunc_cov_yn_ = jnp.array(vecs @ (vals[:, None] * vecs.T))
-                ppca_approx = float(self.pca.noise_variance_) * (P_out - self.n_pc)
+                ppca_approx = float(self.pca_.noise_variance_) * (P_out - self.n_pc_)
                 logger.debug(
                     f"Trace of the truncation covariance: {float(np.sum(vals)):.4g} "
                     f"(PPCA approximation: {ppca_approx:.4g})"
@@ -598,26 +598,26 @@ class PCASparseGPEmulator:
                 self.trunc_cov_yn_ = jnp.zeros((P_out, P_out))
                 logger.debug("No truncation covariance, all PCs are retained")
         else:
-            self.Xm = _fixed_pca_state["Xm"]
-            self.Xs = _fixed_pca_state["Xs"]
-            self.Ym = _fixed_pca_state["Ym"]
-            self.Ys = _fixed_pca_state["Ys"]
-            self.pca = _fixed_pca_state["pca"]
-            self.n_pc = _fixed_pca_state["n_pc"]
-            self.pc_mean = _fixed_pca_state["pc_mean"]
-            self.pc_std = _fixed_pca_state["pc_std"]
-            self.trunc_cov_yn_ = _fixed_pca_state["trunc_cov_yn_"]
+            self.Xm_ = _fixed_pca_state["Xm"]
+            self.Xs_ = _fixed_pca_state["Xs"]
+            self.Ym_ = _fixed_pca_state["Ym"]
+            self.Ys_ = _fixed_pca_state["Ys"]
+            self.pca_ = _fixed_pca_state["pca"]
+            self.n_pc_ = _fixed_pca_state["n_pc"]
+            self.pc_mean_ = _fixed_pca_state["pc_mean"]
+            self.pc_std_ = _fixed_pca_state["pc_std"]
+            self.trunc_cov_yn_ = _fixed_pca_state["trunc_cov_yn"]
 
-            Xn = (X - self.Xm) / self.Xs
-            Yn = (Y - self.Ym) / self.Ys
-            Yp_r = self.pca.transform(np.array(Yn))
-            Yp = jnp.array((Yp_r - np.array(self.pc_mean)) / np.array(self.pc_std))
+            Xn = (X - self.Xm_) / self.Xs_
+            Yn = (Y - self.Ym_) / self.Ys_
+            Yp_r = self.pca_.transform(np.array(Yn))
+            Yp = jnp.array((Yp_r - np.array(self.pc_mean_)) / np.array(self.pc_std_))
 
         N_full = Xn.shape[0]
 
-        _W_np = self.pca.components_
-        _pc_std_np = np.array(self.pc_std)
-        _Ys_np = np.array(self.Ys)
+        _W_np = self.pca_.components_
+        _pc_std_np = np.array(self.pc_std_)
+        _Ys_np = np.array(self.Ys_)
         _W_scaled = _W_np / (_pc_std_np[:, None] * _Ys_np[None, :])
 
         # Observation-noise variances in standardized PC units (data variance
@@ -683,7 +683,7 @@ class PCASparseGPEmulator:
                 )
             self.mean_obs_cov_pc_ = jnp.array(_mean_obs_cov_pc)
         else:
-            obs_var_full = jnp.zeros((N_full, self.n_pc))
+            obs_var_full = jnp.zeros((N_full, self.n_pc_))
             self.mean_obs_cov_pc_ = None
 
         # The truncation covariance also contains the observation noise of the
@@ -702,7 +702,7 @@ class PCASparseGPEmulator:
         if verbose:
             batches = f"mini-batches of {B}" if B < N_full else "the full batch"
             logger.info(
-                f"Training the SVGPs of {self.n_pc} PCs with {N_full} training "
+                f"Training the SVGPs of {self.n_pc_} PCs with {N_full} training "
                 f"points, {self.M} inducing points and {batches} for at most "
                 f"{steps} steps ..."
             )
@@ -720,21 +720,21 @@ class PCASparseGPEmulator:
         else:
             raise AssertionError(self.init_strategy)
 
-        self.params = {
+        self.params_ = {
             "Z": Z,
             "log_lengthscale": jnp.full(
                 (X.shape[1],), float(np.log(np.expm1(float(np.sqrt(X.shape[1])))))
             ),
             "log_var_rbf": jnp.array(0.0),
             "log_var_mat": jnp.array(-0.5),
-            "log_noise": jnp.full((self.n_pc,), -2.0),
-            "m": jnp.zeros((self.n_pc, self.M)),
-            "L_unconstrained": jnp.zeros((self.n_pc, self.M, self.M)),
+            "log_noise": jnp.full((self.n_pc_,), -2.0),
+            "m": jnp.zeros((self.n_pc_, self.M)),
+            "L_unconstrained": jnp.zeros((self.n_pc_, self.M, self.M)),
         }
 
         jitter = jitter_init
         while True:
-            Kzz_test = self.kernel(Z, Z, self.params) + jitter * jnp.eye(self.M)
+            Kzz_test = self.kernel(Z, Z, self.params_) + jitter * jnp.eye(self.M)
             Lz_test = jnp.linalg.cholesky(Kzz_test)
             if not bool(jnp.any(~jnp.isfinite(Lz_test))):
                 break
@@ -750,8 +750,8 @@ class PCASparseGPEmulator:
                 "stable Cholesky decomposition of Kzz"
             )
 
-        self.jitter = jitter
-        self.N_train = N_full
+        self.jitter_ = jitter
+        self.n_train_ = N_full
 
         def elbo_fn(p, Xb, Yb, obs_noise_b, jitter_arr):
             Z = p["Z"]
@@ -787,7 +787,7 @@ class PCASparseGPEmulator:
                 )
                 return ll_i, kl_i
 
-            ll_per_pc, kl_per_pc = jax.vmap(pc_term)(jnp.arange(self.n_pc))
+            ll_per_pc, kl_per_pc = jax.vmap(pc_term)(jnp.arange(self.n_pc_))
             total_elbo = (N_full / Xb.shape[0]) * jnp.sum(ll_per_pc) - jnp.sum(
                 kl_per_pc
             )
@@ -832,9 +832,9 @@ class PCASparseGPEmulator:
         tx, step = make_optimizer_and_step(
             current_kernel_lr, current_variational_lr, current_inducing_lr
         )
-        opt_state = tx.init(self.params)
+        opt_state = tx.init(self.params_)
 
-        p = self.params
+        p = self.params_
         p_init = {k: np.array(v) for k, v in p.items()}
         elbos = []
         # best_score is the ELBO, or its EMA for mini-batches; step_ids are
@@ -895,7 +895,7 @@ class PCASparseGPEmulator:
                     f"parameters with {jitter_str}"
                 )
                 jitter = new_jitter
-                self.jitter = jitter
+                self.jitter_ = jitter
                 # restart from the best parameters with a finite ELBO, or
                 # from the initial parameters if there are none yet
                 restart_params = best_params if best_params is not None else p_init
@@ -987,25 +987,25 @@ class PCASparseGPEmulator:
                 )
 
         if best_params is not None:
-            self.params = {k: jnp.array(v) for k, v in best_params.items()}
-            self.jitter = best_jitter
+            self.params_ = {k: jnp.array(v) for k, v in best_params.items()}
+            self.jitter_ = best_jitter
         else:
             logger.warning(
                 f"No step of the {n_iterations} training steps had a finite ELBO, "
                 "returning the last parameters"
             )
-            self.params = p
-            self.jitter = jitter
+            self.params_ = p
+            self.jitter_ = jitter
 
         actual_steps = len(elbos)
-        self.training_history = {
+        self.training_history_ = {
             "elbos": elbos,
             "steps": step_ids,
             "converged": converged,
             "n_steps": actual_steps,
             "best_step": best_step,
             "best_score": best_score if best_step is not None else None,
-            "jitter": self.jitter,
+            "jitter": self.jitter_,
             "jitter_final": jitter,
             "lr_backoff_retries": lr_backoff_count,
             "kernel_lr_final": current_kernel_lr,
@@ -1018,10 +1018,10 @@ class PCASparseGPEmulator:
             logger.info(
                 f"Training finished after {n_iterations} steps ({actual_steps} with "
                 f"a finite ELBO, converged: {converged}): best {elbo_str} = "
-                f"{best_score:.3f} at step {best_step}, jitter = {self.jitter:.1e}"
+                f"{best_score:.3f} at step {best_step}, jitter = {self.jitter_:.1e}"
             )
 
-        return self.training_history
+        return self.training_history_
 
     # -------------------------
     # Predict
@@ -1068,7 +1068,7 @@ class PCASparseGPEmulator:
             unless include_noise or include_obs_noise is True.
         include_pca_sampling : bool
             Add the finite-training-data uncertainty of the PCA mean
-            estimate, ``Var(pc_mean_i) = pc_std_i^2 / N_train`` per component
+            estimate, ``Var(pc_mean_i) = pc_std_i^2 / n_train_`` per component
             (default False).
         include_obs_noise : bool
             Include the observation/statistical uncertainty propagated from
@@ -1106,15 +1106,15 @@ class PCASparseGPEmulator:
         RuntimeError
             If fit() has not been called.
         """
-        if not hasattr(self, "params"):
+        if not hasattr(self, "params_"):
             raise RuntimeError(
                 "Call fit() before predict(). The emulator has not been trained yet."
             )
-        Xn = (X_star - self.Xm) / self.Xs
-        p = self.params
+        Xn = (X_star - self.Xm_) / self.Xs_
+        p = self.params_
         Z = p["Z"]
 
-        Kzz = self.kernel(Z, Z, p) + self.jitter * jnp.eye(self.M)
+        Kzz = self.kernel(Z, Z, p) + self.jitter_ * jnp.eye(self.M)
         Lz = jnp.linalg.cholesky(Kzz)
         Ksz = self.kernel(Xn, Z, p)
 
@@ -1137,7 +1137,7 @@ class PCASparseGPEmulator:
             var_i = base_var - qdiag + jnp.sum(B_i**2, axis=1)
             return mean_i, jnp.clip(var_i, 1e-7, None)
 
-        means_pc, vars_pc = jax.vmap(pc_predict)(jnp.arange(self.n_pc))
+        means_pc, vars_pc = jax.vmap(pc_predict)(jnp.arange(self.n_pc_))
         means_pc = means_pc.T  # (N_test, n_pc), standardized PC space
         vars_gp = vars_pc.T  # (N_test, n_pc), GP posterior variance only
         # Accumulate variance in standardized PC space
@@ -1150,17 +1150,18 @@ class PCASparseGPEmulator:
             vars_total = vars_total + noise[None, :]
 
         # 2. Finite-data PCA sampling: standard error of pc_mean estimate
-        #    Var(pc_mean_i) = pc_std_i^2 / N_train  ->  1/N_train in standardized space
+        #    Var(pc_mean_i) = pc_std_i^2 / n_train_, i.e. 1/n_train_ in
+        #    standardized space
         if include_pca_sampling:
-            vars_total = vars_total + (1.0 / self.N_train)
+            vars_total = vars_total + (1.0 / self.n_train_)
 
         # Undo PC normalization -> original PC space
-        means_pc = means_pc * self.pc_std + self.pc_mean
-        vars_total_orig = vars_total * (self.pc_std**2)  # (N_test, n_pc)
-        vars_gp_orig = vars_gp * (self.pc_std**2)  # for decomposition
+        means_pc = means_pc * self.pc_std_ + self.pc_mean_
+        vars_total_orig = vars_total * (self.pc_std_**2)  # (N_test, n_pc)
+        vars_gp_orig = vars_gp * (self.pc_std_**2)  # for decomposition
 
         # Back-project from original PC space -> normalized output (Yn) space
-        W = jnp.array(self.pca.components_)  # (n_pc, P)
+        W = jnp.array(self.pca_.components_)  # (n_pc, P)
         Wt = W.T  # (P, n_pc)
         P_size = W.shape[1]
         full_cov = jnp.einsum(
@@ -1191,7 +1192,7 @@ class PCASparseGPEmulator:
             trunc_cov_yn = jnp.zeros((P_size, P_size))
 
         # Scale from Yn space to original Y space: Cov_Y[p,q] = Ys[p]*Cov_Yn[p,q]*Ys[q]
-        Ys = jnp.array(self.Ys)
+        Ys = jnp.array(self.Ys_)
         Ys_outer = jnp.outer(Ys, Ys)
         full_cov = full_cov * Ys_outer[None, :, :]
 
@@ -1199,13 +1200,13 @@ class PCASparseGPEmulator:
         # (n_pc, n_pc) mean covariance. Handles both (N,P) and (N,P,P) inputs.
         if include_obs_noise and self.mean_obs_cov_pc_ is not None:
             obs_cov_pc_orig = self.mean_obs_cov_pc_ * jnp.outer(
-                self.pc_std, self.pc_std
+                self.pc_std_, self.pc_std_
             )  # (n_pc, n_pc)
             obs_cov_yn = Wt @ obs_cov_pc_orig @ W  # (P, P)
             full_cov = full_cov + (obs_cov_yn * Ys_outer)[None, :, :]
 
-        Y_pred = self.pca.inverse_transform(np.array(means_pc))
-        Y_pred = Y_pred * self.Ys + self.Ym
+        Y_pred = self.pca_.inverse_transform(np.array(means_pc))
+        Y_pred = Y_pred * self.Ys_ + self.Ym_
 
         if return_var_decomposition:
             # GP posterior covariance in Y space
@@ -1215,7 +1216,7 @@ class PCASparseGPEmulator:
 
             # Nugget covariance in Y space (gated by include_noise)
             if include_noise:
-                nugget_orig = noise * (self.pc_std**2)  # (n_pc,)
+                nugget_orig = noise * (self.pc_std_**2)  # (n_pc,)
                 nugget_cov_yn = jnp.einsum("pi,i,qi->pq", Wt, nugget_orig, Wt)  # (P, P)
                 nugget_cov = (nugget_cov_yn * Ys_outer)[None, :, :]
             else:
@@ -1226,7 +1227,7 @@ class PCASparseGPEmulator:
             # diagonal (N,P) and full-covariance (N,P,P) Y_err inputs.
             if include_obs_noise and self.mean_obs_cov_pc_ is not None:
                 obs_cov_pc_orig = self.mean_obs_cov_pc_ * jnp.outer(
-                    self.pc_std, self.pc_std
+                    self.pc_std_, self.pc_std_
                 )
                 obs_cov_yn = Wt @ obs_cov_pc_orig @ W
                 obs_noise_cov = (obs_cov_yn * Ys_outer)[None, :, :]
@@ -1241,7 +1242,7 @@ class PCASparseGPEmulator:
 
             # PCA sampling covariance in Y space
             if include_pca_sampling:
-                pca_samp_pc = (self.pc_std**2) / self.N_train  # (n_pc,)
+                pca_samp_pc = (self.pc_std_**2) / self.n_train_  # (n_pc,)
                 pca_samp_cov_yn = jnp.einsum("pi,i,qi->pq", Wt, pca_samp_pc, Wt)
                 pca_samp_cov = (pca_samp_cov_yn * Ys_outer)[None, :, :]
             else:
@@ -1380,8 +1381,10 @@ class PCASparseGPEnsemble:
         self.base_key = jax.random.PRNGKey(42) if base_key is None else base_key
         self.init_strategy = init_strategy
         self.bootstrap = bootstrap
-        self.members = []
-        self.training_histories = []
+        # set in fit(): the number of PCs and the trained members
+        self.n_pc_ = None
+        self.members_ = []
+        self.training_histories_ = []
 
     def fit(self, X, Y, Y_err=None, verbose=True, verbose_members=False, **fit_kwargs):
         """
@@ -1412,8 +1415,8 @@ class PCASparseGPEnsemble:
         PCASparseGPEnsemble
             The fitted ensemble (self).
         """
-        self.members = []
-        self.training_histories = []
+        self.members_ = []
+        self.training_histories_ = []
         keys = jax.random.split(self.base_key, self.n_ensemble)
 
         # ------------------------------------------------------------------
@@ -1431,6 +1434,7 @@ class PCASparseGPEnsemble:
         _Yn = (Y - _Ym) / _Ys
         _pca, _Yp_raw = _fit_pca(_Yn, self.n_pc)
         _n_pc = _pca.n_components_
+        self.n_pc_ = _n_pc
         _pc_mean = jnp.mean(_Yp_raw, axis=0)
         _pc_std = jnp.std(_Yp_raw, axis=0) + 1e-8
         _P_out = np.array(_Yn).shape[1]
@@ -1454,7 +1458,7 @@ class PCASparseGPEnsemble:
             "n_pc": _n_pc,
             "pc_mean": _pc_mean,
             "pc_std": _pc_std,
-            "trunc_cov_yn_": _trunc_cov,
+            "trunc_cov_yn": _trunc_cov,
         }
         if verbose:
             ev = float(np.sum(_pca.explained_variance_ratio_))
@@ -1503,10 +1507,10 @@ class PCASparseGPEnsemble:
                 init_strategy=self.init_strategy,
             )
             emu.fit(X_fit, Y_fit, Y_err=Y_err_fit, **member_kwargs)
-            self.members.append(emu)
-            self.training_histories.append(emu.training_history)
+            self.members_.append(emu)
+            self.training_histories_.append(emu.training_history_)
             if verbose:
-                h = emu.training_history
+                h = emu.training_history_
                 best_score = h.get("best_score")
                 if best_score is None:
                     best_score = float("nan")
@@ -1569,7 +1573,7 @@ class PCASparseGPEnsemble:
         RuntimeError
             If fit() has not been called.
         """
-        if not self.members:
+        if not self.members_:
             raise RuntimeError("Call fit() before predict().")
 
         predict_kw = dict(
@@ -1580,12 +1584,12 @@ class PCASparseGPEnsemble:
             return_var_decomposition=False,
         )
         all_means, all_covs = [], []
-        for emu in self.members:
+        for emu in self.members_:
             mu, cov = emu.predict(X_star, **predict_kw)
             all_means.append(np.array(mu))
             all_covs.append(np.array(cov))
 
-        K = len(self.members)
+        K = len(self.members_)
         means_arr = np.stack(all_means, axis=0)  # (K, N, P)
         covs_arr = np.stack(all_covs, axis=0)  # (K, N, P, P)
         # Ensemble mean
@@ -1634,6 +1638,6 @@ class PCASparseGPEnsemble:
         RuntimeError
             If fit() has not been called.
         """
-        if not self.members:
+        if not self.members_:
             raise RuntimeError("Call fit() before predict_members().")
-        return [emu.predict(X_star, **predict_kwargs) for emu in self.members]
+        return [emu.predict(X_star, **predict_kwargs) for emu in self.members_]

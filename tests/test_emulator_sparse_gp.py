@@ -168,7 +168,7 @@ def test_single_emulator_smoke():
     check(
         "training_history keys present",
         all(
-            k in em.training_history
+            k in em.training_history_
             for k in ("elbos", "steps", "converged", "n_steps", "jitter")
         ),
     )
@@ -220,7 +220,7 @@ def test_ensemble_shapes_and_shared_pca(ensembles):
     )
 
     # All members must share the identical PCA weight matrix
-    Ws = [m.pca.components_ for m in ens_yes.members]
+    Ws = [m.pca_.components_ for m in ens_yes.members_]
     max_diffs = [float(np.max(np.abs(Ws[i] - Ws[0]))) for i in range(1, len(Ws))]
     check(
         "All members share identical PCA basis (max diff == 0)",
@@ -436,15 +436,15 @@ def test_npc_and_option_checks():
     # more PCs than observables are capped at the number of observables
     em = PCASparseGPEmulator(n_pc=10, M=10, key=_KEY)
     em.fit(X, Y, steps=5, verbose=False)
-    assert em.n_pc == 4
+    assert em.n_pc_ == 4 and em.n_pc == 10
     # invalid options raise before the fitted attributes are replaced
-    pca = em.pca
+    pca = em.pca_
     with pytest.raises(ValueError):
         PCASparseGPEmulator(n_pc=2, M=10, init_strategy="grid").fit(X, Y, steps=5)
     em.M = 50
     with pytest.raises(ValueError):
         em.fit(X, Y, steps=5)
-    assert em.pca is pca
+    assert em.pca_ is pca
 
 
 def test_nan_recovery_keeps_jitter_of_best_parameters(monkeypatch):
@@ -475,7 +475,7 @@ def test_nan_recovery_keeps_jitter_of_best_parameters(monkeypatch):
     monkeypatch.undo()
     assert history["best_step"] < 96
     assert history["jitter_final"] > 1e-5
-    assert em.jitter == history["jitter"] == 1e-5
+    assert em.jitter_ == history["jitter"] == 1e-5
 
 
 if __name__ == "__main__":
