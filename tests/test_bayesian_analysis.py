@@ -60,7 +60,7 @@ def files(tmp_path):
 
 
 @pytest.fixture
-def chain(files):
+def analysis(files):
     c = BayesianAnalysis(
         mcmc_path=files["mcmc"], exp_data_path=files["exp"], parameter_file=files["par"]
     )
@@ -94,30 +94,30 @@ def test_mvn_loglike():
         mvn_loglike(np.zeros(2), np.array([[1.0, 2.0], [2.0, 1.0]]))
 
 
-def test_log_prior_likelihood_posterior(chain):
+def test_log_prior_likelihood_posterior(analysis):
     X = np.array([[0.4, 0.6], [0.0, 0.5], [1.0, 1.0], [1.2, 0.5]])
-    lp = chain.log_prior(X)
+    lp = analysis.log_prior(X)
     np.testing.assert_allclose(lp[:3], 0.0)  # prior volume 1
     assert lp[3] == -np.inf  # outside
-    ll = chain.log_likelihood(X)
+    ll = analysis.log_likelihood(X)
     assert np.all(np.isfinite(ll[:3])) and ll[3] == -np.inf
-    assert chain.log_likelihood(X, finite=True)[3] == -1e300
-    np.testing.assert_allclose(chain.log_posterior(X)[:3], lp[:3] + ll[:3])
-    np.testing.assert_allclose(chain.log_likelihood_point_by_point(X)[:3], ll[:3])
+    assert analysis.log_likelihood(X, finite=True)[3] == -1e300
+    np.testing.assert_allclose(analysis.log_posterior(X)[:3], lp[:3] + ll[:3])
+    np.testing.assert_allclose(analysis.log_likelihood_point_by_point(X)[:3], ll[:3])
     # the likelihood of the linear model
     y = A @ X[0] + B - (A @ X_TRUE + B)
     np.testing.assert_allclose(ll[0], mvn_loglike(y, S))
 
 
 # ── Emulators and experimental data ──────────────────────────────────
-def test_load_emulator_checks_number_of_observables(chain, files):
+def test_load_emulator_checks_number_of_observables(analysis, files):
     with pytest.raises(ValueError):
-        chain.load_emulators(files["emus"][:1])
+        analysis.load_emulators(files["emus"][:1])
     with pytest.raises(ValueError):
-        chain.load_emulators(files["emus"] + files["emus"][:1])
+        analysis.load_emulators(files["emus"] + files["emus"][:1])
     # loading again replaces the emulators
-    chain.load_emulators(files["emus"])
-    assert len(chain.emulators) == 2
+    analysis.load_emulators(files["emus"])
+    assert len(analysis.emulators) == 2
 
 
 def test_exp_data_with_several_sets(files, tmp_path):
@@ -130,39 +130,39 @@ def test_exp_data_with_several_sets(files, tmp_path):
 
 
 # ── Samplers ─────────────────────────────────────────────────────────
-def test_emcee(chain):
-    chain.run_emcee(n_steps=2000, n_burn_steps=400, n_walkers=16, n_thin=5, seed=1)
-    assert chain.chain.shape == (16, 400, 2)
-    check_posterior(chain.chain)
+def test_emcee(analysis):
+    analysis.run_emcee(n_steps=2000, n_burn_steps=400, n_walkers=16, n_thin=5, seed=1)
+    assert analysis.chain.shape == (16, 400, 2)
+    check_posterior(analysis.chain)
 
-    with open(chain.chain_path("emcee"), "rb") as f:
+    with open(analysis.chain_path("emcee"), "rb") as f:
         saved = pickle.load(f)
-    np.testing.assert_array_equal(saved["chain"], chain.chain)
+    np.testing.assert_array_equal(saved["chain"], analysis.chain)
     assert saved["last_position"].shape == (16, 2)
 
     assert saved["n_thin"] == 5
 
     # continue the chain, with the thinning of the existing chain
-    chain.run_emcee(n_steps=100, seed=2)
-    assert chain.chain.shape == (16, 420, 2)
+    analysis.run_emcee(n_steps=100, seed=2)
+    assert analysis.chain.shape == (16, 420, 2)
     with pytest.raises(ValueError):
-        chain.run_emcee(n_steps=100, n_walkers=8)
+        analysis.run_emcee(n_steps=100, n_walkers=8)
     with pytest.raises(ValueError):
-        chain.run_emcee(n_steps=100, n_thin=1)
+        analysis.run_emcee(n_steps=100, n_thin=1)
 
 
-def test_emcee_options_are_checked_before_sampling(chain, monkeypatch):
+def test_emcee_options_are_checked_before_sampling(analysis, monkeypatch):
     def fail(*args, **kwargs):
         raise AssertionError("the sampling started")
 
-    monkeypatch.setattr(chain, "log_posterior", fail)
+    monkeypatch.setattr(analysis, "log_posterior", fail)
     for kwargs in (
         dict(n_steps=0, n_burn_steps=10, n_walkers=8),
         dict(n_steps=10, n_burn_steps=10, n_walkers=8, n_thin=0),
         dict(n_steps=10, n_burn_steps=1, n_walkers=8),
     ):
         with pytest.raises(ValueError):
-            chain.run_emcee(**kwargs)
+            analysis.run_emcee(**kwargs)
 
 
 def test_emcee_seed(files):
@@ -179,8 +179,8 @@ def test_emcee_seed(files):
     np.testing.assert_array_equal(*chains)
 
 
-def test_ptlmc(chain):
-    chain.run_ptlmc(
+def test_ptlmc(analysis):
+    analysis.run_ptlmc(
         n_steps=1000,
         n_walkers=8,
         n_temps=6,
@@ -188,10 +188,10 @@ def test_ptlmc(chain):
         n_start_parameters=200,
         seed=1,
     )
-    assert chain.chain.shape == (8, 1000, 2)
-    check_posterior(chain.chain)
-    first = chain.chain.copy()
-    chain.run_ptlmc(
+    assert analysis.chain.shape == (8, 1000, 2)
+    check_posterior(analysis.chain)
+    first = analysis.chain.copy()
+    analysis.run_ptlmc(
         n_steps=1000,
         n_walkers=8,
         n_temps=6,
@@ -199,11 +199,11 @@ def test_ptlmc(chain):
         n_start_parameters=200,
         seed=1,
     )
-    np.testing.assert_array_equal(first, chain.chain)
+    np.testing.assert_array_equal(first, analysis.chain)
 
 
-def test_pocomc_and_log_likelihood_of_chain(chain):
-    chain.run_pocomc(
+def test_pocomc_and_log_likelihood_of_chain(analysis):
+    analysis.run_pocomc(
         n_effective=512,
         n_active=256,
         n_prior=1024,
@@ -211,28 +211,28 @@ def test_pocomc_and_log_likelihood_of_chain(chain):
         n_evidence=0,
         random_state=1,
     )
-    assert chain.chain.ndim == 2 and chain.chain.shape[1] == 2
+    assert analysis.chain.ndim == 2 and analysis.chain.shape[1] == 2
     # pocoMC samples are independent
-    samples = chain.chain
+    samples = analysis.chain
     assert np.all(
         np.abs(samples.mean(axis=0) - X_TRUE)
         < 5 * POST_STD / np.sqrt(len(samples)) + 0.005
     )
     np.testing.assert_allclose(samples.std(axis=0), POST_STD, rtol=0.2)
-    with open(chain.chain_path("pocomc"), "rb") as f:
+    with open(analysis.chain_path("pocomc"), "rb") as f:
         assert "logz" in pickle.load(f)
 
     # log likelihood of the last chain, written next to the chain file
-    chain.compute_log_likelihood_for_chain()
-    out = chain.chain_path("pocomc")
+    analysis.compute_log_likelihood_for_chain()
+    out = analysis.chain_path("pocomc")
     out = out.with_name(out.stem + "_log_likelihood" + out.suffix)
     with open(out, "rb") as f:
         ll = pickle.load(f)["log_likelihood"]
     assert ll.shape == (len(samples),)
-    np.testing.assert_allclose(ll[:10], chain.log_likelihood(samples[:10]))
+    np.testing.assert_allclose(ll[:10], analysis.log_likelihood(samples[:10]))
 
 
-def test_pocomc_uses_pool(chain):
+def test_pocomc_uses_pool(analysis):
     # a pool object is used for the likelihood evaluations
     class CountingPool:
         n_calls = 0
@@ -241,7 +241,7 @@ def test_pocomc_uses_pool(chain):
             CountingPool.n_calls += 1
             return list(map(func, iterable))
 
-    chain.run_pocomc(
+    analysis.run_pocomc(
         n_effective=256,
         n_active=128,
         n_prior=256,
@@ -251,21 +251,21 @@ def test_pocomc_uses_pool(chain):
         pool=CountingPool(),
     )
     assert CountingPool.n_calls > 0
-    assert chain.chain.shape[1] == 2
+    assert analysis.chain.shape[1] == 2
 
 
-def test_log_likelihood_of_chain_requires_chain(chain):
+def test_log_likelihood_of_chain_requires_chain(analysis):
     with pytest.raises(ValueError):
-        chain.compute_log_likelihood_for_chain()
+        analysis.compute_log_likelihood_for_chain()
 
 
-def test_samplers_write_separate_files(chain):
-    chain.run_emcee(n_steps=20, n_burn_steps=10, n_walkers=8, n_thin=1, seed=1)
-    chain.run_ptlmc(
+def test_samplers_write_separate_files(analysis):
+    analysis.run_emcee(n_steps=20, n_burn_steps=10, n_walkers=8, n_thin=1, seed=1)
+    analysis.run_ptlmc(
         n_steps=20, n_walkers=4, n_temps=4, max_temp=10, n_start_parameters=50, seed=1
     )
     for sampler, shape in (("emcee", (8, 20, 2)), ("ptlmc", (4, 20, 2))):
-        with open(chain.chain_path(sampler), "rb") as f:
+        with open(analysis.chain_path(sampler), "rb") as f:
             assert pickle.load(f)["chain"].shape == shape
-    chain.compute_log_likelihood_for_chain(sampler="emcee")
-    assert chain.chain.shape == (8, 20, 2)
+    analysis.compute_log_likelihood_for_chain(sampler="emcee")
+    assert analysis.chain.shape == (8, 20, 2)

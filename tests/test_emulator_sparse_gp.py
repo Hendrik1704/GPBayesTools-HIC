@@ -124,7 +124,7 @@ def _lhd(n_samples, n_dim, rng):
 # =============================================================================
 @pytest.fixture(scope="module")
 def em_pair():
-    """Single emulators trained without and with Y_err (T2, T7)."""
+    """Single emulators trained without and with Y_err."""
     em_no = PCASparseGPEmulator(n_pc=N_PC, M=M, key=_KEY)
     em_yes = PCASparseGPEmulator(n_pc=N_PC, M=M, key=_KEY)
     em_no.fit(_X_tr, _Y_tr, **_FIT_KW)
@@ -134,7 +134,7 @@ def em_pair():
 
 @pytest.fixture(scope="module")
 def ensembles():
-    """Ensembles trained without and with Y_err and their predictions (T3-T8)."""
+    """Ensembles trained without and with Y_err and their predictions."""
     ens_no = PCASparseGPEnsemble(n_ensemble=N_ENSEMBLE, n_pc=N_PC, M=M, base_key=_KEY)
     ens_yes = PCASparseGPEnsemble(n_ensemble=N_ENSEMBLE, n_pc=N_PC, M=M, base_key=_KEY)
     ens_no.fit(_X_tr, _Y_tr, **_FIT_KW)
@@ -158,7 +158,7 @@ def ensembles():
 # =============================================================================
 # T1 — PCASparseGPEmulator smoke test
 # =============================================================================
-def test_t1():
+def test_single_emulator_smoke():
     em = PCASparseGPEmulator(n_pc=N_PC, M=M, key=_KEY)
     em.fit(_X_tr, _Y_tr, **_FIT_KW)
     yp, cov = em.predict(_X_te)
@@ -177,7 +177,7 @@ def test_t1():
 # =============================================================================
 # T2 — Y_err increases predictive variance
 # =============================================================================
-def test_t2(em_pair):
+def test_y_err_increases_variance(em_pair):
     em_no, em_yes = em_pair
     _, cov_no = em_no.predict(_X_te, include_obs_noise=True)
     _, cov_yes = em_yes.predict(_X_te, include_obs_noise=True)
@@ -197,7 +197,7 @@ def test_t2(em_pair):
 # =============================================================================
 # T3 — PCASparseGPEnsemble shapes, shared PCA basis, Y_err effect
 # =============================================================================
-def test_t3(ensembles):
+def test_ensemble_shapes_and_shared_pca(ensembles):
     ens_yes = ensembles["ens_yes"]
     yp_yes, cov_yes, dec_yes = (
         ensembles["yp_yes"],
@@ -232,7 +232,7 @@ def test_t3(ensembles):
 # =============================================================================
 # T4 — Variance decomposition identity
 # =============================================================================
-def test_t4(ensembles):
+def test_variance_decomposition(ensembles):
     cov_yes, dec_yes = ensembles["cov_yes"], ensembles["dec_yes"]
     tot_diag = jnp.diagonal(cov_yes, axis1=1, axis2=2)
     ale_diag = jnp.diagonal(dec_yes["aleatoric"], axis1=1, axis2=2)
@@ -250,7 +250,7 @@ def test_t4(ensembles):
 # =============================================================================
 # T5 — predict_members consistency
 # =============================================================================
-def test_t5(ensembles):
+def test_predict_members(ensembles):
     ens_yes, yp_yes = ensembles["ens_yes"], ensembles["yp_yes"]
     member_preds = ens_yes.predict_members(_X_te)
     member_means = jnp.stack([m[0] for m in member_preds], axis=0)  # (K, N, P)
@@ -269,7 +269,7 @@ def test_t5(ensembles):
 # =============================================================================
 # T6 — OOD aleatoric uncertainty higher than in-domain
 # =============================================================================
-def test_t6(ensembles):
+def test_out_of_domain_uncertainty(ensembles):
     ens_yes = ensembles["ens_yes"]
     _, cov_id, dec_id = ens_yes.predict(_X_te, return_var_decomposition=True)
     _, cov_ood, dec_ood = ens_yes.predict(_X_ood, return_var_decomposition=True)
@@ -294,7 +294,7 @@ def test_t6(ensembles):
 # =============================================================================
 # T7 — Calibration: 1σ / 2σ empirical coverage
 # =============================================================================
-def test_t7(em_pair):
+def test_calibration_coverage(em_pair):
     _, em_yes = em_pair
     X_cal = jax.random.uniform(jax.random.PRNGKey(55), (500, _D))
     Y_cal = _true(X_cal)
@@ -322,7 +322,7 @@ def test_t7(em_pair):
 # =============================================================================
 # T8 — API contract: return_var_decomposition=False returns 2-tuple
 # =============================================================================
-def test_t8(ensembles):
+def test_predict_without_decomposition(ensembles):
     ens_yes, yp_yes = ensembles["ens_yes"], ensembles["yp_yes"]
     out = ens_yes.predict(_X_te, include_obs_noise=True, return_var_decomposition=False)
     check("Returns 2-tuple when decomposition=False", len(out) == 2)
@@ -338,7 +338,7 @@ def test_t8(ensembles):
 # =============================================================================
 # T9 — Y_err shape mismatch raises ValueError
 # =============================================================================
-def test_t9():
+def test_y_err_shape_mismatch():
     bad_err = jnp.ones((_N, _P + 1))  # wrong last dimension
     em_bad = PCASparseGPEmulator(n_pc=N_PC, M=10, key=_KEY)
     with pytest.raises(ValueError):
@@ -348,7 +348,7 @@ def test_t9():
 # =============================================================================
 # T10 — EmulatorSparseGP high-level wrapper (pickle format)
 # =============================================================================
-def test_t10(tmp_path):
+def test_wrapper(tmp_path):
     N_DESIGN = 60
     N_OBS = 6
     N_PARAMS = 3
