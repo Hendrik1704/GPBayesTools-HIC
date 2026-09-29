@@ -357,23 +357,23 @@ class EmulatorBase:
             samples = np.exp(samples)
         return samples
 
-    def _validation_masks(self, number_test_points, random_points, seed):
+    def _validation_masks(self, n_test_points, random_points, seed):
         """
         Boolean masks of the training and test points.
 
-        The test points are the last number_test_points points, or randomly
+        The test points are the last n_test_points points, or randomly
         chosen points if random_points is True.
         """
-        if not 0 <= number_test_points < self.nev:
+        if not 0 <= n_test_points < self.nev:
             raise ValueError(
-                f"number_test_points must be between 0 and {self.nev - 1}, "
-                f"got {number_test_points}"
+                f"n_test_points must be between 0 and {self.nev - 1}, "
+                f"got {n_test_points}"
             )
         if random_points:
             rng = np.random.default_rng(seed)
-            test_idx = rng.choice(self.nev, number_test_points, replace=False)
+            test_idx = rng.choice(self.nev, n_test_points, replace=False)
         else:
-            test_idx = np.arange(self.nev - number_test_points, self.nev)
+            test_idx = np.arange(self.nev - n_test_points, self.nev)
         test_mask = np.zeros(self.nev, dtype=bool)
         test_mask[test_idx] = True
         return ~test_mask, test_mask
@@ -414,7 +414,7 @@ class EmulatorBase:
 
     @keep_trained_state
     def test_emulator_errors(
-        self, number_test_points=1, random_points=False, seed=None, **train_kwargs
+        self, n_test_points=1, random_points=False, seed=None, **train_kwargs
     ):
         """
         Validate the emulator at test points excluded from the training.
@@ -426,7 +426,7 @@ class EmulatorBase:
 
         Parameters
         ----------
-        number_test_points : int, default=1
+        n_test_points : int, default=1
             Number of test points, between 0 and nev - 1.
         random_points : bool, default=False
             If False, the test points are the last points of the training
@@ -441,36 +441,36 @@ class EmulatorBase:
         pred_mean, pred_err, data, data_err : ndarray
             The emulator predictions, their errors, the values of the
             observables and their errors at the test points, each of shape
-            (number_test_points, nobs), in the original scale of the
+            (n_test_points, nobs), in the original scale of the
             observables.
 
         Raises
         ------
         ValueError
-            If `number_test_points` is not between 0 and nev - 1.
+            If `n_test_points` is not between 0 and nev - 1.
         """
         logger.info("Validating emulator ...")
         train_mask, test_mask = self._validation_masks(
-            number_test_points, random_points, seed
+            n_test_points, random_points, seed
         )
         self.train_emulator(train_mask, **train_kwargs)
         return self._validation_output(test_mask)
 
     @keep_trained_state
     def test_emulator_errors_with_training_points(
-        self, number_test_points=1, random_points=False, seed=None, **train_kwargs
+        self, n_test_points=1, random_points=False, seed=None, **train_kwargs
     ):
         """
         Validate the emulator at its training points.
 
-        The emulator is trained without number_test_points test points (chosen
+        The emulator is trained without n_test_points test points (chosen
         as in `test_emulator_errors`) and predicts at the training points. The
         resulting errors should be very small. The trained emulator is not
         changed.
 
         Parameters
         ----------
-        number_test_points : int, default=1
+        n_test_points : int, default=1
             Number of test points excluded from the training.
         random_points : bool, default=False
             If True, the test points are chosen randomly, otherwise they are
@@ -484,14 +484,14 @@ class EmulatorBase:
         -------
         pred_mean, pred_err, data, data_err : ndarray
             The same four arrays as `test_emulator_errors`, with
-            (nev - number_test_points) rows.
+            (nev - n_test_points) rows.
 
         Raises
         ------
         ValueError
-            If `number_test_points` is not between 0 and nev - 1.
+            If `n_test_points` is not between 0 and nev - 1.
         """
         logger.info("Validating emulator at the training points ...")
-        train_mask, _ = self._validation_masks(number_test_points, random_points, seed)
+        train_mask, _ = self._validation_masks(n_test_points, random_points, seed)
         self.train_emulator(train_mask, **train_kwargs)
         return self._validation_output(train_mask)

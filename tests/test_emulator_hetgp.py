@@ -178,7 +178,7 @@ def test_validation(data_files):
     emu = make_emulator(data_files)
     n_test = 5
     emu_pred, emu_pred_err, vali_data, vali_data_err = emu.test_emulator_errors(
-        number_test_points=n_test
+        n_test_points=n_test
     )
     for arr in (emu_pred, emu_pred_err, vali_data, vali_data_err):
         assert arr.shape == (n_test, N_OBS)

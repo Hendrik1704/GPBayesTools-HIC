@@ -134,15 +134,13 @@ def test_seed(training_file, param_file, test_points):
 # ── Validation (base class) ──────────────────────────────────────────
 def test_validation(emulator, test_points):
     before = emulator.predict(test_points)
-    pred, pred_err, data, data_err = emulator.test_emulator_errors(
-        number_test_points=10
-    )
+    pred, pred_err, data, data_err = emulator.test_emulator_errors(n_test_points=10)
     for arr in (pred, pred_err, data, data_err):
         assert arr.shape == (10, N_OBS)
     np.testing.assert_array_equal(data, emulator.model_data[-10:])
     assert np.abs(pred / data - 1).mean() < 0.05
 
-    train = emulator.test_emulator_errors_with_training_points(number_test_points=10)
+    train = emulator.test_emulator_errors_with_training_points(n_test_points=10)
     assert train[0].shape == (emulator.nev - 10, N_OBS)
     assert np.abs(train[0] / train[2] - 1).mean() < 0.05
 

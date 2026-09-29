@@ -417,7 +417,7 @@ def test_t10(tmp_path):
 
     # 4. test_emulator_errors
     emu_pred, emu_pred_err, vali_data, vali_data_err = emu.test_emulator_errors(
-        number_test_points=2, **fit_kwargs
+        n_test_points=2, **fit_kwargs
     )
     check("test_emulator_errors shapes match", emu_pred.shape == vali_data.shape)
 
