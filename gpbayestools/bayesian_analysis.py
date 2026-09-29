@@ -146,9 +146,8 @@ class BayesianAnalysis:
     """
     High-level interface for running MCMC calibration and accessing results.
 
-    Currently all design parameters except for the normalizations are required
-    to be the same at all beam energies. It is assumed (NOT checked) that all
-    system designs have the same parameters and ranges (except for the norms).
+    All emulators must use the parameters of the parameter file in the same
+    order.
 
     The experimental data are used as they are given. For emulators that
     return predictions in log space (``log_trafo=True`` and
@@ -539,8 +538,10 @@ class BayesianAnalysis:
         continue from its last walker positions. Otherwise, run a burn-in and
         start a new chain. The burn-in is run in two halves: after the first
         half, the walkers are moved to the most likely distinct points found
-        so far. The thinned chain is appended to the chain file and stored in
-        ``self.chain`` with shape (n_walkers, n_steps, ndim).
+        so far. The production steps are thinned by `n_thin` and appended to
+        the chain file. ``self.chain`` is the whole chain of the file, with
+        shape (n_walkers, n_saved, ndim), where n_saved is the total number of
+        saved (thinned) steps.
 
         Parameters
         ----------
@@ -703,9 +704,11 @@ class BayesianAnalysis:
         """
         Run parallel tempering ensemble MCMC with Langevin Monte Carlo.
 
-        This function wraps the PTLMC sampler (adapted from surmise, see
-        :meth:`_sampler_ptlmc`). The initial points are drawn uniformly within
-        the parameter ranges. The samples of the temperature-1 chains are
+        This function wraps the PTLMC sampler adapted from surmise (see
+        :func:`gpbayestools.ptlmc.sampler`). The initial points are drawn
+        uniformly within the parameter ranges, and ``n_temps + n_walkers`` of
+        them are optimized with L-BFGS-B before the sampling. The first
+        ``2 * n_steps`` steps tune the step size and are discarded. The samples of the temperature-1 chains are
         stored in ``self.chain`` with shape (n_walkers, n_steps, ndim) and
         written to ``chain_path("ptlmc")``, overwriting an existing file.
 
@@ -745,10 +748,8 @@ class BayesianAnalysis:
             nstartparameters=n_start_parameters,
         )
 
+        # shape (n_walkers, n_steps, ndim)
         self.chain = result_dict["theta"]
-        # This reshape should not be necessary, it is just done to match the
-        # format of the other MCMC samplers
-        self.chain = self.chain.reshape((n_walkers, n_steps, self.ndim))
 
         self.chain_sampler = "ptlmc"
 
@@ -831,9 +832,8 @@ class BayesianAnalysis:
         """
         Run preconditioned Monte Carlo with pocoMC.
 
-        This function is based on the pocoMC package (version 1.2.6). It works
-        with versions of pocoMC >= 1.2.2 and is tested up to 1.2.6. pocoMC is
-        a Preconditioned Monte Carlo (PMC) sampler that uses normalizing flows
+        This function uses the pocoMC package (version 1.2.6, as required by
+        the package). pocoMC is a Preconditioned Monte Carlo (PMC) sampler that uses normalizing flows
         to precondition the target distribution.
 
         The resampled posterior samples are stored in ``self.chain`` with
@@ -868,16 +868,16 @@ class BayesianAnalysis:
         n_evidence : int, default=5000
             Number of importance samples used to estimate the evidence. If
             ``n_evidence=0``, the evidence is not estimated using importance
-            sampling and the SMC estimate is used instead. If
-            ``preconditioned=False``, the evidence is estimated using SMC and
-            `n_evidence` is ignored.
+            sampling and the SMC estimate is used instead.
         n_ndim_steps : int, default=2
-            Number of MCMC steps in beta per dimension, pocoMC runs
-            ``n_ndim_steps * ndim`` steps.
-        pool : int or None, default=None
-            Number of processes to use for parallelization. If `pool` is an
-            integer greater than 1, a ``multiprocessing`` pool is created with
-            the specified number of processes.
+            Number of MCMC steps per parameter after the log-probability
+            plateau, passed to pocoMC as ``n_steps = n_ndim_steps * ndim``. It
+            controls the early stopping of the MCMC steps of each iteration.
+        pool : int, pool object or None, default=None
+            Parallelization of the likelihood evaluations. If `pool` is an
+            integer greater than 1, a ``multiprocessing`` pool with this number
+            of processes is created; a pool object (e.g. of mpi4py) is used
+            directly.
         prior : object or None, default=None
             Prior distribution implementing the ``logpdf`` and ``rvs`` methods
             and the ``dim`` and ``bounds`` attributes. If None, a uniform

@@ -28,16 +28,11 @@ class EmulatorSklearn(EmulatorBase):
     The model training data are standardized (subtract mean and scale to unit
     variance), then transformed through PCA. The first `npc` principal
     components (PCs) are emulated by independent Gaussian processes (GPs).
-    The remaining components are neglected, which is equivalent to assuming
-    they are standard zero-mean unit-variance GPs. There is the option to
+    The remaining components are not emulated; their variance is added to the
+    predicted covariance as truncation covariance (without the noise of the
+    training data by default, see `predict`). There is the option to
     switch off the PCA transformation and use the raw data for the Gaussian
     process emulation.
-
-    This class has become a bit messy but it still does the job. It would
-    probably be better to refactor some of the data transformations /
-    preprocessing into modular classes, to be used with an sklearn pipeline.
-    The classes would also need to handle transforming uncertainties, which
-    could be tricky.
 
     Parameters
     ----------
@@ -301,8 +296,8 @@ class EmulatorSklearn(EmulatorBase):
                 self.npc_, self.nobs**2
             )
 
-            # Compute the covariance matrix for the remaining neglected PCs
-            # (truncation error).  These components always have variance == 1.
+            # Compute the covariance matrix of the PCs that are not emulated
+            # (truncation error). The whitened components have variance 1.
             B = self._trans_matrix[self.npc_ :]
             self._cov_trunc = np.dot(B.T, B)
 
@@ -400,7 +395,7 @@ class EmulatorSklearn(EmulatorBase):
 
             if not self.perform_no_pca:
                 # Compute the covariance at each sample point using the
-                # pre-calculated arrays (see constructor).
+                # pre-calculated arrays (see train_emulator).
                 cov = np.dot(gp_var, self._var_trans).reshape(
                     X.shape[0], self.nobs, self.nobs
                 )

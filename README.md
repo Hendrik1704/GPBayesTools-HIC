@@ -12,7 +12,7 @@ The following wrappers for GP emulators are currently included:
 - Sparse variational GP emulator (single emulator or ensemble) implemented with [JAX](https://github.com/jax-ml/jax)
 
 The following wrappers for MC sampling are included:
-- MCMC wrapper for the [emcee](https://github.com/topics/emcee) package
+- MCMC wrapper for the [emcee](https://github.com/dfm/emcee) package
 - [PTLMC](https://github.com/bandframework/surmise) from the surmise package (Parallel Tempering Langevin Monte Carlo)
 - [pocoMC](https://github.com/minaskar/pocomc) Preconditioned Monte Carlo method for accelerated Bayesian inference
 
@@ -62,10 +62,10 @@ This requires a file specifying the parameter ranges, see for example `examples/
 
 ## Posterior Cluster Sampling
 
-The `generate_posterior_clusters.py` script in the `examples` directory can be used to sample parameter 
-clusters from the posterior chain file after a Bayesian inference run and propagate model
-uncertainties to the observables.
-The final `cluster_centers.txt` file contains the sampled parameter clusters as separate columns.
+The `generate_posterior_clusters.py` script in the `examples` directory sorts the samples of a
+pocoMC chain file (`chain_pocomc.pkl`) by their log-likelihood and clusters the most likely
+samples with k-means. The cluster centers are written to `cluster_centers.txt` in the current
+directory (one parameter set per column) and can be used as parameter sets for model runs.
 
 ## Installation
 

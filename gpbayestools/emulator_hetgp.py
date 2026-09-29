@@ -100,7 +100,6 @@ class EmulatorHetGP(EmulatorBase):
         logger.info("Performing output PCA for hetGP emulator ...")
         self.output_scaler_ = StandardScaler()
         standardized_outputs = self.output_scaler_.fit_transform(data)
-        # emulators saved with older versions had a fixed targetVariance
         npc = self.npc
         if isinstance(npc, (int, np.integer)) and npc > min(data.shape):
             logger.warning(
@@ -187,24 +186,25 @@ class EmulatorHetGP(EmulatorBase):
 
     def _rebuild_from_hyperparams(self, hyperparams, maxit=0):
         """
-        Rebuild GP models using saved hyperparameters as initial values.
+        Rebuild GP models of emulators saved with older versions.
 
-        This is much faster than a full re-training because the optimizer
-        starts at the already-converged solution and finishes in very few
-        iterations.
+        These emulators only contain the hyperparameters of the GP models,
+        which are used as initial values of a new fit to all training points.
+        With the default ``maxit=0`` the saved hyperparameters are used
+        without optimization, the predictions can still differ from the
+        originally trained models.
 
         Parameters
         ----------
         hyperparams : list of dict
-            One dict per principal component. Each dict contains
-            'model_type' ('hetGP' or 'homGP'), 'theta', 'g', and for
-            hetGP models also 'Delta' and 'k_theta_g'.
+            One dict per principal component with 'model_type' ('hetGP' or
+            'homGP'), 'theta', and 'g' for homGP models or 'Delta' for hetGP
+            models.
         maxit : int, default=0
-            Maximum optimizer iterations for the warm-start.
+            Maximum number of optimizer iterations.
         """
-        event_mask = np.ones(self.nev, dtype=bool)
-        design_points_masked = self.design_points[event_mask, :]
-        data_pca_masked = self.model_data_pca_[event_mask, :]
+        design_points_masked = self.design_points
+        data_pca_masked = self.model_data_pca_
 
         self.emu_ = []
         for j in range(self.npc_):

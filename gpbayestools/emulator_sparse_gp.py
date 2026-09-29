@@ -169,7 +169,6 @@ class EmulatorSparseGP(EmulatorBase):
         Y = self.model_data[event_mask, :]
         Y_err = self.model_data_err[event_mask, :]
         logger.info(f"Train sparse GP with {X.shape[0]} training points ...")
-        # emulators saved with older versions store the argument as n_pc_
         npc = self.npc
 
         if self.n_ensemble <= 1:

@@ -182,7 +182,8 @@ class Design:
     ndim : int
         Number of parameters (i.e. dimensions).
     points : list of str
-        Design point names (formatted numbers).
+        Design point names ``parameter_000``, ``parameter_001``, ... (used as
+        file names by `write_files`).
     array : ndarray of shape (npoints, ndim)
         The actual design array.
     seed : int
@@ -232,9 +233,11 @@ class Design:
             npoints, self.ndim, seed
         )
 
-    def __array__(self):
-        """Return the design array."""
-        return self.array
+    def __array__(self, dtype=None, copy=None):
+        """Return the design array (numpy array interface)."""
+        if copy:
+            return np.array(self.array, dtype=dtype)
+        return np.asarray(self.array, dtype=dtype)
 
     def write_files(self, basedir):
         """

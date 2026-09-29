@@ -213,6 +213,9 @@ class EmulatorBAND(EmulatorBase):
         fpredcov = self._full_covariance(gp)
         if not include_noise:
             fpredcov = fpredcov - self._noise_covariance()[None, :, :]
+            # round-off can make variances slightly negative
+            idx = np.arange(self.nobs)
+            fpredcov[:, idx, idx] = np.maximum(fpredcov[:, idx, idx], 0.0)
 
         if self.exp_and_cov_diagonal:
             fcov = np.zeros_like(fpredcov)
