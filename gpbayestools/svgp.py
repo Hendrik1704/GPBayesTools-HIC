@@ -216,6 +216,8 @@ class PCASparseGPEmulator:
         # set in fit(); mean obs-noise covariance (n_pc, n_pc) in standardized
         # PC space
         self.mean_obs_cov_pc_ = None
+        # set in fit(); truncation covariance without the observation noise
+        self.trunc_cov_signal_yn_ = None
 
     # -------------------------
     # Kernel
@@ -562,7 +564,7 @@ class PCASparseGPEmulator:
                 f"standard deviations in [{self.Ys.min():.3g}, {self.Ys.max():.3g}]"
             )
 
-            self.pca, Yp = _fit_pca(Yn, getattr(self, "n_pc_requested", self.n_pc))
+            self.pca, Yp = _fit_pca(Yn, self.n_pc_requested)
             self.n_pc = self.pca.n_components_
             explained_var = np.sum(self.pca.explained_variance_ratio_)
 
@@ -1182,7 +1184,7 @@ class PCASparseGPEmulator:
         if include_noise or include_obs_noise:
             trunc_cov_yn = self.trunc_cov_yn_
         else:
-            trunc_cov_yn = getattr(self, "trunc_cov_signal_yn_", self.trunc_cov_yn_)
+            trunc_cov_yn = self.trunc_cov_signal_yn_
         if include_truncation and trunc_cov_yn is not None:
             full_cov = full_cov + trunc_cov_yn[None, :, :]
         else:
