@@ -55,5 +55,15 @@ The final `cluster_centers.txt` file contains the sampled parameter clusters as 
 
 Check the `requirements.txt` file for the dependencies of this code.
 
+## Tests
+
+The tests in the `tests` directory can be run with
+
+```
+python -m pytest tests
+```
+
+The tests of `EmulatorBAND` are skipped if surmise < 1.0.0 is installed.
+
 :exclamation: The jupyter notebooks are just meant as examples for how to use the emulators and samplers and analyze the output.
 Paths and data files need the proper input formats.

@@ -73,7 +73,7 @@ Documentation:
 - Document in the README and the docstrings that emulators trained with `logTrafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
 
 Tests:
-- Add tests for the hetGP and sparse GP emulators in `tests/`, which can be run with pytest.
+- Add tests in `tests/` for all emulators, the emulator base class and the MCMC module, which can be run with `python -m pytest tests`. The MCMC tests compare the samples of emcee, PTLMC and pocoMC with an analytically known posterior.
 
 [Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v2.0.1...v3.0.0)
 
