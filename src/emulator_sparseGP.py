@@ -161,6 +161,12 @@ class PCASparseGPEmulator:
     # -------------------------
     # Inducing point initialisation strategies
     # -------------------------
+    def _numpy_seed(self):
+        """Integer seed derived from self.key for numpy/sklearn/scipy random
+        numbers, so that e.g. ensemble members with different keys get
+        different initialisations."""
+        return int(jax.random.randint(self.key, (), 0, 2**31 - 1))
+
     def init_Z_maxmin(self, X):
         N, _ = X.shape
         idx = jax.random.randint(self.key, (), 0, N)
@@ -174,14 +180,15 @@ class PCASparseGPEmulator:
         return Z
 
     def init_Z_kmeans(self, X):
-        kmeans = KMeans(self.M, n_init=10, random_state=0).fit(np.array(X))
+        kmeans = KMeans(self.M, n_init=10,
+                        random_state=self._numpy_seed()).fit(np.array(X))
         Z = jnp.array(kmeans.cluster_centers_)
         Z += 0.01 * jax.random.normal(self.key, Z.shape)
         return Z
 
     def init_Z_kmeans_pp(self, X):
         kmeans = KMeans(self.M, init='k-means++', n_init=1,
-                        random_state=0).fit(np.array(X))
+                        random_state=self._numpy_seed()).fit(np.array(X))
         return jnp.array(kmeans.cluster_centers_)
 
     def init_Z_random(self, X):
@@ -191,7 +198,8 @@ class PCASparseGPEmulator:
 
     def init_Z_sobol(self, X):
         from scipy.stats import qmc
-        sampler = qmc.Sobol(d=X.shape[1], scramble=True)
+        sampler = qmc.Sobol(d=X.shape[1], scramble=True,
+                            seed=self._numpy_seed())
         sample = sampler.random(self.M)
         X_min = jnp.min(X, axis=0)
         X_max = jnp.max(X, axis=0)
@@ -1240,7 +1248,7 @@ class EmulatorSparseGP(EmulatorBase):
                  npc=0.999, M=200, n_ensemble=1,
                  init_strategy='maxmin', bootstrap=False,
                  logTrafo=False, max_rel_uncertainty_data=None,
-                 exp_and_cov_diagonal=False):
+                 exp_and_cov_diagonal=False, seed=None):
         """
         Parameters
         ----------
@@ -1274,9 +1282,13 @@ class EmulatorSparseGP(EmulatorBase):
             covariance cov_ij * exp(mean_i) * exp(mean_j) (delta method).
             Unlike the other emulators, the correlations between the
             observables are kept (default False).
+        seed : int or None
+            Seed for the random numbers of the training (inducing points,
+            mini-batches, ensemble members). None uses fixed default keys.
         """
         check_npc(npc)
         self.npc_requested_ = npc
+        self.seed_ = seed
         self.M_ = M
         self.n_ensemble_ = n_ensemble
         self.init_strategy_ = init_strategy
@@ -1287,6 +1299,11 @@ class EmulatorSparseGP(EmulatorBase):
     # -------------------------
     # Training
     # -------------------------
+    def _key(self):
+        """JAX random key from the seed, or None for the default keys."""
+        seed = getattr(self, 'seed_', None)
+        return None if seed is None else jax.random.PRNGKey(seed)
+
     def trainEmulator(self, event_mask, **fit_kwargs):
         """
         Train the (ensemble) emulator on the masked subset of training data.
@@ -1312,7 +1329,7 @@ class EmulatorSparseGP(EmulatorBase):
             fit_kwargs = {k: v for k, v in fit_kwargs.items()
                           if k != 'verbose_members'}
             self.emu_ = PCASparseGPEmulator(
-                n_pc=npc, M=self.M_,
+                n_pc=npc, M=self.M_, key=self._key(),
                 init_strategy=self.init_strategy_,
             )
             self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
@@ -1320,7 +1337,7 @@ class EmulatorSparseGP(EmulatorBase):
         else:
             self.emu_ = PCASparseGPEnsemble(
                 n_ensemble=self.n_ensemble_,
-                n_pc=npc, M=self.M_,
+                n_pc=npc, M=self.M_, base_key=self._key(),
                 init_strategy=self.init_strategy_,
                 bootstrap=self.bootstrap_,
             )

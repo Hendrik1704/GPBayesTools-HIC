@@ -50,11 +50,14 @@ class Emulator(EmulatorBase):
 
     The parameter `perform_no_PCA` can be set to True to switch off the PCA
     transformation and use the raw data for the Gaussian process emulation.
+
+    `seed` sets the random state of the restarts of the GP hyperparameter
+    optimization (with nrestarts > 0), for reproducible training.
     """
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
                  npc=10, nrestarts=0, logTrafo=False,
                  max_rel_uncertainty_data=None, exp_and_cov_diagonal=False,
-                 perform_no_PCA=False):
+                 perform_no_PCA=False, seed=None):
         super().__init__(training_set_path, parameter_file, logTrafo,
                          max_rel_uncertainty_data, exp_and_cov_diagonal)
         self.perform_no_PCA_ = perform_no_PCA
@@ -63,6 +66,8 @@ class Emulator(EmulatorBase):
         self.npc_requested_ = npc
         self.npc = npc
         self.nrestarts = nrestarts
+        # random state of the restarts of the GP hyperparameter optimizer
+        self.seed_ = seed
 
         self.scaler = StandardScaler()
         self.pca = PCA(whiten=True, svd_solver='full')
@@ -147,7 +152,8 @@ class Emulator(EmulatorBase):
         self.gps = [
             GPR(kernel=kernel, alpha=0.1,
                 n_restarts_optimizer=self.nrestarts,
-                copy_X_train=False
+                copy_X_train=False,
+                random_state=getattr(self, 'seed_', None)
             ).fit(design_points, z)
             for z in Z.T
         ]
