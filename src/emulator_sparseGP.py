@@ -17,7 +17,6 @@ the MCMC.
 
 import logging
 import numpy as np
-import pickle
 
 import jax
 # must be set before any JAX arrays are created
@@ -27,7 +26,7 @@ import optax
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
-from . import cachedir, keep_trained_state, parse_model_parameter_file
+from .emulator_base import EmulatorBase
 
 
 # =============================================================================
@@ -1220,7 +1219,7 @@ class PCASparseGPEnsemble:
 # EmulatorSparseGP — high-level wrapper (same interface as EmulatorBAND)
 # =============================================================================
 
-class EmulatorSparseGP:
+class EmulatorSparseGP(EmulatorBase):
     """
     High-level wrapper around PCASparseGPEmulator / PCASparseGPEnsemble that
     follows the same interface as EmulatorBAND.
@@ -1279,95 +1278,12 @@ class EmulatorSparseGP:
         self.n_ensemble_ = n_ensemble
         self.init_strategy_ = init_strategy
         self.bootstrap_ = bootstrap
-        self.logTrafo_ = logTrafo
-        self.max_rel_uncertainty_data_ = max_rel_uncertainty_data
-        self.exp_and_cov_diagonal_ = exp_and_cov_diagonal
-        if not self.logTrafo_ and self.exp_and_cov_diagonal_:
-            raise ValueError("exp_and_cov_diagonal can only be set to True if logTrafo is True.")
-
-        self._load_training_data_pickle(training_set_path)
-
-        self.pardict = parse_model_parameter_file(parameter_file)
-        self.design_min = []
-        self.design_max = []
-        for par, val in self.pardict.items():
-            self.design_min.append(val[1])
-            self.design_max.append(val[2])
-        self.design_min = np.array(self.design_min)
-        self.design_max = np.array(self.design_max)
-
-        self.nev, self.nobs = self.model_data.shape
-        self.nparameters = self.design_points.shape[1]
-
-    # -------------------------
-    # Data loading
-    # -------------------------
-    @staticmethod
-    def _max_rel_error(temp_data):
-        """Largest relative statistical error of a training point. Observables
-        that are exactly zero have no relative error and are ignored."""
-        nonzero = temp_data[:, 0] != 0
-        return np.max(np.abs(temp_data[nonzero, 1] / temp_data[nonzero, 0]),
-                      initial=0.0)
-
-    def _load_training_data_pickle(self, dataFile):
-        """Load training data from a pickle file."""
-        logging.info("loading training data from {} ...".format(dataFile))
-        self.model_data = []
-        self.model_data_err = []
-        self.design_points = []
-        with open(dataFile, "rb") as fp:
-            dataDict = pickle.load(fp)
-
-        sorted_event_ids = sorted(dataDict.keys(), key=lambda x: int(x))
-
-        discarded_points = 0
-        for event_id in sorted_event_ids:
-            temp_data = dataDict[event_id]["obs"].transpose()
-            if not np.all(np.isfinite(temp_data[:, 0])):
-                logging.info("Discard Parameter {}, non-finite observables".format(
-                                                    event_id))
-                discarded_points += 1
-                continue
-            if self.logTrafo_ and np.any(temp_data[:, 0] <= 0):
-                raise ValueError(
-                    "logTrafo requires positive observables, but "
-                    "parameter point {} has values <= 0".format(event_id))
-            if self.max_rel_uncertainty_data_ is not None:
-                statErrMax = self._max_rel_error(temp_data)
-                if statErrMax > self.max_rel_uncertainty_data_:
-                    logging.info(
-                        "Discard Parameter {}, stat err = {:.2f}".format(
-                            event_id, statErrMax))
-                    discarded_points += 1
-                    continue
-            self.design_points.append(dataDict[event_id]["parameter"])
-            if not self.logTrafo_:
-                self.model_data.append(temp_data[:, 0])
-                self.model_data_err.append(temp_data[:, 1])
-            else:
-                self.model_data.append(
-                    np.log(np.abs(temp_data[:, 0]) + 1e-30))
-                self.model_data_err.append(
-                    np.abs(temp_data[:, 1] / (temp_data[:, 0] + 1e-30))
-                )
-
-        self.design_points = np.array(self.design_points)
-        self.model_data = np.array(self.model_data)
-        self.model_data_err = np.nan_to_num(np.abs(np.array(self.model_data_err)))
-        logging.info("All training data are loaded.")
-        logging.info(
-            "Training dataset size: {}, discarded points: {}".format(
-                len(self.model_data), discarded_points))
+        super().__init__(training_set_path, parameter_file, logTrafo,
+                         max_rel_uncertainty_data, exp_and_cov_diagonal)
 
     # -------------------------
     # Training
     # -------------------------
-    def trainEmulatorAutoMask(self, **fit_kwargs):
-        """Train on all available training points."""
-        train_event_mask = [True] * self.nev
-        self.trainEmulator(train_event_mask, **fit_kwargs)
-
     def trainEmulator(self, event_mask, **fit_kwargs):
         """
         Train the (ensemble) emulator on the masked subset of training data.
@@ -1466,83 +1382,7 @@ class EmulatorSparseGP:
     # -------------------------
     # Validation
     # -------------------------
-    @keep_trained_state
-    def testEmulatorErrors(self, number_test_points=1, **fit_kwargs):
-        """
-        Leave-one-out (or leave-n-out) emulator validation.
-
-        Uses (nev - number_test_points) points to train the emulator and
-        evaluates it on the held-out points. The trained emulator is not
-        changed.
-
-        Returns
-        -------
-        emulator_predictions : array (number_test_points, nobs)
-        emulator_predictions_err : array (number_test_points, nobs)
-            Predictive standard deviations (sqrt of diagonal of covariance).
-        validation_data : array (number_test_points, nobs)
-        validation_data_err : array (number_test_points, nobs)
-        """
-        return self._validate(number_test_points, False, **fit_kwargs)
-
-    @keep_trained_state
-    def testEmulatorErrorsWithTrainingPoints(self, number_test_points=1,
-                                             **fit_kwargs):
-        """
-        Uses (nev - number_test_points) points to train the emulator and
-        evaluates it on the same training points, like
-        testEmulatorErrorsWithTrainingPoints of the other emulators. The
-        resulting errors should be very small. The trained emulator is not
-        changed.
-
-        Returns the same four arrays as testEmulatorErrors, with
-        (nev - number_test_points) rows.
-        """
-        return self._validate(number_test_points, True, **fit_kwargs)
-
-    def _validate(self, number_test_points, on_training_points, **fit_kwargs):
-        """Train on all but the last number_test_points points and predict
-        at the held-out points, or at the training points if
-        on_training_points is True."""
-        logging.info("Validating sparse GP emulator ...")
-        event_idx_list = range(self.nev - number_test_points, self.nev)
-        train_event_mask = [True] * self.nev
-        for event_i in event_idx_list:
-            train_event_mask[event_i] = False
-
-        self.trainEmulator(train_event_mask, **fit_kwargs)
-        if on_training_points:
-            validate_event_mask = list(train_event_mask)
-        else:
-            validate_event_mask = [not i for i in train_event_mask]
-
-        pred_mean, pred_cov = self.predict(
-            self.design_points[validate_event_mask, :],
-            return_cov=True,
-        )
-        pred_var = np.sqrt(np.array(
-            [pred_cov[i].diagonal() for i in range(pred_cov.shape[0])]))
-
-        # if logTrafo is True and exp_and_cov_diagonal is False, the
-        # predictions are in log space and are transformed back here
-        if self.logTrafo_ and not getattr(self, 'exp_and_cov_diagonal_', True):
-            pred_var = pred_var * np.exp(pred_mean)
-            pred_mean = np.exp(pred_mean)
-
-        if self.logTrafo_:
-            validation_data = np.exp(self.model_data[validate_event_mask, :])
-            validation_data_err = (
-                self.model_data_err[validate_event_mask, :]
-                * validation_data
-            )
-        else:
-            validation_data = self.model_data[validate_event_mask, :]
-            validation_data_err = self.model_data_err[validate_event_mask, :]
-
-        emulator_predictions = np.array(pred_mean).reshape(-1, self.nobs)
-        emulator_predictions_err = np.array(pred_var).reshape(-1, self.nobs)
-        validation_data = np.array(validation_data).reshape(-1, self.nobs)
-        validation_data_err = np.array(validation_data_err).reshape(-1, self.nobs)
-
-        return (emulator_predictions, emulator_predictions_err,
-                validation_data, validation_data_err)
+    def _predictions_in_log_space(self):
+        # emulators saved with older versions have no exp_and_cov_diagonal_
+        # and always transformed the predictions back
+        return self.logTrafo_ and not getattr(self, 'exp_and_cov_diagonal_', True)
