@@ -74,8 +74,10 @@ class LoggingEnsembleSampler(emcee.EnsembleSampler):
         """
         logging.info('running %d walkers for %d steps', self.nwalkers, nsteps)
 
+        if nsteps < 1:
+            raise ValueError('nsteps must be >= 1')
         if status is None:
-            status = nsteps // 10
+            status = max(nsteps // 10, 1)
 
         for n, result in enumerate(
                 self.sample(X0, iterations=nsteps, **kwargs),
@@ -107,7 +109,7 @@ class Chain:
     ):
         logging.info('Initializing MCMC ...')
         self.mcmc_path = Path(mcmc_path)
-        self.mcmc_path.parent.mkdir(exist_ok=True)
+        self.mcmc_path.parent.mkdir(parents=True, exist_ok=True)
         logging.info('Final Markov Chain results will be saved in {}'.format(
             self.mcmc_path)
         )
@@ -356,6 +358,9 @@ class Chain:
         if burnFlag:
             logging.info(
                     'no existing chain found, starting initial burn-in')
+            if nburnsteps < 2:
+                raise ValueError('nburnsteps must be >= 2, the burn-in is '
+                                 'run in two halves')
 
             # Run first half of burn-in starting from random positions.
             nburn0 = nburnsteps // 2
