@@ -20,15 +20,15 @@ cachedir.mkdir(parents=True, exist_ok=True)
 
 def parse_model_parameter_file(parfile):
     pardict = {}
-    f = open(parfile, 'r')
-    for line in f:
-        par = line.split("#")[0]
-        if par != "":
-            par = par.split(":")
-            key = par[0]
-            val = [ival.strip() for ival in par[1].split(",")]
+    with open(parfile, 'r') as f:
+        for line in f:
+            par = line.split("#")[0].strip()
+            if par == "":
+                # skip empty and comment lines
+                continue
+            key, par = par.split(":", 1)
+            val = [ival.strip() for ival in par.split(",")]
             for i in range(1, 3):
                 val[i] = float(val[i])
-            pardict.update({key: val})
-    f.close()
+            pardict.update({key.strip(): val})
     return pardict
