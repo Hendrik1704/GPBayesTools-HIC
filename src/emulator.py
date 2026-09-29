@@ -218,12 +218,6 @@ class Emulator(EmulatorBase):
         return Y
 
 
-    def getAvgTrainingDataRelError(self,):
-        relErr = np.mean(np.nan_to_num(self.model_data_err/self.model_data),
-                         axis=0)
-        return(relErr)
-
-
     def predict(self, X, return_cov=True):
         """
         Predict model output at `X`.
