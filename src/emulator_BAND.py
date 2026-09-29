@@ -16,7 +16,8 @@ from .emulator_base import EmulatorBase
 class EmulatorBAND(EmulatorBase):
     """
     Multidimensional Gaussian Process emulator wrapper for the GP emulators of 
-    the BAND collaboration.
+    the BAND collaboration. The number of principal components is chosen by
+    surmise, so there is no npc argument.
 
     With `logTrafo` set to True, the emulator is trained on the log of the
     observables and predict() returns the mean and covariance in log space.

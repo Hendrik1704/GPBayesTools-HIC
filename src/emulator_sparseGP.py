@@ -26,7 +26,7 @@ import optax
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
-from .emulator_base import EmulatorBase
+from .emulator_base import EmulatorBase, check_npc
 
 
 # =============================================================================
@@ -1237,7 +1237,7 @@ class EmulatorSparseGP(EmulatorBase):
     """
 
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
-                 n_pc=0.999, M=200, n_ensemble=1,
+                 npc=0.999, M=200, n_ensemble=1,
                  init_strategy='maxmin', bootstrap=False,
                  logTrafo=False, max_rel_uncertainty_data=None,
                  exp_and_cov_diagonal=False):
@@ -1248,8 +1248,10 @@ class EmulatorSparseGP(EmulatorBase):
             Path to the pickle file with training data.
         parameter_file : str
             Path to the model parameter file.
-        n_pc : float or int
-            Number of PCA components passed to the inner emulator.
+        npc : float or int
+            Number of principal components: int for a fixed number, float in
+            (0, 1) for the fraction of the explained variance (default 0.999).
+            Passed to the inner emulator as n_pc.
         M : int
             Number of inducing points.
         n_ensemble : int
@@ -1273,7 +1275,8 @@ class EmulatorSparseGP(EmulatorBase):
             Unlike the other emulators, the correlations between the
             observables are kept (default False).
         """
-        self.n_pc_ = n_pc
+        check_npc(npc)
+        self.npc_requested_ = npc
         self.M_ = M
         self.n_ensemble_ = n_ensemble
         self.init_strategy_ = init_strategy
@@ -1301,24 +1304,28 @@ class EmulatorSparseGP(EmulatorBase):
         Y_err = self.model_data_err[event_mask, :]
         logging.info('Train sparse GP with {} training points ...'.format(
             X.shape[0]))
+        # emulators saved with older versions store the argument as n_pc_
+        npc = getattr(self, 'npc_requested_', getattr(self, 'n_pc_', None))
 
         if self.n_ensemble_ <= 1:
             # verbose_members only exists for the ensemble
             fit_kwargs = {k: v for k, v in fit_kwargs.items()
                           if k != 'verbose_members'}
             self.emu_ = PCASparseGPEmulator(
-                n_pc=self.n_pc_, M=self.M_,
+                n_pc=npc, M=self.M_,
                 init_strategy=self.init_strategy_,
             )
             self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
+            self.npc = int(self.emu_.n_pc)
         else:
             self.emu_ = PCASparseGPEnsemble(
                 n_ensemble=self.n_ensemble_,
-                n_pc=self.n_pc_, M=self.M_,
+                n_pc=npc, M=self.M_,
                 init_strategy=self.init_strategy_,
                 bootstrap=self.bootstrap_,
             )
             self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
+            self.npc = int(self.emu_.members[0].n_pc)
 
     # -------------------------
     # Prediction

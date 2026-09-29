@@ -346,7 +346,7 @@ def test_t10(tmp_path):
     emu = EmulatorSparseGP(
         training_set_path=str(training_pkl),
         parameter_file=str(par_file),
-        n_pc=2,
+        npc=2,
         M=20,
         n_ensemble=1,
         logTrafo=False,

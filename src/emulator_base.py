@@ -14,6 +14,36 @@ import pickle
 from . import keep_trained_state, parse_model_parameter_file
 
 
+def check_npc(npc):
+    """Check the number of principal components `npc`: an int >= 1 (number of
+    PCs) or a float in (0, 1) (fraction of the explained variance)."""
+    if isinstance(npc, (int, np.integer)) and not isinstance(npc, bool):
+        if npc < 1:
+            raise ValueError("npc must be >= 1, got {}".format(npc))
+    elif isinstance(npc, (float, np.floating)):
+        if not 0 < npc < 1:
+            raise ValueError(
+                "A float npc is the fraction of the explained variance and "
+                "must be in (0, 1), got {}".format(npc))
+    else:
+        raise TypeError("npc must be an int or a float, got {!r}".format(npc))
+
+
+def number_of_pcs(npc, explained_variance_ratio):
+    """Number of PCs for `npc` (see check_npc), given the explained variance
+    ratios of all PCs. A float npc selects the smallest number of PCs that
+    explain more than this fraction of the variance, as in sklearn's PCA."""
+    n_available = len(explained_variance_ratio)
+    if isinstance(npc, (float, np.floating)):
+        n = np.searchsorted(np.cumsum(explained_variance_ratio), npc,
+                            side='right') + 1
+        return int(min(n, n_available))
+    if npc > n_available:
+        logging.warning('Only {} PCs available, using npc = {}'.format(
+            n_available, n_available))
+    return int(min(npc, n_available))
+
+
 class EmulatorBase:
     """
     Base class of the emulators.

@@ -11,12 +11,14 @@ import pickle
 from hetgpy import hetGP, homGP
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from .emulator_base import EmulatorBase
+from .emulator_base import EmulatorBase, check_npc
 
 class EmulatorHETGPy(EmulatorBase):
     """
     Emulator with heteroskedastic GPs of the hetgpy package for the principal
-    components of the (standardized) observables.
+    components of the (standardized) observables. `npc` is the number of PCs
+    (int) or the fraction of the explained variance (float in (0, 1),
+    default 0.99).
 
     With `logTrafo` set to True, the emulator is trained on the log of the
     observables and predict() returns the mean and covariance in log space.
@@ -26,14 +28,16 @@ class EmulatorHETGPy(EmulatorBase):
     """
     def __init__(self, training_set_path=".", parameter_file="ABCD.txt",
                  logTrafo=False, max_rel_uncertainty_data=None, 
-                 exp_and_cov_diagonal=False):
+                 exp_and_cov_diagonal=False, npc=0.99):
         super().__init__(training_set_path, parameter_file, logTrafo,
                          max_rel_uncertainty_data, exp_and_cov_diagonal)
 
-        # The outputs are standardized and transformed with a PCA retaining
-        # 99% of the variance in trainEmulator(). The GP emulators are then
+        # The outputs are standardized and transformed with a PCA in
+        # trainEmulator(), keeping npc PCs (int) or the PCs explaining the
+        # fraction npc (float) of the variance. The GP emulators are then
         # trained on the resulting principal components.
-        self.targetVariance = 0.99
+        check_npc(npc)
+        self.npc_requested_ = npc
 
     def _fit_output_pca(self, data):
         """Fit the output standardization and PCA to the training data
@@ -41,13 +45,19 @@ class EmulatorHETGPy(EmulatorBase):
         logging.info("Performing output PCA for hetGP emulator ...")
         self.outputScaler = StandardScaler()
         standardized_outputs = self.outputScaler.fit_transform(data)
-        self.outputPCA = PCA(n_components=self.targetVariance)
+        # emulators saved with older versions had a fixed targetVariance
+        npc = getattr(self, 'npc_requested_', getattr(self, 'targetVariance', 0.99))
+        if isinstance(npc, (int, np.integer)) and npc > min(data.shape):
+            logging.warning('Only {} PCs available, using npc = {}'.format(
+                min(data.shape), min(data.shape)))
+            npc = min(data.shape)
+        self.outputPCA = PCA(n_components=npc)
         self.model_data_pca = self.outputPCA.fit_transform(standardized_outputs)
         self.npc = self.outputPCA.n_components_
         self._compute_truncation_cov(data, self.model_data_pca)
         logging.info(
             "Output PCA uses {} PCs to explain {:.1f}% of the variance ...".format(
-                self.npc, self.targetVariance * 100.0
+                self.npc, 100.0 * self.outputPCA.explained_variance_ratio_.sum()
             )
         )
 

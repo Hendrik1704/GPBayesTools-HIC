@@ -16,7 +16,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process import kernels
 from sklearn.model_selection import learning_curve
 
-from .emulator_base import EmulatorBase
+from .emulator_base import EmulatorBase, check_npc, number_of_pcs
 
 
 class Emulator(EmulatorBase):
@@ -27,7 +27,9 @@ class Emulator(EmulatorBase):
 
     The model training data are standardized (subtract mean and scale to unit
     variance), then transformed through PCA.  The first `npc` principal
-    components (PCs) are emulated by independent Gaussian processes (GPs).  The
+    components (PCs) are emulated by independent Gaussian processes (GPs),
+    where `npc` is the number of PCs (int) or the fraction of the explained
+    variance (float in (0, 1)).  The
     remaining components are neglected, which is equivalent to assuming they
     are standard zero-mean unit-variance GPs.
 
@@ -57,6 +59,7 @@ class Emulator(EmulatorBase):
                          max_rel_uncertainty_data, exp_and_cov_diagonal)
         self.perform_no_PCA_ = perform_no_PCA
 
+        check_npc(npc)
         self.npc_requested_ = npc
         self.npc = npc
         self.nrestarts = nrestarts
@@ -72,7 +75,10 @@ class Emulator(EmulatorBase):
         """
         scaler = StandardScaler()
         pca = PCA(whiten=True, svd_solver='full')
-        return pca.fit_transform(scaler.fit_transform(self.model_data))[:, :self.npc]
+        Z = pca.fit_transform(scaler.fit_transform(self.model_data))
+        npc = number_of_pcs(getattr(self, 'npc_requested_', self.npc),
+                            pca.explained_variance_ratio_)
+        return Z[:, :npc]
 
 
     def outputPCAvsParam(self):
@@ -99,11 +105,8 @@ class Emulator(EmulatorBase):
             # `npc` components but save the full PC transformation for later.
             Z = self.pca.fit_transform(standardized_data)
             # the PCA has at most min(n_training_points, nobs) components
-            self.npc = min(getattr(self, 'npc_requested_', self.npc),
-                           self.pca.n_components_)
-            if self.npc < getattr(self, 'npc_requested_', self.npc):
-                logging.warning('Only {} PCs available, using npc = {}'.format(
-                    self.pca.n_components_, self.npc))
+            self.npc = number_of_pcs(getattr(self, 'npc_requested_', self.npc),
+                                     self.pca.explained_variance_ratio_)
             Z = Z[:, :self.npc]
 
             logging.info('{} PCs explain {:.5f} of variance'.format(
