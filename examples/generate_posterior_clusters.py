@@ -73,7 +73,7 @@ def generate_posterior_clusters(PATH_pklfile_chain_sorted, num_samples=None, num
 
 if __name__ == '__main__':
     if len(sys.argv) != 4:
-        print("Usage: python sort_chain_likelihood.py <path_to_chain_file> <number_of_most_likely_samples_considered> <number_of_clusters>")
+        print("Usage: python generate_posterior_clusters.py <path_to_chain_file> <number_of_most_likely_samples_considered> <number_of_clusters>")
         print("Arguments:")
         print("  <path_to_chain_file>: Path to the pickle file containing the chain data from pocoMC.")
         print("  <number_of_most_likely_samples_considered>: Number of most likely samples to consider for clustering. Use 'None' to consider all samples.")

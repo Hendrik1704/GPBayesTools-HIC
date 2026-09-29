@@ -24,7 +24,7 @@ This requires a file specifying the parameter ranges, see for example `examples/
 
 ## Posterior Cluster Sampling
 
-The `posterior_cluster_sampling.py` script in the `examples` directory can be used to sample parameter 
+The `generate_posterior_clusters.py` script in the `examples` directory can be used to sample parameter 
 clusters from the posterior chain file after a Bayesian inference run and propagate model
 uncertainties to the observables.
 The final `cluster_centers.txt` file contains the sampled parameter clusters as separate columns.

@@ -6,14 +6,13 @@ Run ``python -m src.design --help`` for usage information.
 
 .. warning::
 
-    This module uses the R `lhs package
-    <https://cran.r-project.org/package=lhs>`_ to generate maximin
-    Latin-hypercube samples.  As far as I know, there is no equivalent library
-    for Python (I am aware of `pyDOE <https://pythonhosted.org/pyDOE>`_, but
-    that uses a much more rudimentary algorithm for maximin sampling).
+    This module uses the R `MaxPro package
+    <https://cran.r-project.org/package=MaxPro>`_ to generate maximum
+    projection Latin-hypercube samples.  As far as I know, there is no
+    equivalent library for Python.
 
-    This means that R must be installed with the lhs package (run
-    ``install.packages('lhs')`` in an R session).
+    This means that R must be installed with the MaxPro package (run
+    ``install.packages('MaxPro')`` in an R session).
 
 """
 

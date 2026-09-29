@@ -15,5 +15,5 @@ optax>=0.2.4
 # for running the tests in tests/ (optional)
 pytest>=8.3.4
 
-# for the design.py script (optional) you have to install R and the 'lhs' package in R
+# for the design.py script (optional) you have to install R and the 'MaxPro' package in R
 
