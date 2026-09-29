@@ -73,7 +73,10 @@ def number_of_pcs(npc, explained_variance_ratio):
         n = np.searchsorted(np.cumsum(explained_variance_ratio), npc, side="right") + 1
         return int(min(n, n_available))
     if npc > n_available:
-        logger.warning(f"Only {n_available} PCs available, using npc = {n_available}")
+        logger.warning(
+            f"npc = {npc} is larger than the number of available PCs, using all "
+            f"{n_available} PCs"
+        )
     return int(min(npc, n_available))
 
 
@@ -223,7 +226,7 @@ class EmulatorBase:
 
     def _load_training_data_pickle(self, data_file):
         """Read the training data of all parameter points from a pickle file."""
-        logger.info(f"loading training data from {data_file} ...")
+        logger.info(f"Loading the training data from {data_file} ...")
         self.model_data = []
         self.model_data_err = []
         self.design_points = []
@@ -233,12 +236,15 @@ class EmulatorBase:
         # Sort keys in ascending order
         sorted_event_ids = sorted(data_dict.keys(), key=lambda x: int(x))
 
-        discarded_points = 0
+        n_nonfinite = 0
+        n_filtered = 0
         for event_id in sorted_event_ids:
             temp_data = data_dict[event_id]["obs"].transpose()
             if not np.all(np.isfinite(temp_data[:, 0])):
-                logger.info(f"Discard Parameter {event_id}, non-finite observables")
-                discarded_points += 1
+                logger.warning(
+                    f"Discarding training point {event_id}: non-finite observables"
+                )
+                n_nonfinite += 1
                 continue
             if self.log_trafo and np.any(temp_data[:, 0] <= 0):
                 raise ValueError(
@@ -249,9 +255,11 @@ class EmulatorBase:
                 stat_err_max = self._max_rel_error(temp_data)
                 if stat_err_max > self.max_rel_uncertainty_data:
                     logger.info(
-                        f"Discard Parameter {event_id}, stat err = {stat_err_max:.2f}"
+                        f"Discarding training point {event_id}: relative "
+                        f"statistical error {stat_err_max:.3g} > "
+                        f"{self.max_rel_uncertainty_data}"
                     )
-                    discarded_points += 1
+                    n_filtered += 1
                     continue
             self.design_points.append(data_dict[event_id]["parameter"])
             if not self.log_trafo:
@@ -269,14 +277,15 @@ class EmulatorBase:
         n_nonfinite_err = int(np.sum(~np.isfinite(self.model_data_err)))
         if n_nonfinite_err > 0:
             logger.warning(
-                f"{n_nonfinite_err} non-finite statistical errors of the training "
-                "data are set to 0"
+                f"Setting {n_nonfinite_err} non-finite statistical errors of the "
+                "training data to 0"
             )
             self.model_data_err[~np.isfinite(self.model_data_err)] = 0.0
-        logger.info("All training data are loaded.")
+        n_discarded = n_nonfinite + n_filtered
         logger.info(
-            f"Training dataset size: {len(self.model_data)}, "
-            f"discarded points: {discarded_points}"
+            f"Loaded {len(self.model_data)} training points with "
+            f"{self.model_data.shape[1]} observables, discarded {n_discarded} "
+            f"({n_nonfinite} non-finite, {n_filtered} with too large errors)"
         )
 
     def train_emulator_auto_mask(self, **train_kwargs):
@@ -450,7 +459,10 @@ class EmulatorBase:
         ValueError
             If `n_test_points` is not between 0 and nev - 1.
         """
-        logger.info("Validating emulator ...")
+        logger.info(
+            f"Validating the emulator at {n_test_points} "
+            f"{'random' if random_points else 'last'} test points ..."
+        )
         train_mask, test_mask = self._validation_masks(
             n_test_points, random_points, seed
         )
@@ -492,7 +504,10 @@ class EmulatorBase:
         ValueError
             If `n_test_points` is not between 0 and nev - 1.
         """
-        logger.info("Validating emulator at the training points ...")
+        logger.info(
+            f"Validating the emulator at the training points without "
+            f"{n_test_points} {'random' if random_points else 'last'} test points ..."
+        )
         train_mask, _ = self._validation_masks(n_test_points, random_points, seed)
         self.train_emulator(train_mask, **train_kwargs)
         return self._validation_output(train_mask)
