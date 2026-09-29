@@ -18,6 +18,15 @@ The following wrappers for MC sampling are included:
 
 We recommend to use the `pocoMC` sampler.
 
+## Emulator uncertainty
+
+The `predict` function of all emulators returns by default the uncertainty of the emulated
+model function, which is used in the MCMC, since the experimental data are compared with the
+expectation value of the model. With `include_noise=True`, the noise that the GPs fitted to the
+(statistically noisy) training data is included as well, i.e. the uncertainty of a new noisy
+simulation. The validation functions `testEmulatorErrors` and
+`testEmulatorErrorsWithTrainingPoints` compare with such simulations and include the noise.
+
 ## Emulators trained on the log of the observables
 
 All emulators have a `logTrafo` option to train them on the logarithm of the observables.
