@@ -346,14 +346,22 @@ class Chain:
 
 
     def run_mcmc(self, nsteps=500, nburnsteps=None, nwalkers=None,
-                 status=None, nthin=10, skip_initial_state_check=False):
+                 status=None, nthin=10, skip_initial_state_check=False,
+                 seed=None):
         """
         Markov chain Monte Carlo model calibration using the `affine-invariant 
         ensemble sampler (emcee) <http://dfm.io/emcee>`_.
         
         Run MCMC model calibration. If the chain already exists, continue from
         the last point, otherwise burn-in and start the chain.
+
+        If `seed` is given, numpy's global random number generator is seeded
+        with it before the run, which makes the chain reproducible.
         """
+        if seed is not None:
+            # emcee initializes its random number generator from numpy's
+            # global state
+            np.random.seed(seed)
         chain_file = self.chain_path('emcee')
         chain_data = {}
         try:
@@ -723,11 +731,16 @@ class Chain:
 
 
     def run_MCMC_PTLMC(self, nsteps=500, nwalkers=16, ntemps=50, maxtemp=100, 
-                       nstartparameters=1000):
+                       nstartparameters=1000, seed=None):
         """
         This function wrapps the PTLMC package to run the parallel tempering 
         ensemble MCMC with Langevin Monte Carlo
+
+        If `seed` is given, numpy's global random number generator is seeded
+        with it before the run, which makes the chain reproducible.
         """
+        if seed is not None:
+            np.random.seed(seed)
         chain_data = {}
 
         logging.info('Starting MCMC ...')
