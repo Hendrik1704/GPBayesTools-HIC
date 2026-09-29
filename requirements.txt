@@ -1,3 +1,4 @@
+# same dependencies as in pyproject.toml, for use without installing the package
 surmise==1.0.0
 pocomc==1.2.6
 hetgpy==1.0.4

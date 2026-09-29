@@ -51,9 +51,25 @@ clusters from the posterior chain file after a Bayesian inference run and propag
 uncertainties to the observables.
 The final `cluster_centers.txt` file contains the sampled parameter clusters as separate columns.
 
+## Installation
+
+The package can be installed with pip from the root directory of the repository:
+
+```
+pip install .
+```
+
+Use `pip install -e ".[dev]"` for an editable installation with the dependencies for the tests
+and the code formatting. The modules are then imported from `gpbayestools`, e.g.
+`from gpbayestools.emulator_BAND import EmulatorBAND`.
+Emulators saved with versions < 3.0.0, in which the package was called `src`, can be loaded
+with `gpbayestools.load_emulator`.
+
 ## Requirements
 
-Check the `requirements.txt` file for the dependencies of this code.
+The dependencies are listed in `pyproject.toml` and, for use without installation, in the
+`requirements.txt` file.
+The `design.py` module additionally requires R with the MaxPro or lhs package.
 
 ## Tests
 

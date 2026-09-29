@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpbayestools-hic"
+version = "3.0.0"
+description = "Gaussian Process Bayesian Toolkit with Monte Carlo Sampler Integration for Heavy Ion Collisions"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Sayed Afrid Jahan" },
+    { name = "Hendrik Roch" },
+]
+# surmise 1.0.0 requires Python >= 3.11
+requires-python = ">=3.11"
+# versions that work for us, maybe also lower versions work, but we have not
+# tested them
+dependencies = [
+    "surmise==1.0.0",
+    "pocomc==1.2.6",
+    "hetgpy==1.0.4",
+    "emcee>=3.1.4",
+    "numpy>=1.26.0",
+    "scipy>=1.10.1",
+    "dill>=0.3.8",
+    "scikit-learn>=1.4.0",
+    "multiprocess>=0.70.16",
+    "jax>=0.10.2",
+    "optax>=0.2.4",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3.4"]
+dev = ["pytest>=8.3.4", "ruff>=0.6"]
+
+[project.urls]
+Repository = "https://github.com/Hendrik1704/GPBayesTools-HIC"
+Changelog = "https://github.com/Hendrik1704/GPBayesTools-HIC/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+packages = ["gpbayestools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+# the notebooks are examples and are not formatted
+extend-exclude = ["*.ipynb"]

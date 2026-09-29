@@ -6,3 +6,8 @@ __pycache__/
 *.so
 
 
+
+# Packaging
+*.egg-info/
+build/
+dist/
