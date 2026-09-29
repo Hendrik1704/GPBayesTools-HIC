@@ -3,6 +3,9 @@
 ## v3.0.0
 Date: not released yet
 
+New features:
+- `Design` takes a `method` argument to choose between maximum projection Latin-hypercube designs (`'maxpro'`, R package MaxPro, default as before) and maximin designs (`'maximin'`, R package lhs).
+
 New emulators:
 - Add the `EmulatorHETGPy` emulator, a wrapper for the heteroskedastic GPs of the [hetgpy](https://hetgpy.readthedocs.io) package combined with a PCA of the outputs.
 - Add the `EmulatorSparseGP` emulator, a sparse variational GP emulator (SVGP) with PCA of the outputs, implemented with JAX. It can be trained as a single emulator or as an ensemble.
@@ -38,7 +41,6 @@ Bug fixes:
 - `compute_log_likelihood_for_chain` creates its output directory before the computation.
 - Empty lines in parameter files are skipped, and keys are stripped.
 - Fix the chain loading and the error bars in the `ClosureTest` notebook, and the log-likelihood output in the `RunBayesianAnalysis` notebook.
-- The Latin-hypercube designs need the R package MaxPro (not lhs), as now stated in the documentation.
 
 Tests:
 - Add tests for the hetGP and sparse GP emulators in `tests/`, which can be run with pytest.
