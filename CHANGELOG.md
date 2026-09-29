@@ -89,6 +89,7 @@ Bug fixes:
 - `run_emcee` checks `n_steps`, `n_thin` and `n_burn_steps` before the sampling instead of failing after the burn-in or the whole run (`n_thin=0` failed after the run without writing the chain). The thinning is stored in the chain file and must match when a chain is continued; `n_thin=None` (new default) uses 10 for a new chain and the stored thinning otherwise. A warning is logged if `n_steps` is not a multiple of `n_thin`.
 - `parse_model_parameter_file` raises a `ValueError` with the file and line number for malformed lines, non-numeric ranges, min >= max and parameters that are defined twice. Before, a duplicate parameter silently replaced the first one, and min == max gave an infinite log prior.
 - The perturbation of the optimized PTLMC starting points uses the inverse Hessian as covariance (the surmise code used a rotated covariance) and stops after a few step reductions, so that it cannot loop forever when the log posterior at the optimum is not finite.
+- `Design.write_files` accepts the base directory as a string. `Design` raises a clear error for MaxPro designs with one parameter (R crashed) and includes the error message of R when R fails. The docstring says that a validation design needs a different seed than the main design.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
@@ -101,6 +102,7 @@ Development:
 
 Tests:
 - Add tests in `tests/` for all emulators, the emulator base class and the MCMC module, which can be run with `python -m pytest tests`. The MCMC tests compare the samples of emcee, PTLMC and pocoMC with an analytically known posterior.
+- Add tests of `Design`, with the R call replaced by a random design.
 
 [Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v2.0.1...v3.0.0)
 

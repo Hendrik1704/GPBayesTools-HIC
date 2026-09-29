@@ -23,6 +23,7 @@ parameter file and writes the input files for the physics model, see
 import logging
 import subprocess
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 
@@ -48,8 +49,13 @@ def _generate_with_r(method, r_code, npoints, ndim, seed):
 
     logger.debug(f"Design not in the cache {cachefile}, generating it with R ...")
     proc = subprocess.run(
-        ["R", "--slave"], input=r_code.encode(), stdout=subprocess.PIPE, check=True
+        ["R", "--slave"], input=r_code.encode(), capture_output=True, check=False
     )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"R failed to generate the {method} design (exit code "
+            f"{proc.returncode}):\n{proc.stderr.decode().strip()}"
+        )
     lhs = np.array(
         [line.split() for line in proc.stdout.decode().splitlines()], dtype=float
     )
@@ -161,8 +167,10 @@ class Design:
     npoints : int, default=500
         Number of design points.
     validation : bool, default=False
-        If False, the main (training) design is created, if True, the
-        validation design.
+        If True, the design is a validation design, which only changes the
+        output directory of `write_files` (``design_type``). A validation
+        design needs a different `seed` than the main design, with the same
+        seed both designs are identical.
     seed : int or None, default=None
         Random seed. If None, a seed is generated from the current time. It
         is logged and stored in ``seed`` to be able to reproduce the design.
@@ -192,7 +200,10 @@ class Design:
     Raises
     ------
     ValueError
-        If `method` is unknown.
+        If `method` is unknown, or if `method` is 'maxpro' and there is only
+        one parameter (MaxPro requires at least two).
+    RuntimeError
+        If R fails to generate the design.
     """
 
     def __init__(
@@ -207,6 +218,10 @@ class Design:
         self.design_type = "validation" if validation else "main"
 
         self.ndim = len(self.pardict.keys())
+        if method == "maxpro" and self.ndim < 2:
+            raise ValueError(
+                "MaxPro designs require at least two parameters, use method='maximin'"
+            )
 
         # use padded numbers for design point names
         fmt = "parameter_{:0" + str(len(str(npoints - 1))) + "d}"
@@ -247,16 +262,17 @@ class Design:
         """
         Write an input file for each design point.
 
-        The files are written to ``basedir / type``, one file per design point
-        named after the point, with one line ``name value`` per parameter.
+        The files are written to ``basedir / design_type``, one file per
+        design point named after the point, with one line ``name value`` per
+        parameter.
 
         Parameters
         ----------
-        basedir : pathlib.Path
+        basedir : str or path-like
             Base directory of the input files. It is created if it does not
             exist.
         """
-        outdir = basedir / self.design_type
+        outdir = Path(basedir) / self.design_type
         outdir.mkdir(parents=True, exist_ok=True)
 
         for point, row in zip(self.points, self.array, strict=True):
