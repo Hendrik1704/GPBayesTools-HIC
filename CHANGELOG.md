@@ -79,6 +79,7 @@ Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
 
 Development:
+- The core sparse GP code (`PCASparseGPEmulator`, `PCASparseGPEnsemble`) is in `gpbayestools/svgp.py` (still importable from `emulator_sparse_gp`), and the PTLMC sampler from surmise in `gpbayestools/ptlmc.py`.
 - Consistent code style: module loggers (`logging.getLogger(__name__)`) instead of the root logger and `print`, importing the package no longer configures the logging of the program, NumPy-style docstrings for all public classes and functions, and lint rules (ruff) that are checked in the workflow.
 - GitHub workflows run the tests (Python 3.11 and 3.12) and format the code with ruff on pushes and pull requests to `main` and `devel`. On pull requests, the formatting is only checked.
 - The code is formatted with ruff.
