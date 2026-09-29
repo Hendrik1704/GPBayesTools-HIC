@@ -119,7 +119,9 @@ class PCASparseGPEmulator:
             Inducing point init strategy: 'maxmin' (default, best coverage in
             moderate D), 'kmeans', 'kmeans_pp', 'random', 'sobol'
         """
+        # n_pc is the number of PCs after fit(), n_pc_requested the argument
         self.n_pc = n_pc
+        self.n_pc_requested = n_pc
         self.M = M
         self.key = jax.random.PRNGKey(0) if key is None else key
         self.init_strategy = init_strategy
@@ -323,7 +325,7 @@ class PCASparseGPEmulator:
                 print(f"Output stats - mean: [{self.Ym.min():.3f}, {self.Ym.max():.3f}], "
                       f"std: [{self.Ys.min():.3f}, {self.Ys.max():.3f}]")
 
-            self.pca = PCA(n_components=self.n_pc)
+            self.pca = PCA(n_components=getattr(self, 'n_pc_requested', self.n_pc))
             Yp = self.pca.fit_transform(np.array(Yn))
             self.n_pc = self.pca.n_components_
             explained_var = np.sum(self.pca.explained_variance_ratio_)
