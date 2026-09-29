@@ -1,17 +1,11 @@
 """
 Tests for the wrapper of the surmise emulators (gpbayestools/emulator_band.py).
 
-The tests require surmise >= 1.0.0 and are skipped otherwise.
 Run with ``python -m pytest tests/test_emulator_band.py``.
 """
 
 import numpy as np
 import pytest
-
-surmise = pytest.importorskip("surmise")
-if not hasattr(surmise, "set_RNG"):
-    pytest.skip("requires surmise >= 1.0.0", allow_module_level=True)
-
 from conftest import N_OBS, true_model
 
 from gpbayestools.emulator_band import EmulatorBAND

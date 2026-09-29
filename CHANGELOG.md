@@ -104,6 +104,7 @@ Development:
 Tests:
 - Add tests in `tests/` for all emulators, the emulator base class and the MCMC module, which can be run with `python -m pytest tests`. The MCMC tests compare the samples of emcee, PTLMC and pocoMC with an analytically known posterior.
 - Add tests of `Design`, with the R call replaced by a random design.
+- The test that the validation includes the noise runs for all emulators, and the guards for surmise < 1.0.0, which is not supported, are removed.
 
 [Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v2.0.1...v3.0.0)
 

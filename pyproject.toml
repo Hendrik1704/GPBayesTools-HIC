@@ -64,5 +64,3 @@ ignore = ["N806", "N803"]
 [tool.ruff.lint.per-file-ignores]
 # jax_enable_x64 must be set before the other JAX imports
 "gpbayestools/svgp.py" = ["E402"]
-# the imports require surmise >= 1.0.0, which is checked first
-"tests/test_emulator_band.py" = ["E402"]

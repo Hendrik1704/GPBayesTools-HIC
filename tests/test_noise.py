@@ -21,9 +21,6 @@ warnings.filterwarnings("ignore", module="sklearn")
 
 
 def band_emulator(*args, **kwargs):
-    surmise = pytest.importorskip("surmise")
-    if not hasattr(surmise, "set_RNG"):
-        pytest.skip("requires surmise >= 1.0.0")
     from gpbayestools.emulator_band import EmulatorBAND
 
     return EmulatorBAND(*args, seed=1, **kwargs)
@@ -118,15 +115,13 @@ def test_truncation_signal():
 
 def test_validation_includes_noise(trained):
     name, emu, train_kwargs = trained
-    if name not in ("EmulatorSklearn", "hetGPy"):
-        pytest.skip("deterministic training needed to compare")
     pred, pred_err, data, _ = emu.test_emulator_errors(10, **train_kwargs)
     # the same emulator trained without the test points
     mask = np.ones(emu.nev, dtype=bool)
     mask[-10:] = False
     emu_copy = type(emu).__new__(type(emu))
     emu_copy.__dict__.update(emu.__dict__)
-    emu_copy.train_emulator(mask)
+    emu_copy.train_emulator(mask, **train_kwargs)
     _, cov = emu_copy.predict(emu.design_points[~mask], include_noise=True)
     np.testing.assert_allclose(pred_err, np.sqrt(np.diagonal(cov, axis1=1, axis2=2)))
 
