@@ -42,6 +42,7 @@ Changes that are not backward compatible:
 - With mini-batches, the SVGP training returns the parameters with the best exponential moving average of the ELBO instead of the best single-batch ELBO, which selected the parameters of the luckiest batch.
 - The spread between the members of the sparse GP ensemble (`PCASparseGPEnsemble`) is the covariance of the equal-weight mixture (divided by K instead of K-1), as the law of total variance in the docstring, which gives a slightly smaller ensemble uncertainty for few members. The keys of the variance decomposition are `within_members` and `between_members` (were `aleatoric` and `epistemic`; the GP posterior variance is not aleatoric).
 - The seed of `run_pocomc` is called `seed` like for the other samplers (was `random_state`) and is `None` by default (was 42). pocoMC sets it as the seed of numpy's global random number generator, so the default 42 made later code that uses this generator, e.g. `run_emcee` without a seed, deterministic.
+- The emulators have no default paths for the training data and the parameter file (the defaults `"."` and `"ABCD.txt"` could not work), and all other constructor arguments are keyword-only, since their order differed between the emulators, e.g. `EmulatorSklearn(training_file, parameter_file, npc=10)`.
 
 Bug fixes:
 - Fix `EmulatorSklearn.predict` with `return_cov=True`, which failed with NumPy 2 (`np.array(..., copy=False)`). The same applies to the log prior, likelihood and posterior of `BayesianAnalysis` for list inputs.

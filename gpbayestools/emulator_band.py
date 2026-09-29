@@ -27,11 +27,11 @@ class EmulatorBAND(EmulatorBase):
 
     Parameters
     ----------
-    training_set_path : str, default="."
+    training_set_path : str or path-like
         Path to the pickle file with the training data, a dictionary
         ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
         nobs) with the values and statistical errors}}``.
-    parameter_file : str, default="ABCD.txt"
+    parameter_file : str or path-like
         Path to the model parameter file.
     method : {"PCGP", "PCSK", "PCGPwImpute", "PCGPwM"}, default="PCGP"
         surmise emulation method. PCSK uses the statistical errors of the
@@ -66,8 +66,9 @@ class EmulatorBAND(EmulatorBase):
 
     def __init__(
         self,
-        training_set_path=".",
-        parameter_file="ABCD.txt",
+        training_set_path,
+        parameter_file,
+        *,
         method="PCGP",
         log_trafo=False,
         max_rel_uncertainty_data=None,
@@ -83,9 +84,9 @@ class EmulatorBAND(EmulatorBase):
         super().__init__(
             training_set_path,
             parameter_file,
-            log_trafo,
-            max_rel_uncertainty_data,
-            exp_and_cov_diagonal,
+            log_trafo=log_trafo,
+            max_rel_uncertainty_data=max_rel_uncertainty_data,
+            exp_and_cov_diagonal=exp_and_cov_diagonal,
         )
 
     def train_emulator(self, event_mask):

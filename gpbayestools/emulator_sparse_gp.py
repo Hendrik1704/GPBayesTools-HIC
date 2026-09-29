@@ -45,8 +45,9 @@ class EmulatorSparseGP(EmulatorBase):
 
     def __init__(
         self,
-        training_set_path=".",
-        parameter_file="ABCD.txt",
+        training_set_path,
+        parameter_file,
+        *,
         npc=0.999,
         n_inducing=200,
         n_ensemble=1,
@@ -62,10 +63,10 @@ class EmulatorSparseGP(EmulatorBase):
 
         Parameters
         ----------
-        training_set_path : str
-            Path to the pickle file with the training data (default '.').
-        parameter_file : str
-            Path to the model parameter file (default 'ABCD.txt').
+        training_set_path : str or path-like
+            Path to the pickle file with the training data.
+        parameter_file : str or path-like
+            Path to the model parameter file.
         npc : float or int
             Number of principal components: int for a fixed number, float in
             (0, 1) for the fraction of the explained variance (default 0.999).
@@ -124,9 +125,9 @@ class EmulatorSparseGP(EmulatorBase):
         super().__init__(
             training_set_path,
             parameter_file,
-            log_trafo,
-            max_rel_uncertainty_data,
-            exp_and_cov_diagonal,
+            log_trafo=log_trafo,
+            max_rel_uncertainty_data=max_rel_uncertainty_data,
+            exp_and_cov_diagonal=exp_and_cov_diagonal,
         )
 
     # -------------------------

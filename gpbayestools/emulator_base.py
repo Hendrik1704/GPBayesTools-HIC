@@ -115,17 +115,18 @@ class EmulatorBase:
 
     It loads the training data and the model parameter file and implements
     the validation functions and `sample_y`. Training points with non-finite
-    observables are always discarded. Subclasses implement
+    observables are always discarded. All arguments except the two paths are
+    keyword-only in all emulators. Subclasses implement
     ``train_emulator(event_mask)`` and ``predict(X, return_cov=True,
     include_noise=False)``.
 
     Parameters
     ----------
-    training_set_path : str, default="."
+    training_set_path : str or path-like
         Path to the pickle file with the training data, a dictionary
         ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
         nobs) with the values and statistical errors}}``.
-    parameter_file : str, default="ABCD.txt"
+    parameter_file : str or path-like
         Path to the model parameter file.
     log_trafo : bool, default=False
         If True, the emulator is trained on the log of the observables, which
@@ -155,8 +156,9 @@ class EmulatorBase:
 
     def __init__(
         self,
-        training_set_path=".",
-        parameter_file="ABCD.txt",
+        training_set_path,
+        parameter_file,
+        *,
         log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
