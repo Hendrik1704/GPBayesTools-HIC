@@ -93,6 +93,7 @@ Bug fixes:
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
+- The `PlotMCMC` notebook reads the chain files of the samplers (`chain_<sampler>.pkl`), also handles the two-dimensional pocoMC samples and uses raw strings for the LaTeX labels. The `SensitivityAnalysis` notebook works with NumPy 2.
 
 Development:
 - The core sparse GP code (`PCASparseGPEmulator`, `PCASparseGPEnsemble`) is in `gpbayestools/svgp.py` (still importable from `emulator_sparse_gp`), and the PTLMC sampler from surmise in `gpbayestools/ptlmc.py`.
