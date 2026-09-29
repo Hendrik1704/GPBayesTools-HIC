@@ -11,7 +11,7 @@ import pickle
 from hetgpy import hetGP, homGP
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from . import cachedir, parse_model_parameter_file
+from . import cachedir, keep_trained_state, parse_model_parameter_file
 
 class EmulatorHETGPy:
     """
@@ -379,6 +379,7 @@ class EmulatorHETGPy:
         else:
             return fpredmean
         
+    @keep_trained_state
     def testEmulatorErrors(self, number_test_points=1):
         """
         This function uses (nev - number_test_points) points to train the 
@@ -431,6 +432,7 @@ class EmulatorHETGPy:
         return (emulator_predictions, emulator_predictions_err, 
                     validation_data, validation_data_err)
     
+    @keep_trained_state
     def testEmulatorErrorsWithTrainingPoints(self, number_test_points=1):
         """
         This function uses number_test_points points to train the 

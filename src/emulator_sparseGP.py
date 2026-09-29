@@ -27,7 +27,7 @@ import optax
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
-from . import cachedir, parse_model_parameter_file
+from . import cachedir, keep_trained_state, parse_model_parameter_file
 
 
 # =============================================================================
@@ -1459,6 +1459,7 @@ class EmulatorSparseGP:
     # -------------------------
     # Validation
     # -------------------------
+    @keep_trained_state
     def testEmulatorErrors(self, number_test_points=1, **fit_kwargs):
         """
         Leave-one-out (or leave-n-out) emulator validation.

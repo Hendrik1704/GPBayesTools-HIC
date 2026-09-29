@@ -17,7 +17,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process import kernels
 from sklearn.model_selection import learning_curve
 
-from . import cachedir, parse_model_parameter_file
+from . import cachedir, keep_trained_state, parse_model_parameter_file
 
 
 class Emulator:
@@ -103,7 +103,10 @@ class Emulator:
 
     def trainEmulator(self, eventMask, kernel_type="RBF"):
         data_to_use = self.model_data[eventMask, :]
-        # Standardize the input data
+        # Standardize the input data. New scaler and PCA objects are used,
+        # so that the previously trained ones are not modified.
+        self.scaler = StandardScaler()
+        self.pca = PCA(whiten=True, svd_solver='full')
         standardized_data = self.scaler.fit_transform(data_to_use)
 
         if self.perform_no_PCA_:
@@ -429,6 +432,7 @@ class Emulator:
             return None
 
 
+    @keep_trained_state
     def testEmulatorErrors(self, nTestPoints=1):
         """
         This function uses (nev - nTestPoints) points to train the emulator
@@ -475,6 +479,7 @@ class Emulator:
                validationData, validationDataErr)
 
 
+    @keep_trained_state
     def testEmulatorErrorsWithTrainingPoints(self, nTestPoints=1):
         """
         This function uses number_test_points points to train the 

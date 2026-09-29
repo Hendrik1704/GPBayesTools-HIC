@@ -1,9 +1,13 @@
 """ Project initialization and common objects. """
 
+import copy
+import functools
 import logging
 import os
 from pathlib import Path
 import sys
+
+import numpy as np
 
 
 logging.basicConfig(
@@ -16,6 +20,27 @@ workdir = Path(os.getenv('WORKDIR', '.'))
 
 cachedir = workdir / 'cache'
 cachedir.mkdir(parents=True, exist_ok=True)
+
+
+def keep_trained_state(method):
+    """
+    Decorator for emulator validation methods, which train the emulator on a
+    subset of the training data. The attributes of the emulator are restored
+    after the call, so that the trained emulator is not changed. Training must
+    therefore replace attributes instead of modifying them in place. Random
+    number generators are copied, so that their state is restored as well.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        state = {key: copy.deepcopy(val)
+                 if isinstance(val, np.random.Generator) else val
+                 for key, val in self.__dict__.items()}
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self.__dict__.clear()
+            self.__dict__.update(state)
+    return wrapper
 
 
 def parse_model_parameter_file(parfile):
