@@ -158,9 +158,9 @@ class EmulatorBAND:
         fpredcov = self._full_covariance(gp)
 
         if self.exp_and_cov_diagonal_:
-            fcov = np.zeros((theta.shape[0], self.nobs, self.nobs))
+            fcov = np.zeros_like(fpredcov)
             # Extract the diagonal of the covariance matrix for each prediction
-            for i in range(theta.shape[0]):
+            for i in range(fpredcov.shape[0]):
                 diagonal_cov = np.zeros((self.nobs, self.nobs))
                 fstd = np.sqrt(np.diag(fpredcov[i]))
                 np.fill_diagonal(diagonal_cov, (fstd * fpredmean.T[i])**2)
@@ -189,9 +189,9 @@ class EmulatorBAND:
         fpredcov = self._full_covariance(gp)
 
         if self.exp_and_cov_diagonal_:
-            fcov = np.zeros((X.shape[0], self.nobs, self.nobs))
+            fcov = np.zeros_like(fpredcov)
             # Extract the diagonal of the covariance matrix for each prediction
-            for i in range(X.shape[0]):
+            for i in range(fpredcov.shape[0]):
                 diagonal_cov = np.zeros((self.nobs, self.nobs))
                 fstd = np.sqrt(np.diag(fpredcov[i]))
                 np.fill_diagonal(diagonal_cov, (fstd * fpredmean[i])**2)
