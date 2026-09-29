@@ -180,8 +180,9 @@ class EmulatorBase:
             )
 
     # attributes of the emulators saved with versions < 3.0.0 and their
-    # current names, in the order in which they are renamed, and default
-    # values of attributes that did not exist in these versions
+    # current names (None for removed attributes), in the order in which they
+    # are renamed, and default values of attributes that did not exist in
+    # these versions
     _legacy_attributes = []
     _legacy_defaults = {}
 
@@ -201,7 +202,9 @@ class EmulatorBase:
             ("exp_and_cov_diagonal_", "exp_and_cov_diagonal"),
         ] + cls._legacy_attributes
         for old, new in renames:
-            if old in state and new not in state:
+            if new is None:
+                state.pop(old, None)
+            elif old in state and new not in state:
                 state[new] = state.pop(old)
         for name, default in cls._legacy_defaults.items():
             if name not in state:

@@ -81,6 +81,13 @@ def test_seed(training_file, param_file, test_points):
 
     np.testing.assert_array_equal(predict(3), predict(3))
 
+    # training the same object again gives the same emulator
+    emu = EmulatorBAND(training_file, param_file, seed=3)
+    emu.train_emulator_auto_mask()
+    first = emu.predict(test_points)[0]
+    emu.train_emulator_auto_mask()
+    np.testing.assert_array_equal(emu.predict(test_points)[0], first)
+
 
 def test_validation(training_file, param_file, test_points):
     emu = EmulatorBAND(training_file, param_file, seed=1)
@@ -93,11 +100,9 @@ def test_validation(training_file, param_file, test_points):
     for a, b in zip(before, after, strict=True):
         np.testing.assert_array_equal(a, b)
 
-    # the validation restores the random state: training again gives the
-    # same emulator as without the validation
+    # training again gives the same emulator as a new one with the same seed
     emu.train_emulator_auto_mask()
     ref = EmulatorBAND(training_file, param_file, seed=1)
-    ref.train_emulator_auto_mask()
     ref.train_emulator_auto_mask()
     np.testing.assert_array_equal(
         emu.predict(test_points)[0], ref.predict(test_points)[0]

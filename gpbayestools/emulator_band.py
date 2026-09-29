@@ -49,7 +49,8 @@ class EmulatorBAND(EmulatorBase):
         original scale of the observables. Requires ``log_trafo=True``.
     seed : int or None, default=None
         Seed of the random number generator that is set as the global RNG of
-        surmise (>= 1.0.0) before the training.
+        surmise (>= 1.0.0) before each training, so that every training with
+        the same seed and training points gives the same emulator.
 
     Raises
     ------
@@ -59,8 +60,8 @@ class EmulatorBAND(EmulatorBase):
 
     _METHODS = ("PCGP", "PCSK", "PCGPwImpute", "PCGPwM")
 
-    _legacy_attributes = [("method_", "method"), ("rng_", "_rng"), ("emu", "emu_")]
-    _legacy_defaults = {"seed": None, "_rng": lambda state: np.random.default_rng()}
+    _legacy_attributes = [("method_", "method"), ("rng_", None), ("emu", "emu_")]
+    _legacy_defaults = {"seed": None}
 
     def __init__(
         self,
@@ -77,9 +78,7 @@ class EmulatorBAND(EmulatorBase):
                 f"Unknown method {method!r}, expected one of {', '.join(self._METHODS)}"
             )
         self.method = method
-        # surmise (>=1.0.0) requires a global RNG to be set before training
         self.seed = seed
-        self._rng = np.random.default_rng(seed)
         super().__init__(
             training_set_path,
             parameter_file,
@@ -111,7 +110,10 @@ class EmulatorBAND(EmulatorBase):
 
         design_points = self.design_points[event_mask, :]
 
-        surmise.set_RNG(self._rng)
+        # surmise (>= 1.0.0) requires a global RNG to be set before the
+        # training. A new generator is used for each training, so that the
+        # same seed always gives the same emulator.
+        surmise.set_RNG(np.random.default_rng(self.seed))
         if self.method == "PCGP":
             self.emu_ = emulator(
                 x=X,
