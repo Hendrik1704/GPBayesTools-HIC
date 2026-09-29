@@ -1,30 +1,35 @@
 # Changelog for GPBayesTools-HIC
 
-## Unreleased
+## v3.0.0
+Date: not released yet
 
-- Update the surmise package requirement to version 1.0.0. Training now requires a global random number generator, which `EmulatorBAND` sets via `surmise.set_RNG` before each training. Use the new optional `seed` argument of `EmulatorBAND` for reproducible training. Emulators trained and saved with surmise 0.4.0 can still be loaded and give identical predictions.
-- Fix the `PCGPwM` option of `EmulatorBAND`, which previously trained a `PCGPwImpute` emulator.
-- Raise a `ValueError` in `EmulatorBAND` when an unknown emulator method is requested. Previously the error was never raised.
+New emulators:
+- Add the `EmulatorHETGPy` emulator, a wrapper for the heteroskedastic GPs of the [hetgpy](https://hetgpy.readthedocs.io) package combined with a PCA of the outputs.
+- Add the `EmulatorSparseGP` emulator, a sparse variational GP emulator (SVGP) with PCA of the outputs, implemented with JAX. It can be trained as a single emulator or as an ensemble.
+
+Changes that are not backward compatible:
+- Update the surmise package requirement from version 0.3.0 to version 1.0.0. This includes a major update of the PCSK emulator (surmise 0.4.0). Training now requires a global random number generator, which `EmulatorBAND` sets via `surmise.set_RNG` before each training. Use the new optional `seed` argument of `EmulatorBAND` for reproducible training. Emulators trained and saved with surmise 0.4.0 can still be loaded and give identical predictions.
+- Remove the `parameterTrafoPCA` option of `Emulator` and `EmulatorBAND` (PCA transformation of the $\zeta/s(T)$, $\eta/s(\mu_B)$ and $\langle y_{\rm loss}\rangle(y_{\rm init})$ parameters). It was specific to the parametrization of one analysis. Use version v2.0.1 or older to reproduce results obtained with it.
+- Remove the constant prior term of the unused `extra_std` parameter from the log-likelihood and log-posterior. The log-likelihood values and the pocoMC evidence (`logl`, `logz`) are shifted by +73.68 compared to older versions. Posterior samples are not affected.
+- Raise an error in the MCMC likelihood if the covariance matrix is not positive definite, instead of returning NaN.
+
+Bug fixes:
 - Fix `Emulator.predict` with `return_cov=True`, which failed with NumPy 2 (`np.array(..., copy=False)`). The same applies to the log prior, likelihood and posterior in `mcmc.py` for list inputs.
 - `Emulator.outputPCAvsParam()` and `Emulator.print_learning_curve()` no longer overwrite the training data with standardized values.
 - Fix the covariance of `Emulator` with `perform_no_PCA=True`, which was returned in standardized units instead of observable units.
-- Fix `Emulator.sample_y`: the PCs are sampled independently and reproducibly with `random_state`, the parameter PCA transformation is applied, and the samples are returned in physical space if `exp_and_cov_diagonal` is set.
-- Raise an error in the MCMC likelihood if the covariance matrix is not positive definite, instead of returning NaN.
-- Remove the constant prior term of the unused `extra_std` parameter from the log-likelihood and log-posterior. This is not backward compatible: the log-likelihood values and the pocoMC evidence (`logl`, `logz`) are shifted by +73.68 compared to older versions. Posterior samples are not affected.
+- Fix `Emulator.sample_y`: the PCs are sampled independently and reproducibly with `random_state`, and the samples are returned in physical space if `exp_and_cov_diagonal` is set.
+- Fix the `PCGPwM` option of `EmulatorBAND`, which previously trained a `PCGPwImpute` emulator.
+- Raise a `ValueError` in `EmulatorBAND` when an unknown emulator method is requested. Previously the error was never raised.
 - `compute_log_likelihood_for_chain` now also works for chains from pocoMC.
-- Saved `EmulatorHETGPy` emulators now contain the trained GP models, so that loading gives exactly the same predictions. Previously the models were refitted from some of their hyperparameters after loading. Emulators saved with older versions can still be loaded, but their predictions can differ from the trained emulator.
+- Saved `EmulatorHETGPy` emulators now contain the trained GP models, so that loading gives exactly the same predictions. Previously the models were refitted from some of their hyperparameters after loading. Emulators saved with the older format can still be loaded, but their predictions can differ from the trained emulator.
 - Add the covariance of the PCs discarded by the output PCA to the `EmulatorHETGPy` covariance. This increases the predicted emulator uncertainty.
 - `EmulatorSparseGP.predict` accepts a scalar `extra_std` for several parameter points.
 - The SVGP training now keeps the parameters that belong to the best ELBO, and the NaN recovery restarts from parameters with a finite ELBO.
-- The tests in `tests/` are now pytest tests that fail on errors.
-- Remove the `parameterTrafoPCA` option of `Emulator` and `EmulatorBAND` (PCA transformation of the $\zeta/s(T)$, $\eta/s(\mu_B)$ and $\langle y_{\rm loss}\rangle(y_{\rm init})$ parameters). It was specific to the parametrization of one analysis. Use version v2.1.0 or older to reproduce results obtained with it.
 
-## v2.1.0
-Date: 2026-01-14
+Tests:
+- Add tests for the hetGP and sparse GP emulators in `tests/`, which can be run with pytest.
 
-- Update the surmise package requirement to version 0.4.0 including a major update of the PCSK emulator.
-
-[Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v2.0.1...v2.1.0)
+[Link to diff from previous version](https://github.com/Hendrik1704/GPBayesTools-HIC/compare/v2.0.1...v3.0.0)
 
 ## v2.0.1
 Date: 2025-12-03
