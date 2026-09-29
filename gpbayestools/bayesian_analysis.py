@@ -1,9 +1,11 @@
 """
-Bayesian model calibration with the emulators. The BayesianAnalysis class has
-the following samplers:
-- run_emcee: affine-invariant ensemble MCMC sampler emcee
-- run_ptlmc: parallel tempering Langevin Monte Carlo (PTLMC) from surmise
-- run_pocomc: preconditioned Monte Carlo with pocoMC (recommended)
+Bayesian model calibration with the emulators.
+
+The `BayesianAnalysis` class provides the following samplers:
+
+- ``run_emcee``: affine-invariant ensemble MCMC sampler emcee
+- ``run_ptlmc``: parallel tempering Langevin Monte Carlo (PTLMC) from surmise
+- ``run_pocomc``: preconditioned Monte Carlo with pocoMC (recommended)
 """
 
 import logging
@@ -24,20 +26,38 @@ logger = logging.getLogger(__name__)
 
 def mvn_loglike(y, cov):
     """
-    Evaluate the multivariate-normal log-likelihood for difference vector `y`
-    and covariance matrix `cov`:
+    Evaluate the multivariate-normal log-likelihood.
+
+    The log-likelihood of the difference vector `y` and the covariance matrix
+    `cov` is::
 
         log_p = -1/2*[(y^T).(C^-1).y + log(det(C))] + const.
 
-    The likelihood is NOT NORMALIZED, since this does not affect MCMC.  The
-    normalization const = -n/2*log(2*pi), where n is the dimensionality.
-
-    Arguments `y` and `cov` MUST be np.arrays with dtype == float64 and shapes
-    (n) and (n, n), respectively.  These requirements are NOT CHECKED.
+    The likelihood is NOT NORMALIZED, since this does not affect MCMC. The
+    normalization is const = -n/2*log(2*pi), where n is the dimensionality.
 
     The calculation follows algorithm 2.1 in Rasmussen and Williams (Gaussian
     Processes for Machine Learning).
 
+    Parameters
+    ----------
+    y : ndarray of shape (n,)
+        Difference vector (model - experiment). Must have dtype float64.
+    cov : ndarray of shape (n, n)
+        Covariance matrix. Must have dtype float64.
+        The dtypes and shapes of `y` and `cov` are NOT CHECKED.
+
+    Returns
+    -------
+    float
+        The unnormalized log-likelihood.
+
+    Raises
+    ------
+    ValueError
+        If a LAPACK routine reports an illegal argument value.
+    numpy.linalg.LinAlgError
+        If `cov` is not positive definite.
     """
     # Compute the Cholesky decomposition of the covariance.
     # Use bare LAPACK function to avoid scipy.linalg wrapper overhead.
@@ -65,11 +85,37 @@ def mvn_loglike(y, cov):
 
 
 class LoggingEnsembleSampler(emcee.EnsembleSampler):
+    """
+    Ensemble sampler of emcee that logs the progress of the run.
+
+    The constructor parameters are those of `emcee.EnsembleSampler`.
+    """
+
     def run_mcmc(self, X0, nsteps, status=None, **kwargs):
         """
-        Run MCMC with logging every 'status' steps (default: approx 10% of
-        nsteps).
+        Run MCMC and log the acceptance fraction every `status` steps.
 
+        Parameters
+        ----------
+        X0 : array_like of shape (nwalkers, ndim) or emcee.State
+            Initial positions of the walkers.
+        nsteps : int
+            Number of steps. Must be at least 1.
+        status : int or None, default=None
+            Number of steps between log messages. If None, approximately 10% of
+            `nsteps` (at least 1). The last step is always logged.
+        **kwargs
+            Further keyword arguments passed to `emcee.EnsembleSampler.sample`.
+
+        Returns
+        -------
+        emcee.State
+            The state of the last iteration.
+
+        Raises
+        ------
+        ValueError
+            If `nsteps` is smaller than 1.
         """
         logger.info("running %d walkers for %d steps", self.nwalkers, nsteps)
 
@@ -102,7 +148,7 @@ class BayesianAnalysis:
     High-level interface for running MCMC calibration and accessing results.
 
     Currently all design parameters except for the normalizations are required
-    to be the same at all beam energies.  It is assumed (NOT checked) that all
+    to be the same at all beam energies. It is assumed (NOT checked) that all
     system designs have the same parameters and ranges (except for the norms).
 
     The experimental data are used as they are given. For emulators that
@@ -113,9 +159,22 @@ class BayesianAnalysis:
     Each sampler writes its chain to its own file, which is derived from
     `mcmc_path` by adding the name of the sampler, e.g. for the default
     ``./mcmc/chain.pkl``: ``./mcmc/chain_emcee.pkl``,
-    ``./mcmc/chain_pocoMC.pkl`` and ``./mcmc/chain_PTLMC.pkl``
+    ``./mcmc/chain_pocomc.pkl`` and ``./mcmc/chain_ptlmc.pkl``
     (see :meth:`chain_path`).
 
+    Parameters
+    ----------
+    mcmc_path : str or path-like, default="./mcmc/chain.pkl"
+        Base path of the chain files. The parent directory is created if it
+        does not exist.
+    expdata_path : str or path-like, default="./exp_data.dat"
+        Path of the pickle file with the experimental data. It must contain a
+        dictionary with exactly one data set, whose ``"obs"`` entry holds the
+        values and the errors of the data points (see
+        :meth:`_read_in_exp_data_pickle`).
+    model_parafile : str or path-like, default="./model.dat"
+        Path of the model parameter file with the label and the range
+        (minimum and maximum) of each parameter.
     """
 
     samplers = ("emcee", "pocomc", "ptlmc")
@@ -165,10 +224,23 @@ class BayesianAnalysis:
 
     def load_emulators(self, emulator_path_list):
         """
-        Load the emulators from the files in `emulator_path_list`, replacing
-        previously loaded emulators. The order of the emulators must be the
-        order of the observables in the experimental data, and their numbers
-        of observables must add up to the number of experimental data points.
+        Load the emulators from files.
+
+        The loaded emulators replace previously loaded emulators. The order of
+        the emulators must be the order of the observables in the experimental
+        data, and their numbers of observables must add up to the number of
+        experimental data points.
+
+        Parameters
+        ----------
+        emulator_path_list : list of str or path-like
+            Paths of the emulator files.
+
+        Raises
+        ------
+        ValueError
+            If the total number of observables of the emulators differs from
+            the number of experimental data points.
         """
         emu_list = [load_emulator(emu_path) for emu_path in emulator_path_list]
         nobs_emu = [emu.nobs for emu in emu_list]
@@ -183,6 +255,14 @@ class BayesianAnalysis:
         logger.info(f"Number of Emulators: {len(self.emulators)}")
 
     def _predict(self, X):
+        """
+        Predict the mean and covariance of all observables at the points `X`.
+
+        The predictions of the emulators are concatenated, and the covariance
+        is block diagonal with one block per emulator. Returns arrays of shape
+        (n, nobs) and (n, nobs, nobs), and raises a ValueError if the emulators
+        do not predict `nobs` observables in total.
+        """
         n_preds = X.shape[0]
         model_pred = np.zeros([n_preds, self.nobs])
         model_pred_cov = np.zeros([n_preds, self.nobs, self.nobs])
@@ -203,14 +283,27 @@ class BayesianAnalysis:
         return model_pred, model_pred_cov
 
     def _inside(self, X):
-        """True for the points in X inside the parameter ranges (including
-        the boundaries, as the uniform prior of pocoMC)."""
+        """
+        Return True for the points in `X` inside the parameter ranges.
+
+        The boundaries are included, as in the uniform prior of pocoMC.
+        """
         return np.all((X >= self.min) & (X <= self.max), axis=-1)
 
     def log_prior(self, X):
         """
-        Evaluate the (normalized, uniform) prior at `X`.
+        Evaluate the (normalized, uniform) log prior at `X`.
 
+        Parameters
+        ----------
+        X : array_like of shape (n, ndim) or (ndim,)
+            Points in parameter space.
+
+        Returns
+        -------
+        ndarray of shape (n,)
+            Log prior, ``-log(prior_volume)`` inside the parameter ranges
+            (boundaries included) and ``-inf`` outside.
         """
         X = np.atleast_2d(np.asarray(X))
         lp = np.log(np.ones(X.shape[0]) / self.prior_volume)
@@ -219,7 +312,24 @@ class BayesianAnalysis:
 
     def log_likelihood(self, X, finite=False):
         """
-        Evaluate the likelihood at `X`.
+        Evaluate the log-likelihood at `X`.
+
+        The covariance is the sum of the emulator covariance and the
+        experimental covariance. The log-likelihood is not normalized (see
+        :func:`mvn_loglike`).
+
+        Parameters
+        ----------
+        X : array_like of shape (n, ndim) or (ndim,)
+            Points in parameter space.
+        finite : bool, default=False
+            If True, points outside the parameter ranges get the finite value
+            -1e300 instead of ``-inf`` (used for pocoMC).
+
+        Returns
+        -------
+        ndarray of shape (n,)
+            Log-likelihood at each point.
         """
         X = np.atleast_2d(np.asarray(X))
         lp = np.zeros(X.shape[0])
@@ -246,9 +356,21 @@ class BayesianAnalysis:
 
     def log_likelihood_point_by_point(self, X):
         """
-        Evaluate the likelihood at `X` point by point.
-        This is used for the log_likelihood computation when the chain is already
-        generated and the likelihood is computed for each point in the chain.
+        Evaluate the log-likelihood at `X` point by point.
+
+        This is used to compute the log-likelihood for each point of an
+        already generated chain. The progress is logged every 100 points.
+
+        Parameters
+        ----------
+        X : ndarray of shape (n, ndim)
+            Points in parameter space.
+
+        Returns
+        -------
+        ndarray of shape (n,)
+            Log-likelihood at each point, ``-inf`` outside the parameter
+            ranges.
         """
         lp = np.zeros(X.shape[0])
 
@@ -276,13 +398,32 @@ class BayesianAnalysis:
 
     def log_posterior(self, X):
         """
-        Evaluate the posterior at `X`, the sum of the log prior and the log
-        likelihood.
+        Evaluate the log posterior at `X`.
+
+        The log posterior is the sum of the log prior and the log-likelihood.
+
+        Parameters
+        ----------
+        X : array_like of shape (n, ndim) or (ndim,)
+            Points in parameter space.
+
+        Returns
+        -------
+        ndarray of shape (n,)
+            Log posterior at each point, ``-inf`` outside the parameter ranges.
         """
         return self.log_prior(X) + self.log_likelihood(X)
 
     def _read_in_exp_data_pickle(self, filepath):
-        """This function reads in exp data and compute the covariance matrix"""
+        """
+        Read the experimental data and compute their covariance matrix.
+
+        The pickle file must contain a dictionary with exactly one entry,
+        whose ``"obs"`` array holds the values in the first and the errors in
+        the second row. The covariance matrix is diagonal with the squared
+        errors (NaN errors are set to 0). Returns the data of shape (1, nobs)
+        and the covariance of shape (nobs, nobs).
+        """
         model_data = []
         model_data_err = []
 
@@ -311,23 +452,67 @@ class BayesianAnalysis:
 
     def random_pos(self, n=1):
         """
-        Generate `n` random positions in parameter space.
+        Generate random positions in parameter space.
 
+        The positions are drawn uniformly within the parameter ranges using
+        numpy's global random number generator.
+
+        Parameters
+        ----------
+        n : int, default=1
+            Number of positions.
+
+        Returns
+        -------
+        ndarray of shape (n, ndim)
+            Random positions.
         """
         return np.random.uniform(self.min, self.max, (n, self.ndim))
 
     @staticmethod
     def map(f, args):
         """
-        Dummy function so that this object can be used as a 'pool' for
-        :meth:`emcee.EnsembleSampler`.
+        Apply `f` to `args` in a single call.
 
+        Dummy function so that this object can be used as a 'pool' for
+        :class:`emcee.EnsembleSampler`, which then evaluates the vectorized
+        log posterior once for all walkers.
+
+        Parameters
+        ----------
+        f : callable
+            Function to apply.
+        args : object
+            Argument passed to `f`.
+
+        Returns
+        -------
+        object
+            The result of ``f(args)``.
         """
         return f(args)
 
     def chain_path(self, sampler):
         """
-        Path of the chain file of `sampler` ('emcee', 'pocomc' or 'ptlmc').
+        Return the path of the chain file of a sampler.
+
+        The path is `mcmc_path` with ``_<sampler>`` added to the file name,
+        e.g. ``./mcmc/chain_emcee.pkl``.
+
+        Parameters
+        ----------
+        sampler : {'emcee', 'pocomc', 'ptlmc'}
+            Name of the sampler.
+
+        Returns
+        -------
+        pathlib.Path
+            Path of the chain file.
+
+        Raises
+        ------
+        ValueError
+            If `sampler` is not a known sampler.
         """
         if sampler not in self.samplers:
             raise ValueError(f"Unknown sampler '{sampler}', use one of {self.samplers}")
@@ -346,14 +531,49 @@ class BayesianAnalysis:
         seed=None,
     ):
         """
+        Run MCMC model calibration with emcee.
+
         Markov chain Monte Carlo model calibration using the `affine-invariant
         ensemble sampler (emcee) <http://dfm.io/emcee>`_.
 
-        Run MCMC model calibration. If the chain already exists, continue from
-        the last point, otherwise burn-in and start the chain.
+        If the chain file ``chain_path("emcee")`` already contains a chain,
+        continue from its last walker positions. Otherwise, run a burn-in and
+        start a new chain. The burn-in is run in two halves: after the first
+        half, the walkers are moved to the most likely distinct points found
+        so far. The thinned chain is appended to the chain file and stored in
+        ``self.chain`` with shape (nwalkers, nsteps, ndim).
 
-        If `seed` is given, numpy's global random number generator is seeded
-        with it before the run, which makes the chain reproducible.
+        Parameters
+        ----------
+        nsteps : int, default=500
+            Number of production steps.
+        nburnsteps : int or None, default=None
+            Number of burn-in steps. Must be at least 2. Required to start a
+            new chain, ignored when continuing an existing chain.
+        nwalkers : int or None, default=None
+            Number of walkers. Required to start a new chain. When continuing
+            an existing chain, it defaults to the number of walkers of that
+            chain and must match it.
+        status : int or None, default=None
+            Number of steps between progress log messages (see
+            :meth:`LoggingEnsembleSampler.run_mcmc`).
+        nthin : int, default=10
+            Thinning of the production chain, only every `nthin`-th step is
+            stored.
+        skip_initial_state_check : bool, default=False
+            Passed to emcee. If True, do not check that the initial walker
+            positions are linearly independent.
+        seed : int or None, default=None
+            If given, numpy's global random number generator is seeded with it
+            before the run, which makes the chain reproducible.
+
+        Raises
+        ------
+        ValueError
+            If `nburnsteps` or `nwalkers` is missing for a new chain, if
+            `nburnsteps` is smaller than 2, if the existing chain was not
+            generated with emcee, or if `nwalkers` does not match the existing
+            chain.
         """
         if seed is not None:
             # emcee initializes its random number generator from numpy's
@@ -380,8 +600,8 @@ class BayesianAnalysis:
             # (nsamples, ndim)
             if chain_data["chain"].ndim != 3:
                 raise ValueError(
-                    f"the chain in {chain_file} was not generated with emcee and cannot "
-                    "be continued, use a different mcmc_path"
+                    f"the chain in {chain_file} was not generated with emcee and "
+                    "cannot be continued, use a different mcmc_path"
                 )
             if nwalkers is None:
                 nwalkers = chain_data["chain"].shape[0]
@@ -483,64 +703,69 @@ class BayesianAnalysis:
         nstartparameters=1000,
     ):
         """
-        Parallel-Tempering Ensemble MCMC based on Langevin Monte Carlo.
+        Run parallel-tempering ensemble MCMC based on Langevin Monte Carlo.
+
+        Before sampling, the starting points are optimized with L-BFGS-B and
+        then moved slightly off the optima. The first ``2 * sampperchain``
+        steps tune the step size and are discarded.
 
         Parameters
         ----------
-        logpostfunc : function
-            A function call describing the log of the posterior distribution.
-                If no gradient, logpostfunc should take a value of an m by p numpy
-                array of parameters and theta and return
-                a length m numpy array of log posterior evaluations.
-                If gradient, logpostfunc should return a tuple.  The first element
-                in the tuple should be as listed above.
-                The second element in the tuple should be an m by p matrix of
-                gradients of the log posterior.
-        draw_func : function, required
-            A function that produces approximate draws from the distribution.  Can be used to initialize points.
+        logpostfunc : callable
+            Function that evaluates the log of the posterior distribution.
+            Without gradient, it takes an m by p numpy array of parameters
+            and returns a length m numpy array of log posterior evaluations.
+            With gradient, it returns a tuple whose first element is as above
+            and whose second element is an m by p array of gradients of the
+            log posterior.
+        draw_func : callable
+            Function that produces approximate draws from the distribution,
+            ``draw_func(n)`` returns an n by p array. Used to initialize the
+            points.
         rng : numpy.random.Generator
             Random number generator used for all random numbers of the sampler.
-        theta0 : n by p numpy array, optional
-            This should contain a long list of original parameters to start from. The default is None.
-        numtemps : integer, optional
-            A positive integer that controls how many chains of varying temperature to run simultaneously. The default is
-            32.
-        numchain : integer, optional
-            A positive integer that controls how many chains of fixed temperature to run simultaneously. The default is 16.
-        sampperchain : integer, optional
-            A positive integer that controls how many samples should be done for each chain. The default is 400.
-        maxtemp : double, optional
-            A positive number, larger than 1, that gives the maximum temperature used in parallel tempering. The default
-            is 30.
-        nstartparameters : integer, optional
-            Number of initial draws from draw_func if theta0 is not given or
-            too small. The default is 1000.
+        theta0 : ndarray of shape (n, p) or None, default=None
+            A long list of parameters to start from. If None or with fewer
+            than ``max(numtemps + numchain, 10 * ndim)`` points, the points
+            are drawn with `draw_func`.
+        numtemps : int, default=32
+            Number of chains of varying temperature to run simultaneously.
+        numchain : int, default=16
+            Number of chains of temperature 1 to run simultaneously.
+        sampperchain : int, default=400
+            Number of samples saved for each chain.
+        maxtemp : float, default=30
+            Maximum temperature used in parallel tempering, larger than 1.
+        nstartparameters : int, default=1000
+            Number of initial draws from `draw_func` if `theta0` is not given
+            or too small.
+
+        Returns
+        -------
+        dict
+            Dictionary with the samples of the temperature-1 chains in the
+            key ``'theta'``, with shape (numchain, sampperchain, p).
 
         Raises
         ------
         ValueError
-            Indicates that something was not entered right, please check documentation.
-
-        Returns
-        -------
-        dictionary
-            A dictionary that contains the sampled values of the temperature-1
-            chains in the key 'theta', with shape (numchain, sampperchain, p).
+            If `logpostfunc` returns a tuple with more than 2 elements or a
+            gradient of the wrong shape.
         """
         # Need at least one starting point per chain and enough points to
         # estimate their spread. If we do not get enough parameters to start,
-        # draw at least nstartparameters
+        # draw at least nstartparameters.
         nmin = max(numtemps + numchain, 10 * self.ndim)
         if theta0 is None or theta0.shape[0] < nmin:
             theta0 = draw_func(max(nstartparameters, nmin))
         # Setting up some default parameters
-        fractunning = 2.0  # number of samples spent tunning the sampler
-        # define the number of samples for tunning
+        fractunning = 2.0  # samples spent tuning, relative to sampperchain
+        # define the number of samples for tuning
         samptunning = np.ceil(sampperchain * fractunning).astype("int")
         # defining the total number of chains
         totnumchain = numtemps + numchain
-        # spacing out the temperature vector to go from maxtemp to 1, and  then replacating 1 the number of
-        # non-temperatured chains
+        # space out the temperature vector to go from maxtemp to 1, and then
+        # repeat 1 for the number of non-tempered chains
         temps = np.concatenate(
             (
                 np.exp(
@@ -595,7 +820,7 @@ class BayesianAnalysis:
 
             logpostf = logpostf_nograd
 
-        if logpostf_grad is None:  # these are standard parameters if there is
+        if logpostf_grad is None:  # standard target acceptance rates
             taracc = 0.25  # close to theoretical result 0.234
         else:
             taracc = 0.60  # close to theoretical result in LMC paper
@@ -704,14 +929,14 @@ class BayesianAnalysis:
             hc = np.sqrt(covmat0)
             hc = hc.reshape(1, 1)
             covmat0 = covmat0.reshape(1, 1)
-        # Parameter initilzation
+        # parameter initialization
         tau = -1
         rho = 2 * (1 + (np.exp(2 * tau) - 1) / (np.exp(2 * tau) + 1))
         adjrho = rho * temps ** (
             1 / 3
         )  # this adjusts rho across different temperatures
         adjrhoc = adjrho[:, np.newaxis]
-        numtimes = 0  # number of times we reject, just to star
+        numtimes = 0  # accumulated acceptance rate, reset after each tuning update
         logger.info("Run over all PTLMC chains and tune ...")
         for k in range(0, samptunning + sampperchain):  # loop over all chains
             if k % 100 == 0:
@@ -723,7 +948,7 @@ class BayesianAnalysis:
             elif thetac.shape[1] == 1:
                 thetap = thetac + rval[:, np.newaxis]
             if logpostf_grad is not None:
-                # calculate the elements to move if there is a gradiant
+                # calculate the elements to move if there is a gradient
                 diffval = (adjrhoc**2) * (dfval @ covmat0)
                 thetap += diffval
                 fvalp, dfvalp = logpostf(thetap)  # thetap : no chain x dimension
@@ -733,7 +958,7 @@ class BayesianAnalysis:
                 term2 = (adjrhoc / 2) * ((dfval + dfvalp) @ hc)
                 qadj = -(2 * np.sum(term1 * term2, 1) + np.sum(term2**2, 1))
             else:
-                # calculate the elements to move if there is not a gradiant
+                # calculate the elements to move if there is no gradient
                 fvalp = logpostf_nograd(thetap) / temps  # thetap : no chain x dimension
                 qadj = np.zeros(fvalp.shape)
             swaprnd = np.log(rng.uniform(size=fval.shape[0]))
@@ -755,7 +980,8 @@ class BayesianAnalysis:
             if logpostf_grad is not None:
                 dfvaln = tempsc * dfval
                 dfval = (1 / tempsc) * dfvaln[orderprop, :]
-            # if we have to tune, let's move tau up or down which gives bigger or smaller jumps
+            # if we have to tune, move tau up or down, which gives bigger or
+            # smaller jumps
             if (k < samptunning) and (k % 10 == 0):  # if not done with tuning
                 tau = tau + 1 / np.sqrt(1 + k / 10) * ((numtimes / 10) - taracc)
                 rho = 2 * (1 + (np.exp(2 * tau) - 1) / (np.exp(2 * tau) + 1))
@@ -771,9 +997,14 @@ class BayesianAnalysis:
     # This function is taken from the surmise package (version 1.0.0) and
     # modified to skip swaps between chains with the same temperature
     def _temp_exchange(self, lpostf, temps, iters=1, rng=None):
-        # This function will swap values along the chain given the log pdf values in an
-        # array lpostf with temperature array temps. It will do it iters number of times.
-        # It returns the (random) revised order.
+        """
+        Propose swaps of the chains between neighboring temperatures.
+
+        Given the log pdf values `lpostf` of the chains and their temperatures
+        `temps`, random swaps are proposed `iters` times and accepted with the
+        parallel tempering rule. Returns the (random) revised order of the
+        chains. `rng` (a numpy.random.Generator) is required.
+        """
         assert rng is not None
 
         order = np.arange(0, lpostf.shape[0])  # initializing
@@ -805,11 +1036,29 @@ class BayesianAnalysis:
         seed=None,
     ):
         """
-        This function wrapps the PTLMC package to run the parallel tempering
-        ensemble MCMC with Langevin Monte Carlo
+        Run parallel tempering ensemble MCMC with Langevin Monte Carlo.
 
-        `seed` is the seed of the random number generator of the sampler,
-        which makes the chain reproducible.
+        This function wraps the PTLMC sampler (adapted from surmise, see
+        :meth:`_sampler_ptlmc`). The initial points are drawn uniformly within
+        the parameter ranges. The samples of the temperature-1 chains are
+        stored in ``self.chain`` with shape (nwalkers, nsteps, ndim) and
+        written to ``chain_path("ptlmc")``, overwriting an existing file.
+
+        Parameters
+        ----------
+        nsteps : int, default=500
+            Number of samples per chain.
+        nwalkers : int, default=16
+            Number of chains of temperature 1.
+        ntemps : int, default=50
+            Number of chains of varying temperature.
+        maxtemp : float, default=100
+            Maximum temperature used in parallel tempering.
+        nstartparameters : int, default=1000
+            Number of initial random draws from the parameter space.
+        seed : int or None, default=None
+            Seed of the random number generator of the sampler, which makes
+            the chain reproducible.
         """
         rng = np.random.default_rng(seed)
         chain_data = {}
@@ -831,7 +1080,8 @@ class BayesianAnalysis:
         )
 
         self.chain = result_dict["theta"]
-        # This reshape should not be necessary, just done to match the format of the other MCMC
+        # This reshape should not be necessary, it is just done to match the
+        # format of the other MCMC samplers
         self.chain = self.chain.reshape((nwalkers, nsteps, self.ndim))
 
         self.chain_sampler = "ptlmc"
@@ -844,14 +1094,28 @@ class BayesianAnalysis:
 
     def compute_log_likelihood_for_chain(self, sampler=None, output_path=None):
         """
-        This function computes the log likelihood for each point in a chain and
-        stores it in a new pkl file.
+        Compute the log-likelihood for each point in a chain and save it.
 
-        The chain of `sampler` ('emcee', 'pocomc' or 'ptlmc') is loaded from
-        its chain file. If `sampler` is None, the chain of the last sampler run
-        with this object is used. By default, the output is written next to the
-        chain file with the suffix ``_log_likelihood``, e.g.
-        ``./mcmc/chain_emcee_log_likelihood.pkl``.
+        The result is stored in a new pickle file as a dictionary with the key
+        ``"log_likelihood"``, with the shape of the chain without the last
+        (parameter) axis.
+
+        Parameters
+        ----------
+        sampler : {'emcee', 'pocomc', 'ptlmc'} or None, default=None
+            Sampler whose chain is loaded from its chain file (see
+            :meth:`chain_path`). If None, the chain of the last sampler run
+            with this object is used.
+        output_path : str or path-like or None, default=None
+            Path of the output file. If None, the output is written next to
+            the chain file with the suffix ``_log_likelihood``, e.g.
+            ``./mcmc/chain_emcee_log_likelihood.pkl``. The parent directory is
+            created if it does not exist.
+
+        Raises
+        ------
+        ValueError
+            If `sampler` is None and no chain has been run with this object.
         """
         if sampler is not None:
             logger.info(f"Loading chain from {self.chain_path(sampler)}")
@@ -899,32 +1163,71 @@ class BayesianAnalysis:
         prior=None,
     ):
         """
-        This function is based on PocoMC package (version 1.2.6).
-        It works with versions of pocomc >= 1.2.2 and is tested up to 1.2.6.
-        pocoMC is a Preconditioned Monte Carlo (PMC) sampler that uses
-        normalizing flows to precondition the target distribution.
+        Run preconditioned Monte Carlo with pocoMC.
 
-        n_effective (int) – The effective sample size maintained during the run (default is n_ess=1000).
-        n_active (int) – The number of active particles (default is n_active=250). It must be smaller than n_ess.
-        n_prior (int) – Number of prior samples to draw (default is n_prior=2*(n_effective//n_active)*n_active).
-        sample (str) – Type of MCMC sampler to use (default is sample="pcn").
-            Options are ``"pcn"`` (t-preconditioned Crank-Nicolson) or ``"rwm"`` (Random-walk Metropolis).
-            t-preconditioned Crank-Nicolson is the default and recommended sampler for PMC as it is more efficient and scales better with the number of parameters.
-        n_max_steps (int) – Maximum number of MCMC steps (default is max_steps=10*n_dim).
-        random_state (int or None) – Initial random seed.
+        This function is based on the pocoMC package (version 1.2.6). It works
+        with versions of pocoMC >= 1.2.2 and is tested up to 1.2.6. pocoMC is
+        a Preconditioned Monte Carlo (PMC) sampler that uses normalizing flows
+        to precondition the target distribution.
 
-        n_total (int) – The total number of effectively independent samples to be collected (default is n_total=5000).
-        n_evidence (int) – The number of importance samples used to estimate the evidence (default is n_evidence=5000).
-                            If n_evidence=0, the evidence is not estimated using importance sampling and the SMC estimate is used instead.
-                            If preconditioned=False, the evidence is estimated using SMC and n_evidence is ignored.
-        n_ndim_steps (int) – Number of MCMC steps in beta per dimension (default is n_ndim_steps=2).
+        The resampled posterior samples are stored in ``self.chain`` with
+        shape (nsamples, ndim). They are written to ``chain_path("pocomc")``
+        together with the log-likelihood (``"logl"``), the log prior
+        (``"logp"``), the log evidence (``"logz"``) and its error
+        (``"logz_err"``). Points outside the parameter ranges get the finite
+        log-likelihood -1e300.
 
-        pool (int) – Number of processes to use for parallelisation (default is ``pool=None``).
-            If ``pool`` is an integer greater than 1, a ``multiprocessing`` pool is created with the specified number of processes.
-        prior (class) – Prior distribution class implementing logpdf, rvs functions and dim, bounds attributes (default is None).
+        Parameters
+        ----------
+        n_effective : int, default=1000
+            Effective sample size maintained during the run.
+        n_active : int, default=250
+            Number of active particles. It must be smaller than `n_effective`.
+        n_prior : int, default=2000
+            Number of prior samples to draw (pocoMC's own default is
+            ``2*(n_effective//n_active)*n_active``).
+        sample : str, default="tpcn"
+            Type of MCMC sampler to use. Options are ``"tpcn"``
+            (t-preconditioned Crank-Nicolson) or ``"rwm"`` (random-walk
+            Metropolis). t-preconditioned Crank-Nicolson is the recommended
+            sampler for PMC, as it is more efficient and scales better with
+            the number of parameters.
+        n_max_steps : int, default=200
+            Maximum number of MCMC steps (pocoMC's own default is
+            ``10*n_dim``).
+        random_state : int or None, default=42
+            Initial random seed.
+        n_total : int, default=5000
+            Total number of effectively independent samples to be collected.
+        n_evidence : int, default=5000
+            Number of importance samples used to estimate the evidence. If
+            ``n_evidence=0``, the evidence is not estimated using importance
+            sampling and the SMC estimate is used instead. If
+            ``preconditioned=False``, the evidence is estimated using SMC and
+            `n_evidence` is ignored.
+        n_ndim_steps : int, default=2
+            Number of MCMC steps in beta per dimension, pocoMC runs
+            ``n_ndim_steps * ndim`` steps.
+        pool : int or None, default=None
+            Number of processes to use for parallelization. If `pool` is an
+            integer greater than 1, a ``multiprocessing`` pool is created with
+            the specified number of processes.
+        prior : object or None, default=None
+            Prior distribution implementing the ``logpdf`` and ``rvs`` methods
+            and the ``dim`` and ``bounds`` attributes. If None, a uniform
+            prior within the parameter ranges is used. For more information on
+            customizing the prior, see the pocoMC documentation.
 
-        When experiencing issues with the fork() function, set the environment variable ``export RDMAV_FORK_SAFE=1``.
-        For more information on customizing the prior, see the PocoMC documentation.
+        Raises
+        ------
+        ValueError
+            If ``prior.dim`` does not match the dimension of the parameter
+            space.
+
+        Notes
+        -----
+        When experiencing issues with the fork() function, set the environment
+        variable ``export RDMAV_FORK_SAFE=1``.
         """
         logger.info("Generate the prior class for pocoMC ...")
         if prior is None:

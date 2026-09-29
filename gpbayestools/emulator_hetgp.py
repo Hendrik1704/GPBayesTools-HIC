@@ -20,16 +20,41 @@ logger = logging.getLogger(__name__)
 
 class EmulatorHetGP(EmulatorBase):
     """
-    Emulator with heteroskedastic GPs of the hetgpy package for the principal
-    components of the (standardized) observables. `npc` is the number of PCs
-    (int) or the fraction of the explained variance (float in (0, 1),
-    default 0.99).
+    Emulator with heteroskedastic GPs of the hetgpy package.
 
-    With `log_trafo` set to True, the emulator is trained on the log of the
-    observables and predict() returns the mean and covariance in log space.
-    Experimental data used with the emulator must then be log-transformed as
-    well. With `exp_and_cov_diagonal` set to True, predict() returns exp(mean)
-    and a diagonal covariance in the original scale of the observables.
+    The GPs emulate the principal components of the (standardized)
+    observables.
+
+    Parameters
+    ----------
+    training_set_path : str, default="."
+        Path to the pickle file with the training data, a dictionary
+        ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
+        nobs) with the values and statistical errors}}``.
+    parameter_file : str, default="ABCD.txt"
+        Path to the model parameter file.
+    log_trafo : bool, default=False
+        If True, the emulator is trained on the log of the observables, which
+        must be positive, and predict() returns the mean and covariance in log
+        space. Experimental data used with the emulator must then be
+        log-transformed as well.
+    max_rel_uncertainty_data : float or None, default=None
+        Training points with a larger relative statistical error of any
+        observable are discarded. None disables this filter.
+    exp_and_cov_diagonal : bool, default=False
+        If True, predict() returns exp(mean) and a diagonal covariance in the
+        original scale of the observables. Requires ``log_trafo=True``.
+    npc : int or float, default=0.99
+        Number of PCs (int >= 1) or fraction of the explained variance (float
+        in (0, 1)).
+
+    Raises
+    ------
+    ValueError
+        If `npc` is out of range, or for invalid training data or options
+        (see `EmulatorBase`).
+    TypeError
+        If `npc` is neither an int nor a float.
     """
 
     _legacy_attributes = [
@@ -66,9 +91,12 @@ class EmulatorHetGP(EmulatorBase):
         self.npc = npc
 
     def _fit_output_pca(self, data, data_err=None):
-        """Fit the output standardization and PCA to the training data
-        `data`, and compute the truncation covariance. `data_err` are the
-        statistical errors of the training data."""
+        """
+        Fit the output standardization and PCA to the training data.
+
+        Also compute the truncation covariance. `data` are the training data
+        and `data_err` their statistical errors.
+        """
         logger.info("Performing output PCA for hetGP emulator ...")
         self.output_scaler_ = StandardScaler()
         standardized_outputs = self.output_scaler_.fit_transform(data)
@@ -84,20 +112,25 @@ class EmulatorHetGP(EmulatorBase):
         self.npc_ = self.output_pca_.n_components_
         self._compute_truncation_cov(data, self.model_data_pca_, data_err)
         logger.info(
-            f"Output PCA uses {self.npc_} PCs to explain {100.0 * self.output_pca_.explained_variance_ratio_.sum():.1f}% of the variance ..."
+            f"Output PCA uses {self.npc_} PCs to explain "
+            f"{100.0 * self.output_pca_.explained_variance_ratio_.sum():.1f}% "
+            "of the variance ..."
         )
 
     def _compute_truncation_cov(self, data, data_pca, data_err=None):
-        """Covariance of the PCs discarded by the output PCA in observable
-        units. It is added to the predicted covariance, since the emulator
-        cannot resolve this part of the variance. `data` are the training
-        data, `data_pca` their principal components and `data_err` their
-        statistical errors.
+        """
+        Compute the covariance of the PCs discarded by the output PCA.
+
+        The covariance is in observable units. It is added to the predicted
+        covariance, since the emulator cannot resolve this part of the
+        variance. `data` are the training data, `data_pca` their principal
+        components and `data_err` their statistical errors.
 
         The truncation covariance also contains the statistical noise of the
         training data in the discarded PC directions. Its signal part without
         this noise, _cov_trunc_signal, is used for predictions of the model
-        function (include_noise=False)."""
+        function (include_noise=False).
+        """
         standardized_outputs = self.output_scaler_.transform(data)
         residuals = standardized_outputs - self.output_pca_.inverse_transform(data_pca)
         scales = self.output_scaler_.scale_
@@ -111,7 +144,8 @@ class EmulatorHetGP(EmulatorBase):
             )
 
     def __getstate__(self):
-        """Prepare a pickleable state.
+        """
+        Prepare a pickleable state.
 
         The fitted hetgpy models can be serialized with the standard
         ``pickle`` module, but not with ``dill``, which is used to save the
@@ -152,7 +186,8 @@ class EmulatorHetGP(EmulatorBase):
         # otherwise the emulator was not trained and stays untrained
 
     def _rebuild_from_hyperparams(self, hyperparams, maxit=0):
-        """Rebuild GP models using saved hyperparameters as initial values.
+        """
+        Rebuild GP models using saved hyperparameters as initial values.
 
         This is much faster than a full re-training because the optimizer
         starts at the already-converged solution and finishes in very few
@@ -161,11 +196,11 @@ class EmulatorHetGP(EmulatorBase):
         Parameters
         ----------
         hyperparams : list of dict
-            One dict per principal component.  Each dict contains
+            One dict per principal component. Each dict contains
             'model_type' ('hetGP' or 'homGP'), 'theta', 'g', and for
             hetGP models also 'Delta' and 'k_theta_g'.
-        maxit : int
-            Maximum optimizer iterations for the warm-start (default 0).
+        maxit : int, default=0
+            Maximum optimizer iterations for the warm-start.
         """
         event_mask = np.ones(self.nev, dtype=bool)
         design_points_masked = self.design_points[event_mask, :]
@@ -210,6 +245,17 @@ class EmulatorHetGP(EmulatorBase):
         logger.info(f"Rebuilt {self.npc_} GP models via warm-start (maxit={maxit}).")
 
     def train_emulator(self, event_mask):
+        """
+        Train the emulator on the training points selected by `event_mask`.
+
+        The output standardization and PCA are fitted to the selected training
+        points only, then one hetGP model is trained per PC.
+
+        Parameters
+        ----------
+        event_mask : array_like of bool of shape (nev,)
+            Mask of the training points to use.
+        """
         logger.info("Performing emulator training ...")
         # Subselect training data
         event_mask = np.asarray(event_mask, dtype=bool)
@@ -222,7 +268,8 @@ class EmulatorHetGP(EmulatorBase):
 
         nev_train = design_points_masked.shape[0]
         logger.info(
-            f"Train hetGP emulators for {nev_train} training points and {self.npc_} PCs ..."
+            f"Train hetGP emulators for {nev_train} training points and "
+            f"{self.npc_} PCs ..."
         )
 
         # Train one hetGP model per principal component of the outputs.
@@ -241,13 +288,30 @@ class EmulatorHetGP(EmulatorBase):
 
     def predict(self, X, return_cov=True, include_noise=False):
         """
-        Predict model output. Here X is the parameter vector at the prediction
-        point.
+        Predict model output at the parameter points `X`.
 
         By default, the covariance is the uncertainty of the emulated model
         function. With `include_noise`, the noise variance estimated by the
         hetGP models (nugs) is included, i.e. the uncertainty of a new noisy
         simulation.
+
+        Parameters
+        ----------
+        X : array_like of shape (nsamples, nparameters)
+            Parameter points. A 1D array is treated as a single point.
+        return_cov : bool, default=True
+            If True, the covariance is returned as well.
+        include_noise : bool, default=False
+            If True, the noise variance estimated by the hetGP models is
+            included in the covariance.
+
+        Returns
+        -------
+        mean : ndarray of shape (nsamples, nobs)
+            Predicted mean.
+        cov : ndarray of shape (nsamples, nobs, nobs)
+            Covariance between the observables. Only returned if `return_cov`
+            is True.
         """
         X = np.atleast_2d(X)
         n_theta = X.shape[0]

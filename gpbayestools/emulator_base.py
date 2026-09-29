@@ -18,8 +18,22 @@ logger = logging.getLogger(__name__)
 
 
 def check_npc(npc):
-    """Check the number of principal components `npc`: an int >= 1 (number of
-    PCs) or a float in (0, 1) (fraction of the explained variance)."""
+    """
+    Check the number of principal components `npc`.
+
+    Parameters
+    ----------
+    npc : int or float
+        Number of principal components (PCs), an int >= 1, or the fraction of
+        the explained variance, a float in (0, 1).
+
+    Raises
+    ------
+    ValueError
+        If an int `npc` is < 1 or a float `npc` is not in (0, 1).
+    TypeError
+        If `npc` is neither an int nor a float (bool is not accepted).
+    """
     if isinstance(npc, (int, np.integer)) and not isinstance(npc, bool):
         if npc < 1:
             raise ValueError(f"npc must be >= 1, got {npc}")
@@ -34,9 +48,26 @@ def check_npc(npc):
 
 
 def number_of_pcs(npc, explained_variance_ratio):
-    """Number of PCs for `npc` (see check_npc), given the explained variance
-    ratios of all PCs. A float npc selects the smallest number of PCs that
-    explain more than this fraction of the variance, as in sklearn's PCA."""
+    """
+    Return the number of PCs to use for `npc`.
+
+    A float `npc` selects the smallest number of PCs that explain more than
+    this fraction of the variance, as in sklearn's PCA. An int `npc` larger
+    than the number of available PCs is reduced to that number, with a
+    warning.
+
+    Parameters
+    ----------
+    npc : int or float
+        Number of PCs or fraction of the explained variance (see `check_npc`).
+    explained_variance_ratio : array_like
+        Explained variance ratios of all PCs.
+
+    Returns
+    -------
+    int
+        Number of PCs, at most the number of available PCs.
+    """
     n_available = len(explained_variance_ratio)
     if isinstance(npc, (float, np.floating)):
         n = np.searchsorted(np.cumsum(explained_variance_ratio), npc, side="right") + 1
@@ -48,12 +79,25 @@ def number_of_pcs(npc, explained_variance_ratio):
 
 def truncation_signal(trunc_cov, noise_cov):
     """
-    Remove the statistical noise of the training data from the truncation
-    covariance `trunc_cov` of the discarded PCs. In each eigendirection of
-    `trunc_cov`, the noise variance of `noise_cov` in that direction is
-    subtracted, down to zero. The result is positive semi-definite and not
-    larger than `trunc_cov`. Both matrices must be in the same (e.g.
-    standardized) units.
+    Remove the statistical noise of the training data from a truncation
+    covariance.
+
+    In each eigendirection of `trunc_cov`, the noise variance of `noise_cov`
+    in that direction is subtracted, down to zero. The result is positive
+    semi-definite and not larger than `trunc_cov`.
+
+    Parameters
+    ----------
+    trunc_cov : ndarray of shape (nobs, nobs)
+        Truncation covariance of the discarded PCs.
+    noise_cov : ndarray of shape (nobs, nobs)
+        Covariance of the statistical noise of the training data, in the same
+        (e.g. standardized) units as `trunc_cov`.
+
+    Returns
+    -------
+    ndarray of shape (nobs, nobs)
+        Signal part of the truncation covariance.
     """
     vals, vecs = np.linalg.eigh(0.5 * (trunc_cov + trunc_cov.T))
     noise = np.einsum("ik,ij,jk->k", vecs, noise_cov, vecs)
@@ -65,25 +109,40 @@ class EmulatorBase:
     """
     Base class of the emulators.
 
+    It loads the training data and the model parameter file and implements
+    the validation functions and `sample_y`. Training points with non-finite
+    observables are always discarded. Subclasses implement
+    ``train_emulator(event_mask)`` and ``predict(X, return_cov=True,
+    include_noise=False)``.
+
     Parameters
     ----------
-    training_set_path : str
+    training_set_path : str, default="."
         Path to the pickle file with the training data, a dictionary
-        {event_id: {'parameter': array (nparameters,),
-        'obs': array (2, nobs) with the values and statistical errors}}.
-    parameter_file : str
+        ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
+        nobs) with the values and statistical errors}}``.
+    parameter_file : str, default="ABCD.txt"
         Path to the model parameter file.
-    log_trafo : bool
+    log_trafo : bool, default=False
         If True, the emulator is trained on the log of the observables, which
-        must be positive. predict() then returns the mean and covariance in log
-        space, and experimental data used with the emulator must be
+        must be positive. predict() then returns the mean and covariance in
+        log space, and experimental data used with the emulator must be
         log-transformed as well.
-    max_rel_uncertainty_data : float or None
+    max_rel_uncertainty_data : float or None, default=None
         Training points with a larger relative statistical error of any
-        observable are discarded. None (default) disables this filter.
-    exp_and_cov_diagonal : bool
-        Only with log_trafo=True: predict() returns the predictions transformed
-        back to the original scale of the observables.
+        observable are discarded. None disables this filter.
+    exp_and_cov_diagonal : bool, default=False
+        Only with ``log_trafo=True``: predict() returns the predictions
+        transformed back to the original scale of the observables, with
+        diagonal covariance matrices.
+
+    Raises
+    ------
+    ValueError
+        If `exp_and_cov_diagonal` is True but `log_trafo` is False, if the
+        number of parameters of the training data and the parameter file
+        differ, if `log_trafo` is True and a training point has observables
+        <= 0, or if all training points are discarded.
     """
 
     def __init__(
@@ -112,8 +171,8 @@ class EmulatorBase:
         self.nparameters = self.design_points.shape[1]
         if self.nparameters != len(self.pardict):
             raise ValueError(
-                f"The training data have {self.nparameters} parameters, but the parameter file "
-                f"{parameter_file} has {len(self.pardict)}"
+                f"The training data have {self.nparameters} parameters, but the "
+                f"parameter file {parameter_file} has {len(self.pardict)}"
             )
 
     # attributes of the emulators saved with versions < 3.0.0 and their
@@ -123,6 +182,7 @@ class EmulatorBase:
     _legacy_defaults = {}
 
     def __setstate__(self, state):
+        """Restore the state after unpickling, renaming legacy attributes."""
         self.__dict__.update(self._migrate_legacy_state(state))
 
     @classmethod
@@ -149,15 +209,19 @@ class EmulatorBase:
     # -------------------------
     @staticmethod
     def _max_rel_error(temp_data):
-        """Largest relative statistical error of a training point. Observables
-        that are exactly zero have no relative error and are ignored."""
+        """
+        Largest relative statistical error of a training point.
+
+        Observables that are exactly zero have no relative error and are
+        ignored.
+        """
         nonzero = temp_data[:, 0] != 0
         return np.max(
             np.abs(temp_data[nonzero, 1] / temp_data[nonzero, 0]), initial=0.0
         )
 
     def _load_training_data_pickle(self, data_file):
-        """This function reads in training data sets at every sample point"""
+        """Read the training data of all parameter points from a pickle file."""
         logger.info(f"loading training data from {data_file} ...")
         self.model_data = []
         self.model_data_err = []
@@ -203,11 +267,19 @@ class EmulatorBase:
         self.model_data_err = np.nan_to_num(np.abs(np.array(self.model_data_err)))
         logger.info("All training data are loaded.")
         logger.info(
-            f"Training dataset size: {len(self.model_data)}, discarded points: {discarded_points}"
+            f"Training dataset size: {len(self.model_data)}, "
+            f"discarded points: {discarded_points}"
         )
 
     def train_emulator_auto_mask(self, **train_kwargs):
-        """Train the emulator on all training points."""
+        """
+        Train the emulator on all training points.
+
+        Parameters
+        ----------
+        **train_kwargs
+            Keyword arguments passed to ``train_emulator``.
+        """
         self.train_emulator(np.ones(self.nev, dtype=bool), **train_kwargs)
 
     # -------------------------
@@ -218,8 +290,12 @@ class EmulatorBase:
         return self.log_trafo and not self.exp_and_cov_diagonal
 
     def _predict_log_space(self, X, include_noise):
-        """predict() of a log-transformed emulator in log space, also if it
-        returns the predictions in the original scale."""
+        """
+        Predict in log space with a log-transformed emulator.
+
+        This also works if predict() returns the predictions in the original
+        scale (exp_and_cov_diagonal).
+        """
         flag = self.exp_and_cov_diagonal
         self.exp_and_cov_diagonal = False
         try:
@@ -229,17 +305,33 @@ class EmulatorBase:
 
     def sample_y(self, X, n_samples=1, random_state=None, include_noise=False):
         """
-        Sample model output at the parameter points `X` from the predicted
-        Gaussian distribution, with the same uncertainty as predict() (see
+        Sample model output from the predicted Gaussian distribution.
+
+        The samples have the same uncertainty as predict() (see
         `include_noise`). The points are sampled independently, only the
         correlations between the observables are taken into account.
 
         The samples are in the same space as the predictions: in log space for
-        log-transformed emulators, unless exp_and_cov_diagonal is set, in which
-        case the samples are drawn in log space and exponentiated
+        log-transformed emulators, unless exp_and_cov_diagonal is set, in
+        which case the samples are drawn in log space and exponentiated
         (log-normal).
 
-        Returns an array with shape ``(nsamples_X, n_samples, nobs)``.
+        Parameters
+        ----------
+        X : array_like of shape (nsamples_X, nparameters)
+            Parameter points. A 1D array is treated as a single point.
+        n_samples : int, default=1
+            Number of samples per parameter point.
+        random_state : int, numpy.random.Generator or None, default=None
+            Seed or generator passed to ``numpy.random.default_rng``.
+        include_noise : bool, default=False
+            If True, the noise fitted by the emulator is included in the
+            uncertainty, as in predict().
+
+        Returns
+        -------
+        ndarray of shape (nsamples_X, n_samples, nobs)
+            Samples of the observables.
         """
         X = np.atleast_2d(X)
         rng = np.random.default_rng(random_state)
@@ -259,12 +351,16 @@ class EmulatorBase:
         return samples
 
     def _validation_masks(self, number_test_points, random_points, seed):
-        """Boolean masks of the training and test points. The test points are
-        the last number_test_points points, or randomly chosen points if
-        random_points is True."""
+        """
+        Boolean masks of the training and test points.
+
+        The test points are the last number_test_points points, or randomly
+        chosen points if random_points is True.
+        """
         if not 0 <= number_test_points < self.nev:
             raise ValueError(
-                f"number_test_points must be between 0 and {self.nev - 1}, got {number_test_points}"
+                f"number_test_points must be between 0 and {self.nev - 1}, "
+                f"got {number_test_points}"
             )
         if random_points:
             rng = np.random.default_rng(seed)
@@ -276,9 +372,13 @@ class EmulatorBase:
         return ~test_mask, test_mask
 
     def _validation_output(self, mask):
-        """Emulator predictions and their standard deviations, and the
-        training data and their errors at the points in mask, all in the
-        original scale of the observables."""
+        """
+        Predictions and training data at the points in `mask`.
+
+        Returns the emulator predictions and their standard deviations, and
+        the training data and their errors, all in the original scale of the
+        observables.
+        """
         # the test points are noisy simulations, so the noise of the emulator
         # is included in the predicted errors
         pred_mean, pred_cov = self.predict(
@@ -310,16 +410,37 @@ class EmulatorBase:
         self, number_test_points=1, random_points=False, seed=None, **train_kwargs
     ):
         """
-        Train the emulator without number_test_points test points and predict
-        at the test points. The test points are the last points of the
-        training data, or randomly chosen points if random_points is True
-        (reproducible with seed). train_kwargs are passed to train_emulator.
-        The trained emulator is not changed.
+        Validate the emulator at test points excluded from the training.
 
-        Returns the emulator predictions, their errors, the values of the
-        observables and their errors at the test points, as four arrays of
-        shape (number_test_points, nobs) in the original scale of the
-        observables.
+        The emulator is trained without the test points and predicts at the
+        test points. The predicted errors include the noise of the emulator,
+        since the test points are noisy simulations. The trained emulator is
+        not changed.
+
+        Parameters
+        ----------
+        number_test_points : int, default=1
+            Number of test points, between 0 and nev - 1.
+        random_points : bool, default=False
+            If False, the test points are the last points of the training
+            data. If True, they are chosen randomly.
+        seed : int or None, default=None
+            Seed for the random choice of the test points.
+        **train_kwargs
+            Keyword arguments passed to ``train_emulator``.
+
+        Returns
+        -------
+        pred_mean, pred_err, data, data_err : ndarray
+            The emulator predictions, their errors, the values of the
+            observables and their errors at the test points, each of shape
+            (number_test_points, nobs), in the original scale of the
+            observables.
+
+        Raises
+        ------
+        ValueError
+            If `number_test_points` is not between 0 and nev - 1.
         """
         logger.info("Validating emulator ...")
         train_mask, test_mask = self._validation_masks(
@@ -333,13 +454,35 @@ class EmulatorBase:
         self, number_test_points=1, random_points=False, seed=None, **train_kwargs
     ):
         """
-        Train the emulator without number_test_points test points (chosen as
-        in test_emulator_errors) and predict at the training points. The
+        Validate the emulator at its training points.
+
+        The emulator is trained without number_test_points test points (chosen
+        as in `test_emulator_errors`) and predicts at the training points. The
         resulting errors should be very small. The trained emulator is not
         changed.
 
-        Returns the same four arrays as test_emulator_errors, with
-        (nev - number_test_points) rows.
+        Parameters
+        ----------
+        number_test_points : int, default=1
+            Number of test points excluded from the training.
+        random_points : bool, default=False
+            If True, the test points are chosen randomly, otherwise they are
+            the last points of the training data.
+        seed : int or None, default=None
+            Seed for the random choice of the test points.
+        **train_kwargs
+            Keyword arguments passed to ``train_emulator``.
+
+        Returns
+        -------
+        pred_mean, pred_err, data, data_err : ndarray
+            The same four arrays as `test_emulator_errors`, with
+            (nev - number_test_points) rows.
+
+        Raises
+        ------
+        ValueError
+            If `number_test_points` is not between 0 and nev - 1.
         """
         logger.info("Validating emulator at the training points ...")
         train_mask, _ = self._validation_masks(number_test_points, random_points, seed)

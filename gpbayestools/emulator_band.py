@@ -19,15 +19,42 @@ logger = logging.getLogger(__name__)
 
 class EmulatorBAND(EmulatorBase):
     """
-    Multidimensional Gaussian Process emulator wrapper for the GP emulators of
-    the BAND collaboration. The number of principal components is chosen by
-    surmise, so there is no npc argument.
+    Multidimensional Gaussian process emulator wrapper for the GP emulators of
+    the BAND collaboration (surmise).
 
-    With `log_trafo` set to True, the emulator is trained on the log of the
-    observables and predict() returns the mean and covariance in log space.
-    Experimental data used with the emulator must then be log-transformed as
-    well. With `exp_and_cov_diagonal` set to True, predict() returns exp(mean)
-    and a diagonal covariance in the original scale of the observables.
+    The number of principal components is chosen by surmise, so there is no
+    npc argument.
+
+    Parameters
+    ----------
+    training_set_path : str, default="."
+        Path to the pickle file with the training data, a dictionary
+        ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
+        nobs) with the values and statistical errors}}``.
+    parameter_file : str, default="ABCD.txt"
+        Path to the model parameter file.
+    method : {"PCGP", "PCSK", "PCGPwImpute", "PCGPwM"}, default="PCGP"
+        surmise emulation method. PCSK uses the statistical errors of the
+        training data.
+    log_trafo : bool, default=False
+        If True, the emulator is trained on the log of the observables, which
+        must be positive, and predict() returns the mean and covariance in log
+        space. Experimental data used with the emulator must then be
+        log-transformed as well.
+    max_rel_uncertainty_data : float or None, default=None
+        Training points with a larger relative statistical error of any
+        observable are discarded. None disables this filter.
+    exp_and_cov_diagonal : bool, default=False
+        If True, predict() returns exp(mean) and a diagonal covariance in the
+        original scale of the observables. Requires ``log_trafo=True``.
+    seed : int or None, default=None
+        Seed of the random number generator that is set as the global RNG of
+        surmise (>= 1.0.0) before the training.
+
+    Raises
+    ------
+    ValueError
+        For invalid training data or options (see `EmulatorBase`).
     """
 
     _legacy_attributes = [("method_", "method"), ("rng_", "_rng"), ("emu", "emu_")]
@@ -56,6 +83,19 @@ class EmulatorBAND(EmulatorBase):
         )
 
     def train_emulator(self, event_mask):
+        """
+        Train the emulator on the training points selected by `event_mask`.
+
+        Parameters
+        ----------
+        event_mask : ndarray of bool of shape (nev,)
+            Mask of the training points to use.
+
+        Raises
+        ------
+        ValueError
+            If `method` is not implemented.
+        """
         logger.info("Performing emulator training ...")
         nev, nobs = self.model_data[event_mask, :].shape
         logger.info(f"Train GP emulators with {nev} training points ...")
@@ -133,8 +173,7 @@ class EmulatorBAND(EmulatorBase):
 
     def predict(self, X, return_cov=True, include_noise=False):
         """
-        Predict model output. Here X is the parameter vector at the prediction
-        point.
+        Predict model output at the parameter points `X`.
 
         By default, the covariance is the uncertainty of the emulated model
         function. With `include_noise`, the noise (nugget) of the GPs is
@@ -142,6 +181,23 @@ class EmulatorBAND(EmulatorBase):
 
         The variance of the discarded PCs is surmise's extravar, which is
         zero for PCSK and not corrected for the noise of the training data.
+
+        Parameters
+        ----------
+        X : array_like of shape (nsamples, nparameters)
+            Parameter points.
+        return_cov : bool, default=True
+            If True, the covariance is returned as well.
+        include_noise : bool, default=False
+            If True, the noise (nugget) of the GPs is included in the covariance.
+
+        Returns
+        -------
+        mean : ndarray of shape (nsamples, nobs)
+            Predicted mean.
+        cov : ndarray of shape (nsamples, nobs, nobs)
+            Covariance between the observables. Only returned if `return_cov`
+            is True.
         """
         x = np.arange(self.nobs).reshape(-1, 1)
 

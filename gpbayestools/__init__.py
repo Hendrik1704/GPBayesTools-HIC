@@ -16,11 +16,23 @@ cachedir = workdir / "cache"
 
 def keep_trained_state(method):
     """
+    Restore the state of the emulator after a call of the decorated method.
+
     Decorator for emulator validation methods, which train the emulator on a
     subset of the training data. The attributes of the emulator are restored
     after the call, so that the trained emulator is not changed. Training must
     therefore replace attributes instead of modifying them in place. Random
     number generators are copied, so that their state is restored as well.
+
+    Parameters
+    ----------
+    method : callable
+        Method of an emulator to decorate.
+
+    Returns
+    -------
+    callable
+        The wrapped method.
     """
 
     @functools.wraps(method)
@@ -54,11 +66,15 @@ _LEGACY_CLASSES = {
 
 
 class _LegacyUnpickler(dill.Unpickler):
-    """Unpickler that maps the module and class names of versions < 3.0.0, in
-    which the package was called src and the modules and classes had other
-    names, to the current names."""
+    """
+    Unpickler that maps old module and class names to the current names.
+
+    In versions < 3.0.0, the package was called src and the modules and some
+    classes had other names.
+    """
 
     def find_class(self, module, name):
+        """Return the class `name` of `module`, mapping old names first."""
         if module == "src" or module.startswith("src."):
             module = __name__ + module[len("src") :]
         if module.startswith(__name__ + "."):
@@ -71,15 +87,44 @@ class _LegacyUnpickler(dill.Unpickler):
 
 def load_emulator(path):
     """
-    Load an emulator saved with dill. Emulators saved with versions < 3.0.0,
-    in which the package, the modules and some classes had other names, can
-    be loaded as well.
+    Load an emulator saved with dill.
+
+    Emulators saved with versions < 3.0.0, in which the package, the modules
+    and some classes had other names, can be loaded as well.
+
+    Parameters
+    ----------
+    path : str or path-like
+        Path to the file with the saved emulator.
+
+    Returns
+    -------
+    object
+        The loaded emulator.
     """
     with open(path, "rb") as f:
         return _LegacyUnpickler(f).load()
 
 
 def parse_model_parameter_file(parfile):
+    """
+    Read a model parameter file.
+
+    Each line has the format ``name: label, min, max``. Text after ``#`` is a
+    comment, and empty and comment lines are skipped.
+
+    Parameters
+    ----------
+    parfile : str or path-like
+        Path to the model parameter file.
+
+    Returns
+    -------
+    dict
+        Maps each parameter name to the list ``[label, min, max, ...]`` of the
+        comma-separated entries of its line, with min and max converted to
+        float. Further entries are kept as strings.
+    """
     pardict = {}
     with open(parfile) as f:
         for line in f:

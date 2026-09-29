@@ -1,3 +1,15 @@
+"""
+Cluster the most likely posterior samples of a pocoMC chain.
+
+The chain is sorted by the log likelihood, and the cluster centers of the
+most likely samples are saved to ``cluster_centers.txt``.
+
+Usage::
+
+    python generate_posterior_clusters.py <path_to_chain_file> \\
+        <number_of_most_likely_samples_considered> <number_of_clusters>
+"""
+
 import pickle
 import sys
 from pathlib import Path
@@ -9,14 +21,18 @@ from sklearn.preprocessing import StandardScaler
 
 def read_pkl_file_chain_pocomc(chain_file):
     """
-    Reads a pickle file containing the chain data from pocoMC.
-    The expected structure of the data is:
-    - 'chain'
-    - 'logl'
-    - 'logp'
-    - 'logz'
-    - 'logz_err'
-    This function returns the data as a dictionary.
+    Read a pickle file containing the chain data from pocoMC.
+
+    Parameters
+    ----------
+    chain_file : str or path-like
+        Path to the pickle file.
+
+    Returns
+    -------
+    dict
+        The chain data, with the keys 'chain', 'logl', 'logp', 'logz' and
+        'logz_err'.
     """
     with open(chain_file, "rb") as pf:
         data = pickle.load(pf)
@@ -25,15 +41,37 @@ def read_pkl_file_chain_pocomc(chain_file):
 
 
 def sorted_chain_path(chain_file):
-    # e.g. chain.pkl -> chain_sorted.pkl, never equal to the input file
+    """
+    Return the path of the sorted chain file.
+
+    '_sorted' is appended to the file name, e.g. chain.pkl ->
+    chain_sorted.pkl, so it is never equal to the input file.
+
+    Parameters
+    ----------
+    chain_file : str or path-like
+        Path to the chain file.
+
+    Returns
+    -------
+    str
+        Path of the sorted chain file.
+    """
     path = Path(chain_file)
     return str(path.with_name(path.stem + "_sorted" + path.suffix))
 
 
 def sort_chain_likelihood(chain_file):
     """
-    Sorts the chain data based on the log likelihood values in descending order.
-    The sorted data is saved to a new pickle file with '_sorted' appended to the original filename.
+    Sort the chain data by the log likelihood in descending order.
+
+    The sorted data are saved to a new pickle file with '_sorted' appended to
+    the original file name (see `sorted_chain_path`).
+
+    Parameters
+    ----------
+    chain_file : str or path-like
+        Path to the pickle file with the chain data from pocoMC.
     """
     run_chain = read_pkl_file_chain_pocomc(chain_file)
     array_chain = run_chain["chain"]
@@ -66,6 +104,19 @@ def sort_chain_likelihood(chain_file):
 def generate_posterior_clusters(sorted_chain_file, num_samples=None, num_clusters=10):
     """
     Generate posterior clusters from the sorted chain file.
+
+    The samples are standardized and clustered with k-means. The cluster
+    centers are saved to ``cluster_centers.txt`` in the current directory,
+    one parameter per row and one cluster per column.
+
+    Parameters
+    ----------
+    sorted_chain_file : str or path-like
+        Path to the chain file sorted by `sort_chain_likelihood`.
+    num_samples : int or None, default=None
+        Number of most likely samples to use. None uses all samples.
+    num_clusters : int, default=10
+        Number of clusters.
     """
     run_chain = read_pkl_file_chain_pocomc(sorted_chain_file)
     array_chain = run_chain["chain"]
@@ -87,14 +138,18 @@ def generate_posterior_clusters(sorted_chain_file, num_samples=None, num_cluster
 if __name__ == "__main__":
     if len(sys.argv) != 4:
         print(
-            "Usage: python generate_posterior_clusters.py <path_to_chain_file> <number_of_most_likely_samples_considered> <number_of_clusters>"
+            "Usage: python generate_posterior_clusters.py <path_to_chain_file> "
+            "<number_of_most_likely_samples_considered> <number_of_clusters>"
         )
         print("Arguments:")
         print(
-            "  <path_to_chain_file>: Path to the pickle file containing the chain data from pocoMC."
+            "  <path_to_chain_file>: Path to the pickle file containing the chain "
+            "data from pocoMC."
         )
         print(
-            "  <number_of_most_likely_samples_considered>: Number of most likely samples to consider for clustering. Use 'None' to consider all samples."
+            "  <number_of_most_likely_samples_considered>: Number of most likely "
+            "samples to consider for clustering. Use 'None' to consider all "
+            "samples."
         )
         print("  <number_of_clusters>: Number of clusters to generate.")
         sys.exit(1)

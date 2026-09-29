@@ -1,7 +1,7 @@
 """
-Tests for the scikit-learn emulator (gpbayestools/emulator_sklearn.py) and the functionality
-of the emulator base class (gpbayestools/emulator_base.py): loading and filtering the
-training data, and the validation functions.
+Tests for the scikit-learn emulator (gpbayestools/emulator_sklearn.py) and the
+functionality of the emulator base class (gpbayestools/emulator_base.py): loading and
+filtering the training data, and the validation functions.
 
 Run with ``python -m pytest tests/test_emulator_sklearn.py``.
 """

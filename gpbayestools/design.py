@@ -34,8 +34,9 @@ logger = logging.getLogger(__name__)
 def _generate_with_r(method, r_code, npoints, ndim, seed):
     """
     Run `r_code` in R and return the design it writes to stdout as an array.
-    The design is cached in cachedir/lhs/<method>/.
 
+    The design is cached in cachedir/lhs/<method>/ and loaded from there if
+    it exists.
     """
     cachefile = (
         cachedir / "lhs" / method / f"npoints{npoints}_ndim{ndim}_seed{seed}.npy"
@@ -60,10 +61,23 @@ def _generate_with_r(method, r_code, npoints, ndim, seed):
 
 def generate_maximin_lhs(npoints, ndim, seed):
     """
-    Generate a maximin Latin-hypercube sample (LHS) in [0, 1]^ndim with the
-    given number of points, dimensions, and random seed, using the R package
-    lhs.
+    Generate a maximin Latin-hypercube sample (LHS) in [0, 1]^ndim.
 
+    The sample is generated with the R package lhs and cached.
+
+    Parameters
+    ----------
+    npoints : int
+        Number of design points.
+    ndim : int
+        Number of dimensions (parameters).
+    seed : int
+        Random seed passed to R's ``set.seed()``.
+
+    Returns
+    -------
+    ndarray of shape (npoints, ndim)
+        The design points in [0, 1]^ndim.
     """
     logger.debug(
         "generating maximin LHS: npoints = %d, ndim = %d, seed = %d",
@@ -86,10 +100,23 @@ def generate_maximin_lhs(npoints, ndim, seed):
 
 def generate_maxpro_lhs(npoints, ndim, seed):
     """
-    Generate a maximum projection Latin-hypercube sample (LHS) in [0, 1]^ndim
-    with the given number of points, dimensions, and random seed, using the R
-    package MaxPro.
+    Generate a maximum projection Latin-hypercube sample (LHS) in [0, 1]^ndim.
 
+    The sample is generated with the R package MaxPro and cached.
+
+    Parameters
+    ----------
+    npoints : int
+        Number of design points.
+    ndim : int
+        Number of dimensions (parameters).
+    seed : int
+        Random seed passed to R's ``set.seed()``.
+
+    Returns
+    -------
+    ndarray of shape (npoints, ndim)
+        The design points in [0, 1]^ndim.
     """
     logger.debug(
         "generating maximum projection LHS: npoints = %d, ndim = %d, seed = %d",
@@ -102,7 +129,8 @@ def generate_maxpro_lhs(npoints, ndim, seed):
         f"""
         library(MaxPro)
         set.seed({seed})
-        write.table(MaxProRunOrder(MaxProLHD({npoints}, {ndim})$Design)$Design, col.names=FALSE, row.names=FALSE)
+        write.table(MaxProRunOrder(MaxProLHD({npoints}, {ndim})$Design)$Design,"""
+        """ col.names=FALSE, row.names=FALSE)
         """,
         npoints,
         ndim,
@@ -123,28 +151,47 @@ class Design:
     """
     Latin-hypercube model design.
 
-    Creates a design for the given parameter set
-    with the given number of points.
-    Creates the main (training) design if `validation` is false (default);
-    creates the validation design if `validation` is true.
-    If `seed` is not given, a random seed is generated from the current time.
-    It is printed and stored in ``seed`` to be able to reproduce the design.
-    `method` selects the Latin-hypercube design: 'maxpro' (maximum
-    projection design, R package MaxPro, default) or 'maximin' (maximin
-    design, R package lhs).
+    Creates a design with the given number of points for the parameters in
+    the parameter file. The class also implicitly converts to a numpy array.
 
-    Public attributes:
+    Parameters
+    ----------
+    parfile : str or path-like
+        Path to the model parameter file.
+    npoints : int, default=500
+        Number of design points.
+    validation : bool, default=False
+        If False, the main (training) design is created, if True, the
+        validation design.
+    seed : int or None, default=None
+        Random seed. If None, a seed is generated from the current time. It
+        is logged and stored in ``seed`` to be able to reproduce the design.
+    method : {"maxpro", "maximin"}, default="maxpro"
+        Latin-hypercube design: 'maxpro' (maximum projection design, R
+        package MaxPro) or 'maximin' (maximin design, R package lhs).
 
-    - ``type``: 'main' or 'validation'
-    - ``pardict``: a dictionary contains all the parameters and their bounds
-    - ``min``, ``max``: numpy arrays of parameter min and max
-    - ``ndim``: number of parameters (i.e. dimensions)
-    - ``points``: list of design point names (formatted numbers)
-    - ``array``: the actual design array
-    - ``seed``: the random seed used to generate the design
+    Attributes
+    ----------
+    type : str
+        'main' or 'validation'.
+    pardict : dict
+        All parameters and their bounds, as returned by
+        ``parse_model_parameter_file``.
+    min, max : ndarray
+        Minimum and maximum values of the parameters.
+    ndim : int
+        Number of parameters (i.e. dimensions).
+    points : list of str
+        Design point names (formatted numbers).
+    array : ndarray of shape (npoints, ndim)
+        The actual design array.
+    seed : int
+        The random seed used to generate the design.
 
-    The class also implicitly converts to a numpy array.
-
+    Raises
+    ------
+    ValueError
+        If `method` is unknown.
     """
 
     def __init__(
@@ -152,7 +199,8 @@ class Design:
     ):
         if method not in design_generators:
             raise ValueError(
-                f"Unknown design method '{method}', use one of {list(design_generators)}"
+                f"Unknown design method '{method}', "
+                f"use one of {list(design_generators)}"
             )
         self.pardict = parse_model_parameter_file(parfile)
         self.type = "validation" if validation else "main"
@@ -185,13 +233,21 @@ class Design:
         )
 
     def __array__(self):
+        """Return the design array."""
         return self.array
 
     def write_files(self, basedir):
         """
-        Write input files for each design point as a python dictionary
-        to `basedir`.
+        Write an input file for each design point.
 
+        The files are written to ``basedir / type``, one file per design point
+        named after the point, with one line ``name value`` per parameter.
+
+        Parameters
+        ----------
+        basedir : pathlib.Path
+            Base directory of the input files. It is created if it does not
+            exist.
         """
         outdir = basedir / self.type
         outdir.mkdir(parents=True, exist_ok=True)

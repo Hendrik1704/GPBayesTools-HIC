@@ -1,3 +1,8 @@
+"""
+Generate a Latin-hypercube design for the parameters in
+``modelDesign_example.txt`` and write the input files to ``./designs``.
+"""
+
 import logging
 import sys
 from os import path

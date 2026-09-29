@@ -23,44 +23,68 @@ logger = logging.getLogger(__name__)
 class EmulatorSklearn(EmulatorBase):
     """
     Multidimensional Gaussian process emulator using principal component
-    analysis. There is the option to switch off the PCA transformation
-    and use the raw data for the Gaussian process emulation.
+    analysis.
 
     The model training data are standardized (subtract mean and scale to unit
-    variance), then transformed through PCA.  The first `npc` principal
-    components (PCs) are emulated by independent Gaussian processes (GPs),
-    where `npc` is the number of PCs (int) or the fraction of the explained
-    variance (float in (0, 1)).  The
-    remaining components are neglected, which is equivalent to assuming they
-    are standard zero-mean unit-variance GPs.
+    variance), then transformed through PCA. The first `npc` principal
+    components (PCs) are emulated by independent Gaussian processes (GPs).
+    The remaining components are neglected, which is equivalent to assuming
+    they are standard zero-mean unit-variance GPs. There is the option to
+    switch off the PCA transformation and use the raw data for the Gaussian
+    process emulation.
 
-    This class has become a bit messy but it still does the job.  It would
+    This class has become a bit messy but it still does the job. It would
     probably be better to refactor some of the data transformations /
     preprocessing into modular classes, to be used with an sklearn pipeline.
     The classes would also need to handle transforming uncertainties, which
     could be tricky.
 
-    With `log_trafo` set to True, the emulator is trained on the log of the
-    observables and predict() returns the mean and covariance in log space.
-    Experimental data used with the emulator must then be log-transformed as
-    well. The parameter `exp_and_cov_diagonal` can be set to True to
-    exponentiate the mean and set the off-diagonal elements of the covariance
-    matrix to zero. For log trained emulators, this will return predictions
-    in the original scale of the observables, but with diagonal covariance
-    matrices.
+    Parameters
+    ----------
+    training_set_path : str, default="."
+        Path to the pickle file with the training data, a dictionary
+        ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
+        nobs) with the values and statistical errors}}``.
+    parameter_file : str, default="ABCD.txt"
+        Path to the model parameter file.
+    npc : int or float, default=10
+        Number of PCs (int >= 1) or fraction of the explained variance (float
+        in (0, 1)).
+    n_restarts : int, default=0
+        Number of restarts of the GP hyperparameter optimizer.
+    log_trafo : bool, default=False
+        If True, the emulator is trained on the log of the observables, which
+        must be positive, and predict() returns the mean and covariance in log
+        space. Experimental data used with the emulator must then be
+        log-transformed as well.
+    max_rel_uncertainty_data : float or None, default=None
+        Training points with a larger relative statistical error of any
+        observable are discarded. None disables this filter.
+    exp_and_cov_diagonal : bool, default=False
+        If True, predict() exponentiates the mean and sets the off-diagonal
+        elements of the covariance matrix to zero. For log-trained emulators,
+        this returns predictions in the original scale of the observables, but
+        with diagonal covariance matrices. Requires ``log_trafo=True``.
+    perform_no_pca : bool, default=False
+        If True, the PCA transformation is switched off and the raw
+        (standardized) data are used for the Gaussian process emulation.
+    seed : int or None, default=None
+        Random state of the restarts of the GP hyperparameter optimization
+        (with n_restarts > 0), for reproducible training.
+    alpha : float, default=1e-8
+        Value added to the diagonal of the GP kernel matrices in the training.
+        It is only meant for numerical stability, the noise of the training
+        data is fitted by the WhiteKernel of the GPs. Versions < 3.0.0 used
+        alpha = 0.1, which treats a fixed 10% of the variance of each
+        (whitened) PC as noise and overestimates the emulator uncertainty.
 
-    The parameter `perform_no_pca` can be set to True to switch off the PCA
-    transformation and use the raw data for the Gaussian process emulation.
-
-    `seed` sets the random state of the restarts of the GP hyperparameter
-    optimization (with n_restarts > 0), for reproducible training.
-
-    `alpha` is added to the diagonal of the GP kernel matrices in the
-    training. It is only meant for numerical stability (default 1e-8), the
-    noise of the training data is fitted by the WhiteKernel of the GPs.
-    Versions < 3.0.0 used alpha = 0.1, which treats a fixed 10% of the
-    variance of each (whitened) PC as noise and overestimates the emulator
-    uncertainty.
+    Raises
+    ------
+    ValueError
+        If `npc` is out of range, or for invalid training data or options
+        (see `EmulatorBase`).
+    TypeError
+        If `npc` is neither an int nor a float.
     """
 
     _legacy_attributes = [
@@ -129,11 +153,45 @@ class EmulatorSklearn(EmulatorBase):
         return Z[:, :npc]
 
     def output_pca_vs_param(self):
+        """
+        Return the principal components of all training data.
+
+        The PCA is fitted to all training data, independently of the trained
+        emulator, which is not modified.
+
+        Returns
+        -------
+        design_points : ndarray of shape (nev, nparameters)
+            Parameter points of the training data.
+        Z : ndarray of shape (npc, nev)
+            The first npc PCs at the training points.
+        """
         logger.info("Performing PCA ...")
         Z = self._pca_of_all_data()
         return (self.design_points, Z.T)
 
     def train_emulator(self, event_mask, kernel_type="RBF"):
+        """
+        Train the emulator on the training points selected by `event_mask`.
+
+        The scaler and the PCA are fitted to the selected training data, and
+        one GP is fitted to each PC (or each standardized observable with
+        ``perform_no_pca=True``). The kernel is the correlation kernel plus a
+        homoscedastic noise term (WhiteKernel).
+
+        Parameters
+        ----------
+        event_mask : ndarray of bool of shape (nev,)
+            Mask of the training points to use.
+        kernel_type : {"RBF", "Matern"}, default="RBF"
+            Correlation kernel of the GPs: Gaussian (RBF) or Matern with
+            nu = 1.5.
+
+        Raises
+        ------
+        ValueError
+            If `kernel_type` is unknown.
+        """
         data_to_use = self.model_data[event_mask, :]
         # Standardize the input data. New scaler and PCA objects are used,
         # so that the previously trained ones are not modified.
@@ -158,7 +216,9 @@ class EmulatorSklearn(EmulatorBase):
             Z = Z[:, : self.npc_]
 
             logger.info(
-                f"{self.npc_} PCs explain {self.pca_.explained_variance_ratio_[: self.npc_].sum():.5f} of variance"
+                f"{self.npc_} PCs explain "
+                f"{self.pca_.explained_variance_ratio_[: self.npc_].sum():.5f} "
+                "of variance"
             )
 
         nev, nobs = self.model_data[event_mask, :].shape
@@ -207,12 +267,14 @@ class EmulatorSklearn(EmulatorBase):
             for n, gp in enumerate(self.gps_):
                 evr = self.pca_.explained_variance_ratio_[n]
                 logger.info(
-                    f"GP {n}: {evr:.5f} of variance, LML = {gp.log_marginal_likelihood_value_:.5g}, Score = {gp_scores[n]:.2f}, kernel: {gp.kernel_}"
+                    f"GP {n}: {evr:.5f} of variance, "
+                    f"LML = {gp.log_marginal_likelihood_value_:.5g}, "
+                    f"Score = {gp_scores[n]:.2f}, kernel: {gp.kernel_}"
                 )
 
         if not self.perform_no_pca:
-            # Construct the full linear transformation matrix, which is just the PC
-            # matrix with the first axis multiplied by the explained standard
+            # Construct the full linear transformation matrix, which is just the
+            # PC matrix with the first axis multiplied by the explained standard
             # deviation of each PC and the second axis multiplied by the
             # standardization scale factor of each observable.
             self._trans_matrix = (
@@ -228,7 +290,8 @@ class EmulatorSklearn(EmulatorBase):
             #
             #   cov_ij = sum_k A_ki var_k A_kj
             #
-            # where A is the trans matrix and var_k is the variance of the kth PC.
+            # where A is the trans matrix and var_k is the variance of the kth
+            # PC.
             # https://en.wikipedia.org/wiki/Propagation_of_uncertainty
 
             # Compute the partial transformation for the first `npc` components
@@ -262,9 +325,8 @@ class EmulatorSklearn(EmulatorBase):
     def _inverse_transform(self, Z):
         """
         Inverse transform principal components to observables.
-        # Z shape (..., npc)
-        # Y shape (..., nobs)
 
+        `Z` has shape (..., npc), the result `Y` has shape (..., nobs).
         """
         Y = np.dot(Z, self._trans_matrix[: Z.shape[-1]])
         Y += self.scaler_.mean_
@@ -283,16 +345,30 @@ class EmulatorSklearn(EmulatorBase):
 
     def predict(self, X, return_cov=True, include_noise=False):
         """
-        Predict model output at `X`, a 2D array with shape
-        ``(nsamples, ndim)``.
-
-        Returns the mean with shape ``(nsamples, nobs)`` and, if `return_cov`
-        is true, the covariance between the observables with shape
-        ``(nsamples, nobs, nobs)``.
+        Predict model output at the parameter points `X`.
 
         By default, the covariance is the uncertainty of the emulated model
-        function. With `include_noise`, the noise fitted by the GPs (WhiteKernel)
-        is included, i.e. the uncertainty of a new noisy simulation.
+        function. With `include_noise`, the noise fitted by the GPs
+        (WhiteKernel) is included, i.e. the uncertainty of a new noisy
+        simulation.
+
+        Parameters
+        ----------
+        X : ndarray of shape (nsamples, ndim)
+            Parameter points.
+        return_cov : bool, default=True
+            If True, the covariance is returned as well.
+        include_noise : bool, default=False
+            If True, the noise fitted by the GPs is included in the
+            covariance.
+
+        Returns
+        -------
+        mean : ndarray of shape (nsamples, nobs)
+            Predicted mean.
+        cov : ndarray of shape (nsamples, nobs, nobs)
+            Covariance between the observables. Only returned if `return_cov`
+            is True.
         """
         gp_mean = [gp.predict(X, return_cov=return_cov) for gp in self.gps_]
 

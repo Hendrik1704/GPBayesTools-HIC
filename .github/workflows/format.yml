@@ -1,8 +1,9 @@
-name: Format
+name: Format and lint
 
 # On pushes to main and devel, the Python code is formatted with ruff and the
 # changes are committed to the branch. On pull requests, the formatting is only
-# checked, since the workflow cannot push to branches of forks.
+# checked, since the workflow cannot push to branches of forks. In both cases,
+# the code is checked with the lint rules of pyproject.toml.
 
 on:
   push:
@@ -44,3 +45,6 @@ jobs:
           else
             echo "The code is already formatted."
           fi
+
+      - name: Lint
+        run: ruff check .

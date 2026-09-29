@@ -1,18 +1,20 @@
 """
-Training for Sparse Variational Gaussian Process emulators.
+Sparse variational Gaussian process emulators.
 
-Implements a PCA-reduced Sparse Variational GP (SVGP) emulator using JAX and
-optax.  Both a single emulator and a bootstrap ensemble variant are provided.
-
-References:
-  - Hensman et al. (2015), "Scalable Variational Gaussian Process Classification"
-  - Lakshminarayanan et al. (2017), "Simple and Scalable Predictive Uncertainty
-    Estimation using Deep Ensembles"
+Implements a PCA-reduced sparse variational GP (SVGP) emulator using JAX and
+optax. Both a single emulator and a bootstrap ensemble variant are provided.
 
 Importing this module enables 64-bit floats in JAX (``jax_enable_x64``) for
 the whole Python process. In single precision, the Cholesky decompositions
 and the predicted covariances are not accurate enough for the likelihood in
 the MCMC.
+
+References
+----------
+.. [1] Hensman et al. (2015), "Scalable Variational Gaussian Process
+   Classification".
+.. [2] Lakshminarayanan et al. (2017), "Simple and Scalable Predictive
+   Uncertainty Estimation using Deep Ensembles".
 """
 
 import logging
@@ -38,6 +40,26 @@ logger = logging.getLogger(__name__)
 
 
 def rbf_kernel(x1, x2, ls, var):
+    """
+    Squared exponential (RBF) kernel with ARD lengthscales.
+
+    Parameters
+    ----------
+    x1 : array (N1, D)
+        First set of input points.
+    x2 : array (N2, D)
+        Second set of input points.
+    ls : array (D,) or float
+        Lengthscales.
+    var : float
+        Kernel variance.
+
+    Returns
+    -------
+    array (N1, N2)
+        Kernel matrix ``var * exp(-0.5 * r^2)``, where ``r`` is the distance
+        of the points scaled by the lengthscales.
+    """
     x1 = x1 / ls
     x2 = x2 / ls
     sq = jnp.sum((x1[:, None, :] - x2[None, :, :]) ** 2, axis=-1)
@@ -45,6 +67,27 @@ def rbf_kernel(x1, x2, ls, var):
 
 
 def matern32_kernel(x1, x2, ls, var):
+    """
+    Matern-3/2 kernel with ARD lengthscales.
+
+    Parameters
+    ----------
+    x1 : array (N1, D)
+        First set of input points.
+    x2 : array (N2, D)
+        Second set of input points.
+    ls : array (D,) or float
+        Lengthscales.
+    var : float
+        Kernel variance.
+
+    Returns
+    -------
+    array (N1, N2)
+        Kernel matrix ``var * (1 + sqrt(3) r) * exp(-sqrt(3) r)``, where ``r``
+        is the distance of the points scaled by the lengthscales. A small
+        constant (1e-12) is added to ``r^2`` to keep the gradient finite.
+    """
     x1 = x1 / ls
     x2 = x2 / ls
     dist = jnp.sqrt(jnp.sum((x1[:, None, :] - x2[None, :, :]) ** 2, axis=-1) + 1e-12)
@@ -59,51 +102,57 @@ def matern32_kernel(x1, x2, ls, var):
 
 class PCASparseGPEmulator:
     """
-    PCA-reduced Sparse Variational Gaussian Process Emulator.
+    PCA-reduced sparse variational Gaussian process emulator.
 
-    Uses inducing point approximation with PCA-based dimensionality reduction
-    for multi-output modeling. Combines RBF and Matern-3/2 kernels.
+    The outputs are standardized and reduced with PCA. Each retained
+    principal component is modeled by an independent sparse variational GP
+    with inducing points. The kernel is the sum of an RBF and a Matern-3/2
+    kernel with shared ARD lengthscales.
 
+    Notes
+    -----
     Parameterization: whitened SVGP (GPflow convention).
-      Prior on inducing outputs:  p(u) = N(0, Kzz)
-      Whitened variable:          v = Lz^{-1} u,  p(v) = N(0, I)
-      Variational distribution:   q(v) = N(m, S),  S = L L.T
-      Posterior mean at X*:       Kxz @ Lz^{-T} @ m
-      Posterior variance at X*:   Kxx - sum(A_half^2, axis=0)
-                                       + sum((A_half.T @ L)^2, axis=1)
-      where A_half = Lz^{-1} @ Kxz.T  (one triangular solve only)
 
-    Hyperparameter treatment — MAP point estimates, not posteriors
-    --------------------------------------------------------------
-    The kernel parameters (log_lengthscale, log_var_rbf, log_var_mat, log_noise)
-    are optimised to a single MAP point via ADAM on the ELBO.  The predictive
-    distribution p(f* | X*, X, Y) is therefore conditioned on fixed θ_MAP and
-    does NOT integrate over p(θ | X, Y).
+    - Prior on inducing outputs: ``p(u) = N(0, Kzz)``
+    - Whitened variable: ``v = Lz^{-1} u``, ``p(v) = N(0, I)``
+    - Variational distribution: ``q(v) = N(m, S)``, ``S = L L^T``
+    - Posterior mean at X*: ``Kxz @ Lz^{-T} @ m``
+    - Posterior variance at X*:
+      ``Kxx - sum(A_half^2, axis=0) + sum((A_half.T @ L)^2, axis=1)``,
+      where ``A_half = Lz^{-1} @ Kxz.T`` (one triangular solve only).
 
-    Consequences:
-      - Predictive variance is the GP posterior variance at fixed θ, which
-        systematically underestimates total uncertainty when the likelihood
-        surface is broad or multi-modal in hyperparameter space.
-      - This is most problematic with short lengthscales (overfitting), very
-        small datasets, or when the kernel family is misspecified.
-      - The PCASparseGPEnsemble partially compensates: different random seeds
-        produce different θ_MAP values, so the inter-member spread captures
-        some hyperparameter uncertainty.  However, if all members collapse to
-        the same optimum (common with large N), this compensation vanishes.
+    Hyperparameters are MAP point estimates, not posteriors. The kernel
+    parameters (log_lengthscale, log_var_rbf, log_var_mat, log_noise) are
+    optimized to a single MAP point with ADAM on the ELBO. The predictive
+    distribution p(f* | X*, X, Y) is therefore conditioned on a fixed θ_MAP
+    and does NOT integrate over p(θ | X, Y). Consequences:
+
+    - The predictive variance is the GP posterior variance at fixed θ, which
+      systematically underestimates the total uncertainty when the
+      likelihood surface is broad or multi-modal in hyperparameter space.
+    - This is most problematic with short lengthscales (overfitting), very
+      small datasets, or when the kernel family is misspecified.
+    - PCASparseGPEnsemble partially compensates: different random seeds
+      produce different θ_MAP values, so the spread between members
+      captures some hyperparameter uncertainty. However, if all members
+      collapse to the same optimum (common with large N), this compensation
+      vanishes.
 
     Principled alternatives (not implemented):
-      - MCMC over θ (e.g. HMC in NumPyro/BlackJAX) — exact but expensive.
-      - Laplace approximation around θ_MAP — adds a Gaussian correction to
-        the predictive variance with cost O(P_θ²) where P_θ is the number
-        of kernel parameters.
-      - VOGP / hyperparameter variational inference — jointly optimises q(θ)
-        alongside the variational GP posterior; supported in GPflux/GPyTorch.
 
-    For Bayesian inference / MCMC-based calibration this is usually acceptable:
-    the emulator is evaluated at many θ_physics proposals and the hyperparameter
-    uncertainty is small relative to the parameter-space uncertainty being inferred.
-    Re-evaluate if the emulator is used for decisions sensitive to tails of the
-    predictive distribution (e.g. rare-event probabilities, tight design margins).
+    - MCMC over θ (e.g. HMC in NumPyro/BlackJAX): exact but expensive.
+    - Laplace approximation around θ_MAP: adds a Gaussian correction to the
+      predictive variance with cost O(P_θ²), where P_θ is the number of
+      kernel parameters.
+    - VOGP / hyperparameter variational inference: jointly optimizes q(θ)
+      alongside the variational GP posterior; supported in GPflux/GPyTorch.
+
+    For Bayesian inference / MCMC-based calibration this is usually
+    acceptable: the emulator is evaluated at many θ_physics proposals, and
+    the hyperparameter uncertainty is small relative to the parameter-space
+    uncertainty being inferred. Re-evaluate if the emulator is used for
+    decisions sensitive to the tails of the predictive distribution (e.g.
+    rare-event probabilities, tight design margins).
     """
 
     def __init__(self, n_pc=0.999, M=200, key=None, init_strategy="maxmin"):
@@ -113,16 +162,20 @@ class PCASparseGPEmulator:
         Parameters
         ----------
         n_pc : float or int
-            Number of PCA components: float in (0,1) for explained variance, int for fixed count
+            Number of PCA components: float in (0, 1) for the fraction of the
+            explained variance, int for a fixed number (default 0.999).
         M : int
-            Number of inducing points (default 200).  Rule of thumb: M ≈ N/5 for
-            D≤10, M ≈ N/3 for D=20-35.  Increasing M improves accuracy at O(M²)
-            cost in memory and O(M³) per Cholesky.
-        key : jax.random.PRNGKey
-            Random key for reproducibility
+            Number of inducing points (default 200). Rule of thumb: M ≈ N/5
+            for D ≤ 10, M ≈ N/3 for D = 20-35. Increasing M improves the
+            accuracy at O(M²) cost in memory and O(M³) per Cholesky
+            decomposition.
+        key : jax.random.PRNGKey or None
+            Random key for reproducibility. None uses ``PRNGKey(0)``
+            (default None).
         init_strategy : str
-            Inducing point init strategy: 'maxmin' (default, best coverage in
-            moderate D), 'kmeans', 'kmeans_pp', 'random', 'sobol'
+            Inducing-point initialization strategy: 'maxmin' (default, best
+            coverage in moderate D), 'kmeans', 'kmeans_pp', 'random' or
+            'sobol'.
         """
         # n_pc is the number of PCs after fit(), n_pc_requested the argument
         self.n_pc = n_pc
@@ -134,12 +187,36 @@ class PCASparseGPEmulator:
         self.trunc_cov_yn_ = (
             None  # set in fit(); exact PCA truncation covariance in Yn space
         )
-        self.mean_obs_cov_pc_ = None  # set in fit(); mean obs-noise covariance (n_pc, n_pc) in standardized PC space
+        # set in fit(); mean obs-noise covariance (n_pc, n_pc) in standardized
+        # PC space
+        self.mean_obs_cov_pc_ = None
 
     # -------------------------
     # Kernel
     # -------------------------
     def kernel(self, x1, x2, p):
+        """
+        Sum of the RBF and Matern-3/2 kernels with the current parameters.
+
+        The lengthscales and variances are obtained from the unconstrained
+        parameters with a softplus and clipped to [1e-3, 1e4] and
+        [1e-7, 10], respectively.
+
+        Parameters
+        ----------
+        x1 : array (N1, D)
+            First set of (normalized) input points.
+        x2 : array (N2, D)
+            Second set of (normalized) input points.
+        p : dict
+            Parameters with the keys 'log_lengthscale', 'log_var_rbf' and
+            'log_var_mat'.
+
+        Returns
+        -------
+        array (N1, N2)
+            Kernel matrix.
+        """
         ls = jax.nn.softplus(p["log_lengthscale"]) + 1e-6
         ls = jnp.clip(ls, 1e-3, 1e4)
         vr = jax.nn.softplus(p["log_var_rbf"]) + 1e-6
@@ -149,6 +226,21 @@ class PCASparseGPEmulator:
         return rbf_kernel(x1, x2, ls, vr) + matern32_kernel(x1, x2, ls, vm)
 
     def kernel_diag(self, x, p):
+        """
+        Diagonal of the kernel matrix ``kernel(x, x, p)``.
+
+        Parameters
+        ----------
+        x : array (N, D)
+            Input points.
+        p : dict
+            Parameters with the keys 'log_var_rbf' and 'log_var_mat'.
+
+        Returns
+        -------
+        array (N,)
+            Sum of the RBF and Matern-3/2 variances at every point.
+        """
         vr = jax.nn.softplus(p["log_var_rbf"]) + 1e-6
         vm = jax.nn.softplus(p["log_var_mat"]) + 1e-6
         vr = jnp.clip(vr, 1e-7, 10.0)
@@ -159,7 +251,22 @@ class PCASparseGPEmulator:
     # Build variational L (Cholesky factor)
     # -------------------------
     def _build_cholesky_factor(self, L_unconstrained):
-        """Construct positive-definite lower triangular matrix from unconstrained params."""
+        """
+        Build lower triangular Cholesky factors from unconstrained parameters.
+
+        The upper triangle is discarded and a softplus (plus 1e-6) is applied
+        to the diagonal, so that the factors have a positive diagonal.
+
+        Parameters
+        ----------
+        L_unconstrained : array (n_pc, M, M)
+            Unconstrained parameters.
+
+        Returns
+        -------
+        array (n_pc, M, M)
+            Lower triangular matrices with a positive diagonal.
+        """
         L = jnp.tril(L_unconstrained)
         raw_diag = jnp.diagonal(L, axis1=-2, axis2=-1)
         pos_diag = jax.nn.softplus(raw_diag) + 1e-6
@@ -171,12 +278,16 @@ class PCASparseGPEmulator:
     # Inducing point initialisation strategies
     # -------------------------
     def _numpy_seed(self):
-        """Integer seed derived from self.key for numpy/sklearn/scipy random
-        numbers, so that e.g. ensemble members with different keys get
-        different initialisations."""
+        """
+        Integer seed derived from self.key for numpy/sklearn/scipy.
+
+        Ensemble members with different keys thus get different
+        initializations.
+        """
         return int(jax.random.randint(self.key, (), 0, 2**31 - 1))
 
     def _init_inducing_maxmin(self, X):
+        """Select M training points by greedy max-min distance selection."""
         N, _ = X.shape
         idx = jax.random.randint(self.key, (), 0, N)
         Z = X[idx : idx + 1]
@@ -189,6 +300,7 @@ class PCASparseGPEmulator:
         return Z
 
     def _init_inducing_kmeans(self, X):
+        """Use k-means cluster centers (10 inits) with small random jitter."""
         kmeans = KMeans(self.M, n_init=10, random_state=self._numpy_seed()).fit(
             np.array(X)
         )
@@ -197,17 +309,20 @@ class PCASparseGPEmulator:
         return Z
 
     def _init_inducing_kmeans_pp(self, X):
+        """Use k-means cluster centers with a single k-means++ init."""
         kmeans = KMeans(
             self.M, init="k-means++", n_init=1, random_state=self._numpy_seed()
         ).fit(np.array(X))
         return jnp.array(kmeans.cluster_centers_)
 
     def _init_inducing_random(self, X):
+        """Select M training points at random without replacement."""
         N = X.shape[0]
         idx = jax.random.choice(self.key, N, (self.M,), replace=False)
         return X[idx]
 
     def _init_inducing_sobol(self, X):
+        """Place M scrambled Sobol points in the bounding box of X."""
         from scipy.stats import qmc
 
         sampler = qmc.Sobol(d=X.shape[1], scramble=True, seed=self._numpy_seed())
@@ -246,6 +361,11 @@ class PCASparseGPEmulator:
         """
         Fit the emulator to training data.
 
+        The inputs and outputs are standardized, the outputs are reduced with
+        PCA, and the kernel, variational and inducing-point parameters are
+        optimized with ADAM on the ELBO. The parameters with the best ELBO
+        (or the best EMA of the ELBO with mini-batches) are kept.
+
         Parameters
         ----------
         X : array (N, D)
@@ -255,83 +375,104 @@ class PCASparseGPEmulator:
         Y_err : array (N, P) or (N, P, P) or None
             Per-training-point observation uncertainty in original Y units.
 
-            **(N, P)** — independent (diagonal) errors: ``Y_err[n, j]`` is the
-            standard deviation of output j at training point n.  Projected to
-            standardised PC space as a diagonal covariance:
+            **(N, P)**: independent (diagonal) errors. ``Y_err[n, j]`` is the
+            standard deviation of output j at training point n. Projected to
+            standardized PC space as a diagonal covariance:
             ``Var_pc[n, i] = sum_j (W[i,j] / (pc_std[i]*Ys[j]))^2 * Y_err[n,j]^2``.
+            Entries larger than 1e5 times the standard deviation of the
+            training data are capped.
 
-            **(N, P, P)** — correlated errors: ``Y_err[n]`` is the full ``(P, P)``
-            observation covariance matrix at training point n.  Full propagation:
-            ``Cov_pc[n] = W_scaled @ Y_err[n] @ W_scaled^T``
+            **(N, P, P)**: correlated errors. ``Y_err[n]`` is the full
+            ``(P, P)`` observation covariance matrix at training point n.
+            Full propagation: ``Cov_pc[n] = W_scaled @ Y_err[n] @ W_scaled^T``,
             where ``W_scaled[i,j] = W[i,j] / (pc_std[i]*Ys[j])``.
-            The diagonal of ``Cov_pc[n]`` is used in the per-PC ELBO likelihood;
-            the mean over n of the full ``Cov_pc`` matrix is stored and used in
-            ``predict()`` for correct back-projection to output-space covariance.
 
-            When ``None``, no extra observation noise is added.  Default None.
+            The diagonal of ``Cov_pc[n]`` is used in the per-PC ELBO
+            likelihood (capped at 1e10 in standardized PC units). The mean
+            over n of the full ``Cov_pc`` matrix is stored and used in
+            ``predict()`` for the back-projection to the output-space
+            covariance. When None, no extra observation noise is added.
+            Default None.
         steps : int
-            Number of ADAM steps to take (default 25000)
-        kernel_lr : float
-            Learning rate for kernel parameters (default 1e-3)
-        variational_lr : float
-            Learning rate for variational parameters (default 1e-3)
-        inducing_lr : float
-            Learning rate for inducing points (default 3e-4)
-        _fixed_pca_state : dict or None
-            Internal parameter used by PCASparseGPEnsemble.  When provided,
-            skips normalization and PCA fitting and uses the pre-computed shared
-            PCA state instead of fitting a new one.
+            Maximum number of ADAM steps (default 25000).
         batch_size : int or None
-            Mini-batch size for stochastic ELBO. None = full dataset (default).
-            The likelihood term is scaled by N/batch_size so the ELBO remains
-            comparable across batch sizes. Recommended: 256-1024 for large N.
+            Mini-batch size for the stochastic ELBO. None uses the full
+            dataset (default). The likelihood term is scaled by N/batch_size,
+            so that the ELBO remains comparable across batch sizes.
+            Recommended: 256-1024 for large N.
         kernel_lr : float
-            Learning rate for kernel parameters (default 1e-3)
+            Learning rate for the kernel parameters (default 1e-3).
         variational_lr : float
-            Learning rate for variational parameters (default 1e-3)
+            Learning rate for the variational parameters (default 1e-3).
         inducing_lr : float
-            Learning rate for inducing points (default 3e-4)
+            Learning rate for the inducing points (default 3e-4).
+        _fixed_pca_state : dict or None
+            Internal parameter used by PCASparseGPEnsemble. When provided,
+            the normalization and PCA fit are skipped and the pre-computed
+            shared PCA state is used instead (default None).
         print_every : int
-            Print progress every N steps (default 200)
+            Log the progress every print_every steps (default 200).
         jitter_init : float
-            Initial diagonal jitter for Kzz stability (default 1e-5).
-            Auto-increased if Cholesky fails at startup or during training.
+            Initial diagonal jitter for the stability of Kzz (default 1e-5).
+            Increased automatically by factors of 10 if the Cholesky
+            decomposition fails at startup or the loss is NaN during
+            training.
         jitter_max : float
-            Maximum allowed jitter. Raises RuntimeError if exceeded (default 1e-1).
+            Maximum allowed jitter (default 1e-1). At startup, a RuntimeError
+            is raised if it is exceeded; during training, the jitter is
+            capped at this value.
         verbose : bool
-            Print training progress (default True)
+            Log the training progress (default True).
         early_stopping : bool
-            Enable EMA-based early stopping (default False).
-            The EMA gain over a sliding window of about 1/(1 - ema_alpha)
-            steps is checked at every step. Training stops when it stays below
-            `es_rel_tol` for `patience` consecutive steps.
+            Enable EMA-based early stopping (default False). The EMA gain
+            over a sliding window of about 1/(1 - ema_alpha) steps (at least
+            20) is checked at every step. Training stops when it stays below
+            ``es_rel_tol`` for ``patience`` consecutive steps.
         patience : int
-            Consecutive steps without meaningful EMA improvement before stopping (default 20)
+            Consecutive steps without meaningful EMA improvement before
+            stopping (default 20).
         es_rel_tol : float
-            Minimum relative EMA improvement over the window required to reset patience (default 1e-4)
+            Minimum relative EMA improvement over the window required to
+            reset the patience (default 1e-4).
         ema_alpha : float
-            EMA smoothing factor in [0, 1). Higher = heavier smoothing (default 0.95).
-            Effective window approx 1/(1 - ema_alpha) steps. With mini-batches
-            (batch_size < N), the parameters with the best EMA of the ELBO are
-            returned, with the full batch the ones with the best ELBO.
+            EMA smoothing factor in [0, 1). Higher means heavier smoothing
+            (default 0.95). The effective window is about 1/(1 - ema_alpha)
+            steps. With mini-batches (batch_size < N), the parameters with
+            the best EMA of the ELBO are returned, with the full batch the
+            ones with the best ELBO.
         auto_lr_backoff : bool
-            Automatically reduce learning rates and retry when repeated NaN
-            losses occur, instead of failing immediately (default True).
+            Automatically reduce the learning rates and retry when repeated
+            NaN losses occur, instead of failing immediately (default True).
         lr_backoff_factor : float
-            Multiplicative factor in (0, 1) applied to all learning rates
-            on each retry (default 0.3).
+            Multiplicative factor in (0, 1) applied to all learning rates on
+            each retry (default 0.3).
         max_lr_backoff_retries : int
             Maximum number of learning-rate backoff retries after NaN bursts
             (default 3).
         nan_patience : int
             Number of consecutive NaN-triggered jitter escalations allowed
-            before either triggering LR backoff (if enabled) or raising
-            RuntimeError (default 10).
+            before either triggering the LR backoff (if enabled) or raising
+            a RuntimeError (default 10).
 
         Returns
         -------
         dict
-            Training history: 'elbos', 'steps', 'converged', 'n_steps', 'jitter'
+            Training history with the keys 'elbos', 'steps', 'converged',
+            'n_steps', 'best_step', 'jitter', 'lr_backoff_retries',
+            'kernel_lr_final', 'variational_lr_final' and
+            'inducing_lr_final'. Also stored as ``self.training_history``.
+
+        Raises
+        ------
+        ValueError
+            If Y_err has an invalid shape or negative diagonal covariance
+            entries, if M exceeds the number of training points, if
+            init_strategy is unknown, or if lr_backoff_factor,
+            max_lr_backoff_retries or nan_patience are out of range.
+        RuntimeError
+            If the Cholesky decomposition of Kzz fails at jitter_max at
+            startup, or if the loss stays NaN after all jitter increases and
+            learning-rate backoff retries.
         """
         if verbose:
             logger.info("=" * 60)
@@ -359,7 +500,8 @@ class PCASparseGPEmulator:
 
             if verbose:
                 logger.info(
-                    f"PCA: {self.n_pc} components, explained variance: {explained_var:.4f}"
+                    f"PCA: {self.n_pc} components, "
+                    f"explained variance: {explained_var:.4f}"
                 )
 
             self.pc_mean = jnp.mean(Yp, axis=0)
@@ -731,11 +873,13 @@ class PCASparseGPEmulator:
                         continue
                     raise RuntimeError(
                         f"NaN loss after {nan_count} jitter increases "
-                        f"(jitter={jitter:.1e}) and {lr_backoff_count} LR backoff retries. "
+                        f"(jitter={jitter:.1e}) and {lr_backoff_count} "
+                        f"LR backoff retries. "
                         f"Current LRs: kernel={current_kernel_lr:.3e}, "
                         f"variational={current_variational_lr:.3e}, "
                         f"inducing={current_inducing_lr:.3e}. "
-                        f"Try smaller initial learning rates or larger jitter_init/jitter_max."
+                        f"Try smaller initial learning rates or larger "
+                        f"jitter_init/jitter_max."
                     )
                 continue
 
@@ -776,8 +920,10 @@ class PCASparseGPEmulator:
                             f"(EMA={ema:.3f})"
                         )
                         logger.info(
-                            f"\nEarly stopping: EMA gain over {es_check_interval} steps "
-                            f"stayed below {es_rel_tol:.1e} for {patience} steps at step {i + 1}"
+                            f"\nEarly stopping: EMA gain over "
+                            f"{es_check_interval} steps stayed below "
+                            f"{es_rel_tol:.1e} for {patience} steps "
+                            f"at step {i + 1}"
                         )
                     break
 
@@ -835,61 +981,77 @@ class PCASparseGPEmulator:
         return_var_decomposition=False,
     ):
         """
-        Make predictions on new data with full uncertainty quantification.
+        Predict at new inputs with full uncertainty quantification.
+
+        Only the covariance between the outputs at the same test point is
+        computed, not the joint covariance between different test points.
 
         Parameters
         ----------
         X_star : array (N_test, D)
-            Test inputs
+            Test inputs.
         include_noise : bool
             Whether to add the learned per-PC nugget/noise term (log_noise) to
-            predictive variance.  The nugget plays a dual role during training:
-            (a) it models observation noise, and (b) it absorbs emulation error
-            that M inducing points cannot represent exactly.  Guidance:
+            the predictive variance (default False). The nugget plays a dual
+            role during training: (a) it models observation noise, and (b) it
+            absorbs emulation error that M inducing points cannot represent
+            exactly. Guidance:
 
-              - Y_err provided AND emulation RMSE >> obs noise (typical for
-                physics simulators with dense design/small measurement error):
-                use include_noise=True.  The nugget mostly captures emulation
-                uncertainty and MUST be in σ_pred for calibrated intervals.
-                The Y_err obs-noise contribution (via mean_obs_cov_pc_) is also
-                always included; minor double-counting is negligible compared to
-                the emulation uncertainty.
-              - Y_err provided AND emulation RMSE ≈ obs noise (well-converged
-                emulator with M → N): use include_noise=False to avoid
-                double-counting the observation noise term.
-              - Y_err not provided: use include_noise=True; the nugget is the
-                only noise floor estimate available.
-            Default False.
+            - Y_err provided AND emulation RMSE >> obs noise (typical for
+              physics simulators with a dense design and small measurement
+              error): use include_noise=True. The nugget mostly captures
+              emulation uncertainty and MUST be in σ_pred for calibrated
+              intervals.
+            - Y_err provided AND emulation RMSE ≈ obs noise (well-converged
+              emulator with M → N): use include_noise=False to avoid
+              double-counting the observation noise.
+            - Y_err not provided: use include_noise=True; the nugget is the
+              only available estimate of the noise floor.
         include_truncation : bool
-            Add exact PCA truncation uncertainty: the covariance contribution
-            from all discarded PCA components, computed in fit() as
-            Sigma_trunc = Sigma_data - W_ret^T diag(Lambda_ret) W_ret.
-            This is exact under the linear PCA model (no PPCA isotropy
-            assumption). With Y_err, the observation noise of the training
-            data in the discarded directions is removed from it, unless
-            include_noise or include_obs_noise is True. Default True.
+            Add the exact PCA truncation uncertainty (default True): the
+            covariance contribution of all discarded PCA components, computed
+            in fit() as ``Sigma_trunc = Sigma_data - W_ret^T diag(Lambda_ret)
+            W_ret``. This is exact under the linear PCA model (no PPCA
+            isotropy assumption). With Y_err, the observation noise of the
+            training data in the discarded directions is removed from it,
+            unless include_noise or include_obs_noise is True.
         include_pca_sampling : bool
-            Add finite-training-data uncertainty from PCA mean estimation:
-            Var(pc_mean_i) = pc_std_i^2 / N_train per component. Default False.
+            Add the finite-training-data uncertainty of the PCA mean
+            estimate, ``Var(pc_mean_i) = pc_std_i^2 / N_train`` per component
+            (default False).
         include_obs_noise : bool
             Include the observation/statistical uncertainty propagated from
-            Y_err. For calibration against experimental means this should
-            typically be False because experimental uncertainties are already
-            handled in the likelihood. Set True when predicting noisy finite-
-            statistics observables. Default False.
+            Y_err (default False). For calibration against experimental means
+            this should typically be False, because the experimental
+            uncertainties are already handled in the likelihood. Set True
+            when predicting noisy finite-statistics observables.
         return_var_decomposition : bool
-            If True, return a dict of individual covariance contributions.
-            Keys: "gp_posterior", "nugget", "obs_noise", "pca_truncation" (exact), "pca_sampling"
-
-            'nugget'   : learned log_noise term (zeros if include_noise=False).
-            'obs_noise': Y_err noise projected to output space (zeros if Y_err
-                         was not provided; always included regardless of include_noise).
+            If True, also return a dict of the individual covariance
+            contributions (default False).
 
         Returns
         -------
         Y_pred : array (N_test, P)
+            Predictive mean in original Y units.
         full_cov : array (N_test, P, P)
-        var_decomp : dict, only if return_var_decomposition=True
+            Predictive covariance of the outputs at each test point.
+        var_decomp : dict
+            Only returned if return_var_decomposition=True. Keys:
+
+            - 'gp_posterior' (N_test, P, P): GP posterior covariance.
+            - 'nugget' (1, P, P): learned log_noise term (zeros if
+              include_noise=False).
+            - 'obs_noise' (1, P, P): Y_err noise projected to output space
+              (zeros if include_obs_noise=False or Y_err was not provided).
+            - 'pca_truncation' (1, P, P): exact PCA truncation covariance
+              (zeros if include_truncation=False).
+            - 'pca_sampling' (1, P, P): PCA sampling covariance (zeros if
+              include_pca_sampling=False).
+
+        Raises
+        ------
+        RuntimeError
+            If fit() has not been called.
         """
         if not hasattr(self, "params"):
             raise RuntimeError(
@@ -1056,55 +1218,66 @@ class PCASparseGPEmulator:
 
 class PCASparseGPEnsemble:
     """
-    Bootstrap ensemble of PCASparseGPEmulator for epistemic uncertainty quantification.
+    Ensemble of PCASparseGPEmulator for epistemic uncertainty quantification.
 
-    Each member is trained with a different JAX random key, giving different:
-      - inducing-point initialisation
-      - mini-batch orderings (stochastic ELBO)
-      - ADAM optimiser trajectories / local optima
-      - PCA decomposition (when N is small)
+    All members share one PCA basis, fitted on the full training data. Each
+    member is trained with a different JAX random key, which gives
+    different:
 
-    Predictions are combined via the law of total variance:
+    - inducing-point initializations,
+    - mini-batch orderings (stochastic ELBO),
+    - ADAM optimizer trajectories / local optima,
+    - bootstrap resamples of the training data (with ``bootstrap=True``).
+
+    Predictions are combined via the law of total variance::
 
         E[Y | x*]   = (1/K) sum_k  mu_k(x*)
-        Cov[Y | x*] = (1/K) sum_k  Sigma_k(x*)          # aleatoric
+        Cov[Y | x*] = (1/K) sum_k  Sigma_k(x*)                      # aleatoric
                     + (1/(K-1)) sum_k (mu_k - E[Y])(mu_k - E[Y])^T  # epistemic
 
-    The aleatoric term is the mean of individual predictive covariances (GP posterior,
-    observation noise, PCA truncation, PCA sampling). The epistemic term is the sample
-    covariance of the per-member means.
+    The aleatoric term is the mean of the individual predictive covariances
+    (GP posterior, observation noise, PCA truncation, PCA sampling). The
+    epistemic term is the sample covariance of the per-member means.
 
-    Statistical caveat — deep-ensemble heuristic, not posterior marginalization
-    ---------------------------------------------------------------------------
-    Members differ because of different random seeds, not because they are draws
-    from a Bayesian posterior over hyperparameters or variational parameters.
-    Consequently the inter-member sample covariance conflates several distinct
-    sources of variation:
+    Notes
+    -----
+    This is a deep-ensemble heuristic, not a posterior marginalization.
+    Members differ because of different random seeds, not because they are
+    draws from a Bayesian posterior over hyperparameters or variational
+    parameters. Consequently, the sample covariance between members
+    conflates several distinct sources of variation:
 
-      1. Genuine posterior uncertainty — regions with little training data where
-         different inducing-point layouts produce meaningfully different posterior
-         means (the "good" signal).
-      2. Optimiser instability — ADAM with mini-batching can converge to slightly
-         different local optima; under-trained members inflate the spread.
-      3. Hyperparameter uncertainty — each member learns its own kernel parameters;
-         their spread reflects optimisation noise as much as true uncertainty.
-      4. Initialisation sensitivity — max-min inducing-point init is deterministic
-         given the key, so members get genuinely different geometric placements.
+    1. Genuine posterior uncertainty: in regions with little training data,
+       different inducing-point layouts produce meaningfully different
+       posterior means (the "good" signal).
+    2. Optimizer instability: ADAM with mini-batching can converge to
+       slightly different local optima; under-trained members inflate the
+       spread.
+    3. Hyperparameter uncertainty: each member learns its own kernel
+       parameters; their spread reflects optimization noise as much as true
+       uncertainty.
+    4. Initialization sensitivity: the max-min inducing-point initialization
+       is deterministic given the key, so members get genuinely different
+       geometric placements.
 
-    This is exactly the Deep Ensembles approach (Lakshminarayanan et al. 2017).
-    It is empirically well-calibrated and often outperforms single-model uncertainty
-    estimates, but it is NOT a principled approximation to the Bayesian model average.
-    In particular:
-      - Uncertainty can be artificially inflated if training is noisy or too short.
-      - Uncertainty can be artificially deflated if all members collapse to the same
-        optimum (common with large N and many inducing points).
-      - Increasing ensemble size K reduces estimator variance of the spread but does
-        NOT reduce the bias from conflating the sources above.
+    This is exactly the Deep Ensembles approach (Lakshminarayanan et al.
+    2017). It is empirically well calibrated and often outperforms
+    single-model uncertainty estimates, but it is NOT a principled
+    approximation to the Bayesian model average. In particular:
 
-    For Bayesian inference (MCMC / likelihood emulation) this is generally fine:
-    slightly over-dispersed uncertainty is conservative and safe.  If you need
-    calibrated epistemic uncertainty for active learning or decision-making, consider
-    treating the ensemble spread as an upper bound and validating on held-out data.
+    - The uncertainty can be artificially inflated if the training is noisy
+      or too short.
+    - The uncertainty can be artificially deflated if all members collapse
+      to the same optimum (common with large N and many inducing points).
+    - Increasing the ensemble size K reduces the estimator variance of the
+      spread, but does NOT reduce the bias from conflating the sources
+      above.
+
+    For Bayesian inference (MCMC / likelihood emulation) this is generally
+    fine: slightly over-dispersed uncertainty is conservative and safe. If
+    you need calibrated epistemic uncertainty for active learning or
+    decision-making, consider treating the ensemble spread as an upper bound
+    and validating on held-out data.
     """
 
     def __init__(
@@ -1117,27 +1290,35 @@ class PCASparseGPEnsemble:
         bootstrap=False,
     ):
         """
+        Initialize the ensemble.
+
         Parameters
         ----------
         n_ensemble : int
-            Number of ensemble members (default 5). Epistemic uncertainty
-            estimate converges as 1/sqrt(K); 5-10 members is usually sufficient.
+            Number of ensemble members (default 5). The epistemic uncertainty
+            estimate converges as 1/sqrt(K); 5-10 members are usually
+            sufficient.
         n_pc : float or int
-            Forwarded to each PCASparseGPEmulator.
+            Number of PCA components of the shared PCA basis: float in (0, 1)
+            for the fraction of the explained variance, int for a fixed
+            number (default 0.999).
         M : int
-            Number of inducing points per member.
-        base_key : jax.random.PRNGKey
-            Master key; member keys are derived by splitting this.
+            Number of inducing points per member (default 200).
+        base_key : jax.random.PRNGKey or None
+            Master key; the member keys are derived by splitting it. None
+            uses ``PRNGKey(42)`` (default None).
         init_strategy : str
-            Inducing-point initialisation strategy for all members.
+            Inducing-point initialization strategy for all members, see
+            PCASparseGPEmulator (default 'maxmin').
         bootstrap : bool
-            If True, each member is trained on a bootstrap resample (N draws with
-            replacement from the N training points) instead of the full dataset.
-            This increases diversity between members and typically improves
-            calibration of the epistemic uncertainty estimate, at the cost of each
-            member seeing ~63% unique points on average.  Default False.
-            Note: the shared PCA basis is always fitted on the FULL dataset,
-            regardless of this flag, to keep all members in a common output space.
+            If True, each member is trained on a bootstrap resample (N draws
+            with replacement from the N training points) instead of the full
+            dataset (default False). This increases the diversity between
+            members and typically improves the calibration of the epistemic
+            uncertainty estimate, at the cost of each member seeing ~63%
+            unique points on average. The shared PCA basis is always fitted
+            on the FULL dataset, regardless of this flag, to keep all members
+            in a common output space.
         """
         self.n_ensemble = n_ensemble
         self.n_pc = n_pc
@@ -1155,24 +1336,28 @@ class PCASparseGPEnsemble:
         Parameters
         ----------
         X : array (N, D)
+            Input training data.
         Y : array (N, P)
-        Y_err : array (N, P), (N, P, P), or None
-            Per-point observation uncertainty (forwarded to each member).
-            (N, P)   — independent standard deviations.
-            (N, P, P) — full per-point covariance matrices.
-            When provided, use include_noise=False in predict() so the nugget
-            (training regularizer) does not double-count the known noise floor.
+            Output training data.
+        Y_err : array (N, P) or (N, P, P) or None
+            Per-point observation uncertainty, forwarded to each member
+            (default None). (N, P): independent standard deviations.
+            (N, P, P): full per-point covariance matrices. When provided,
+            use include_noise=False in predict() so that the nugget (training
+            regularizer) does not double-count the known noise floor.
         verbose : bool
-            Print ensemble-level progress summary (default True).
+            Log an ensemble-level progress summary (default True).
         verbose_members : bool
-            Print individual member training output (default False).
+            Log the training output of the individual members (default
+            False).
         **fit_kwargs
-            Forwarded verbatim to PCASparseGPEmulator.fit()
-            (steps, batch_size, kernel_lr, early_stopping, ...).
+            Forwarded verbatim to PCASparseGPEmulator.fit() (steps,
+            batch_size, kernel_lr, early_stopping, ...).
 
         Returns
         -------
-        self
+        PCASparseGPEnsemble
+            The fitted ensemble (self).
         """
         self.members = []
         self.training_histories = []
@@ -1290,12 +1475,19 @@ class PCASparseGPEnsemble:
         Parameters
         ----------
         X_star : array (N_test, D)
+            Test inputs.
         include_noise : bool
+            Add the learned nugget of each member (default False). See
+            PCASparseGPEmulator.predict().
         include_truncation : bool
+            Add the PCA truncation covariance (default True).
         include_pca_sampling : bool
+            Add the finite-data PCA sampling uncertainty (default False).
         include_obs_noise : bool
+            Add the observation noise propagated from Y_err (default False).
         return_var_decomposition : bool
-            If True, also return a dict with 'aleatoric' and 'epistemic' covariances.
+            If True, also return a dict with the 'aleatoric' and 'epistemic'
+            covariances (default False).
 
         Returns
         -------
@@ -1303,10 +1495,18 @@ class PCASparseGPEnsemble:
             Ensemble mean.
         full_cov : array (N_test, P, P)
             Total predictive covariance (aleatoric + epistemic).
-        var_decomp : dict, only if return_var_decomposition=True
-            Keys:
-              'aleatoric' (N_test, P, P): average of per-member predictive covariances.
-              'epistemic'  (N_test, P, P): sample covariance of per-member means.
+        var_decomp : dict
+            Only returned if return_var_decomposition=True. Keys:
+
+            - 'aleatoric' (N_test, P, P): average of the per-member
+              predictive covariances.
+            - 'epistemic' (N_test, P, P): sample covariance of the
+              per-member means (zeros for a single member).
+
+        Raises
+        ------
+        RuntimeError
+            If fit() has not been called.
         """
         if not self.members:
             raise RuntimeError("Call fit() before predict().")
@@ -1357,11 +1557,25 @@ class PCASparseGPEnsemble:
     # -------------------------
     def predict_members(self, X_star, **predict_kwargs):
         """
-        Return individual member predictions for diagnostics / plotting.
+        Return the individual member predictions for diagnostics / plotting.
+
+        Parameters
+        ----------
+        X_star : array (N_test, D)
+            Test inputs.
+        **predict_kwargs
+            Forwarded to PCASparseGPEmulator.predict().
 
         Returns
         -------
-        list of (Y_pred, full_cov) tuples, one per ensemble member.
+        list of tuple
+            One (Y_pred, full_cov) tuple per ensemble member, or a triple
+            including var_decomp with return_var_decomposition=True.
+
+        Raises
+        ------
+        RuntimeError
+            If fit() has not been called.
         """
         if not self.members:
             raise RuntimeError("Call fit() before predict_members().")
@@ -1375,10 +1589,11 @@ class PCASparseGPEnsemble:
 
 class EmulatorSparseGP(EmulatorBase):
     """
-    High-level wrapper around PCASparseGPEmulator / PCASparseGPEnsemble that
-    follows the same interface as EmulatorBAND.
+    Sparse GP emulator with the interface of the other emulators.
 
-    Can operate in two modes controlled by ``n_ensemble``:
+    High-level wrapper around PCASparseGPEmulator / PCASparseGPEnsemble that
+    follows the same interface as EmulatorBAND. It can operate in two modes
+    controlled by ``n_ensemble``:
 
     * ``n_ensemble=1`` — single PCASparseGPEmulator.
     * ``n_ensemble>1`` — PCASparseGPEnsemble of that many members.
@@ -1421,32 +1636,39 @@ class EmulatorSparseGP(EmulatorBase):
         seed=None,
     ):
         """
+        Initialize the emulator and load the training data.
+
         Parameters
         ----------
         training_set_path : str
-            Path to the pickle file with training data.
+            Path to the pickle file with the training data (default '.').
         parameter_file : str
-            Path to the model parameter file.
+            Path to the model parameter file (default 'ABCD.txt').
         npc : float or int
             Number of principal components: int for a fixed number, float in
             (0, 1) for the fraction of the explained variance (default 0.999).
             Passed to the inner emulator as n_pc.
         n_inducing : int
-            Number of inducing points.
+            Number of inducing points (default 200). Passed to the inner
+            emulator as M.
         n_ensemble : int
-            Number of ensemble members.  Use 1 for a single emulator.
+            Number of ensemble members (default 1). Use 1 for a single
+            emulator.
         init_strategy : str
-            Inducing-point initialisation strategy.
+            Inducing-point initialization strategy, see PCASparseGPEmulator
+            (default 'maxmin').
         bootstrap : bool
-            Bootstrap resampling for ensemble members.
+            Bootstrap resampling for the ensemble members (default False).
+            Only used with n_ensemble > 1.
         log_trafo : bool
             If True, the emulator is trained on the log of the outputs and
             predict() returns the mean and covariance in log space, like the
-            other emulators. The experimental data used with the emulator must
-            then also be log-transformed.
+            other emulators (default False). The experimental data used with
+            the emulator must then also be log-transformed.
         max_rel_uncertainty_data : float or None
             Maximum relative statistical uncertainty; training points with
-            larger values are discarded. Set to None to disable this filter.
+            larger values are discarded. None (default) disables this
+            filter.
         exp_and_cov_diagonal : bool
             Only with log_trafo=True: predict() returns the predictions
             transformed back to the original scale, exp(mean) and the
@@ -1455,7 +1677,16 @@ class EmulatorSparseGP(EmulatorBase):
             observables are kept (default False).
         seed : int or None
             Seed for the random numbers of the training (inducing points,
-            mini-batches, ensemble members). None uses fixed default keys.
+            mini-batches, ensemble members). None (default) uses fixed
+            default keys.
+
+        Raises
+        ------
+        ValueError
+            If npc is out of range, or if exp_and_cov_diagonal is True
+            without log_trafo.
+        TypeError
+            If npc is neither an int nor a float.
         """
         check_npc(npc)
         self.npc = npc
@@ -1484,12 +1715,16 @@ class EmulatorSparseGP(EmulatorBase):
         """
         Train the (ensemble) emulator on the masked subset of training data.
 
+        The statistical errors of the training data are passed as Y_err.
+
         Parameters
         ----------
-        event_mask : list of bool, length nev
-            True entries are included in training.
+        event_mask : array of bool (nev,)
+            True entries are included in the training.
         **fit_kwargs
-            Forwarded to PCASparseGPEmulator.fit() or PCASparseGPEnsemble.fit().
+            Forwarded to PCASparseGPEmulator.fit() or
+            PCASparseGPEnsemble.fit(). verbose_members is dropped for a single
+            emulator.
         """
         logger.info("Performing sparse GP emulator training ...")
         X = self.design_points[event_mask, :]
@@ -1535,28 +1770,38 @@ class EmulatorSparseGP(EmulatorBase):
         include_obs_noise=False,
     ):
         """
-        Predict model output at parameter points ``X``.
+        Predict the model output at the parameter points ``X``.
 
         Parameters
         ----------
-        X : array (N_test, nparameters)
-            Parameter points in original (non-normalised) space.
+        X : array (N_test, nparameters) or (nparameters,)
+            Parameter points in the original (non-normalized) space.
         return_cov : bool
-            If True, return covariance matrices (default True).
+            If True, also return the covariance matrices (default True).
         include_noise : bool
-            Include learned nugget in predictive variance.
+            Include the learned nugget in the predictive variance (default
+            False).
         include_truncation : bool
-            Include PCA truncation covariance.
+            Include the PCA truncation covariance (default True).
         include_pca_sampling : bool
-            Include finite-data PCA sampling uncertainty.
+            Include the finite-data PCA sampling uncertainty (default False).
         include_obs_noise : bool
-            Include propagated statistical noise from Y_err in predictions.
-            For MCMC calibration against experimental means, keep this False.
+            Include the statistical noise propagated from Y_err in the
+            predictions (default False). For MCMC calibration against
+            experimental means, keep this False.
 
         Returns
         -------
         fpredmean : array (N_test, nobs)
-        fpredcov  : array (N_test, nobs, nobs), only when return_cov=True
+            Predictive mean; exp(mean) with exp_and_cov_diagonal=True.
+        fpredcov : array (N_test, nobs, nobs)
+            Predictive covariance, only returned if return_cov=True. With
+            exp_and_cov_diagonal=True, transformed with the delta method.
+
+        Raises
+        ------
+        RuntimeError
+            If train_emulator() has not been called.
         """
         if not hasattr(self, "emu_"):
             raise RuntimeError("Call train_emulator() before predict().")
