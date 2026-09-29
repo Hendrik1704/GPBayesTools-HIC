@@ -1,6 +1,7 @@
 import pickle
 import numpy as np
 import sys
+from pathlib import Path
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 
@@ -19,6 +20,11 @@ def read_pkl_file_chain_pocoMC(PATH_pklfile_chain):
         data = pickle.load(pf)
 
     return data
+
+def sorted_chain_path(PATH_pklfile_chain):
+    # e.g. chain.pkl -> chain_sorted.pkl, never equal to the input file
+    path = Path(PATH_pklfile_chain)
+    return str(path.with_name(path.stem + '_sorted' + path.suffix))
 
 def sort_chain_likelihood(PATH_pklfile_chain):
     """
@@ -48,7 +54,7 @@ def sort_chain_likelihood(PATH_pklfile_chain):
             'logz_err': array_logz_err
             }
     
-    with open(PATH_pklfile_chain.replace('.pkl', '_sorted.pkl'), 'wb') as f:
+    with open(sorted_chain_path(PATH_pklfile_chain), 'wb') as f:
         pickle.dump(data, f)
 
 def generate_posterior_clusters(PATH_pklfile_chain_sorted, num_samples=None, num_clusters=10):
@@ -84,6 +90,6 @@ if __name__ == '__main__':
     num_samples = None if num_samples_str == 'None' else int(num_samples_str)
     num_clusters = int(sys.argv[3])
     sort_chain_likelihood(PATH_pklfile_chain)
-    PATH_pklfile_chain_sorted = PATH_pklfile_chain.replace('.pkl', '_sorted.pkl')
+    PATH_pklfile_chain_sorted = sorted_chain_path(PATH_pklfile_chain)
     generate_posterior_clusters(PATH_pklfile_chain_sorted, num_samples, num_clusters)
     print(f"Posterior clusters generated and saved to 'cluster_centers.txt'.")
