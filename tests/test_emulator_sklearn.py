@@ -39,6 +39,15 @@ def test_prediction_accuracy_and_shapes(emulator, test_points):
     np.testing.assert_array_equal(emulator.predict(test_points, return_cov=False), mean)
 
 
+def test_predict_single_point(emulator, test_points):
+    # a 1D array or a list is a single parameter point
+    mean, cov = emulator.predict(test_points)
+    for x in (test_points[0], list(test_points[0])):
+        mean_1, cov_1 = emulator.predict(x)
+        np.testing.assert_allclose(mean_1, mean[:1])
+        np.testing.assert_allclose(cov_1, cov[:1], atol=1e-6 * np.abs(cov).max())
+
+
 def test_no_pca_covariance_in_observable_units(training_file, param_file, test_points):
     # the observables differ by a factor 2e4 in scale, the predicted
     # standard deviations must scale accordingly with and without PCA, i.e.

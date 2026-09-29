@@ -355,8 +355,8 @@ class EmulatorSklearn(EmulatorBase):
 
         Parameters
         ----------
-        X : ndarray of shape (nsamples, ndim)
-            Parameter points.
+        X : array_like of shape (nsamples, nparameters)
+            Parameter points. A 1D array is treated as a single point.
         return_cov : bool, default=True
             If True, the covariance is returned as well.
         include_noise : bool, default=False
@@ -371,29 +371,28 @@ class EmulatorSklearn(EmulatorBase):
             Covariance between the observables. Only returned if `return_cov`
             is True.
         """
-        gp_mean = [gp.predict(X, return_cov=return_cov) for gp in self.gps_]
-
+        X = np.atleast_2d(X)
+        # only the variances of the GPs at the points are needed, not their
+        # covariances between the points
+        gp_pred = [gp.predict(X, return_std=return_cov) for gp in self.gps_]
         if return_cov:
-            gp_mean, gp_cov = zip(*gp_mean, strict=True)
+            gp_mean, gp_std = zip(*gp_pred, strict=True)
+        else:
+            gp_mean = gp_pred
+        # shape (nsamples, npc)
+        gp_mean = np.column_stack(gp_mean)
 
         if not self.perform_no_pca:
-            mean = self._inverse_transform(
-                np.concatenate([m[:, np.newaxis] for m in gp_mean], axis=1)
-            )
+            mean = self._inverse_transform(gp_mean)
         else:
-            mean = self.scaler_.inverse_transform(
-                np.concatenate([m[:, np.newaxis] for m in gp_mean], axis=1)
-            )
+            mean = self.scaler_.inverse_transform(gp_mean)
 
         if self.exp_and_cov_diagonal:
             mean = np.exp(mean)
 
         if return_cov:
-            # Build array of the GP predictive variances at each sample point.
-            # shape: (nsamples, npc)
-            gp_var = np.concatenate(
-                [c.diagonal()[:, np.newaxis] for c in gp_cov], axis=1
-            )
+            # predictive variances of the GPs, shape (nsamples, npc)
+            gp_var = np.column_stack(gp_std) ** 2
             if not include_noise:
                 # the predictive variance of sklearn includes the WhiteKernel
                 noise = np.array([self._gp_noise(gp.kernel_) for gp in self.gps_])
