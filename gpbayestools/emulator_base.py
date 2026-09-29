@@ -3,8 +3,9 @@ Common base class of the emulators.
 
 It loads the training data and the model parameter file, applies the quality
 filter and the log transformation of the training data, and implements the
-validation functions. The emulators implement ``train_emulator(event_mask)``
-and ``predict(X, return_cov=True)``.
+validation functions and ``sample_y``. The emulators implement
+``train_emulator(event_mask)`` and ``predict(X, return_cov=True,
+include_noise=False)``.
 """
 
 import logging
@@ -138,7 +139,10 @@ class EmulatorBase:
         Only with ``log_trafo=True``: predict() returns the predictions
         transformed back to the original scale of the observables, with
         diagonal covariance matrices (EmulatorSparseGP keeps the correlations
-        between the observables).
+        between the observables). The mean is exp(mean) of the log-space
+        prediction, i.e. the median of the log-normal distribution, and the
+        variance is the first-order (delta method) approximation
+        exp(mean)^2 * var.
 
     Raises
     ------

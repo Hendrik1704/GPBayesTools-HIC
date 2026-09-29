@@ -45,7 +45,8 @@ class EmulatorHetGP(EmulatorBase):
         observable are discarded. None disables this filter.
     exp_and_cov_diagonal : bool, default=False
         If True, predict() returns exp(mean) and a diagonal covariance in the
-        original scale of the observables. Requires ``log_trafo=True``.
+        original scale of the observables (see `EmulatorBase`). Requires
+        ``log_trafo=True``.
     npc : int or float, default=0.99
         Number of PCs (int >= 1) or fraction of the explained variance (float
         in (0, 1)).
@@ -169,16 +170,16 @@ class EmulatorHetGP(EmulatorBase):
         """
         # Subselect training data
         event_mask = np.asarray(event_mask, dtype=bool)
-        design_points_masked = self.design_points[event_mask, :]
+        design_points = self.design_points[event_mask, :]
         # fit the output PCA only to the training points
         self._fit_output_pca(
             self.model_data[event_mask, :], self.model_data_err[event_mask, :]
         )
-        data_pca_masked = self.train_pcs_
+        Z = self.train_pcs_
 
-        nev_train = design_points_masked.shape[0]
+        nev = design_points.shape[0]
         logger.info(
-            f"Training {self.npc_} hetGP models for the PCs with {nev_train} "
+            f"Training {self.npc_} hetGP models for the PCs with {nev} "
             "training points ..."
         )
 
@@ -191,15 +192,15 @@ class EmulatorHetGP(EmulatorBase):
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 gp.mleHetGP(
-                    X=design_points_masked,
-                    Z=data_pca_masked[:, j],
+                    X=design_points,
+                    Z=Z[:, j],
                     covtype="Matern3_2",
                     maxit=100,
                 )
             if output.getvalue().strip():
                 logger.debug(f"hetGP model {j + 1}: {output.getvalue().strip()}")
             # a failed fit gives non-finite predictions
-            pred = gp.predict(x=design_points_masked)
+            pred = gp.predict(x=design_points)
             if not (
                 np.all(np.isfinite(pred["mean"])) and np.all(np.isfinite(pred["sd2"]))
             ):

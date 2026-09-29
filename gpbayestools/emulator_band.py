@@ -46,7 +46,8 @@ class EmulatorBAND(EmulatorBase):
         observable are discarded. None disables this filter.
     exp_and_cov_diagonal : bool, default=False
         If True, predict() returns exp(mean) and a diagonal covariance in the
-        original scale of the observables. Requires ``log_trafo=True``.
+        original scale of the observables (see `EmulatorBase`). Requires
+        ``log_trafo=True``.
     seed : int or None, default=None
         Seed of the random number generator that is set as the global RNG of
         surmise (>= 1.0.0) before each training, so that every training with

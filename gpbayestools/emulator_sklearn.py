@@ -56,10 +56,9 @@ class EmulatorSklearn(EmulatorBase):
         Training points with a larger relative statistical error of any
         observable are discarded. None disables this filter.
     exp_and_cov_diagonal : bool, default=False
-        If True, predict() exponentiates the mean and sets the off-diagonal
-        elements of the covariance matrix to zero. For log-trained emulators,
-        this returns predictions in the original scale of the observables, but
-        with diagonal covariance matrices. Requires ``log_trafo=True``.
+        If True, predict() returns exp(mean) and a diagonal covariance in the
+        original scale of the observables (see `EmulatorBase`). Requires
+        ``log_trafo=True``.
     perform_no_pca : bool, default=False
         If True, the PCA transformation is switched off and the raw
         (standardized) data are used for the Gaussian process emulation.
@@ -154,8 +153,9 @@ class EmulatorSklearn(EmulatorBase):
         -------
         design_points : ndarray of shape (nev, nparameters)
             Parameter points of the training data.
-        Z : ndarray of shape (npc, nev)
-            The first npc PCs at the training points.
+        Z : ndarray of shape (n, nev)
+            The first n PCs at the training points, where n is the number of
+            PCs chosen by `npc` for all training data.
         """
         Z = self._pca_of_all_data()
         return (self.design_points, Z.T)
@@ -225,15 +225,15 @@ class EmulatorSklearn(EmulatorBase):
         design_points = self.design_points[event_mask, :]
 
         # Define kernel (covariance function):
-        # Gaussian correlation (RBF) plus a noise term.
+        # correlation kernel (RBF or Matern) plus a noise term.
         ptp = self.design_max - self.design_min
         if kernel_type == "RBF":
-            rbf_kern = 1.0 * kernels.RBF(
+            corr_kern = 1.0 * kernels.RBF(
                 length_scale=ptp,
                 length_scale_bounds=np.outer(ptp, (1e-1, 1e2)),
             )
         elif kernel_type == "Matern":
-            rbf_kern = 1.0 * kernels.Matern(
+            corr_kern = 1.0 * kernels.Matern(
                 length_scale=ptp, length_scale_bounds=np.outer(ptp, (1e-3, 1e5)), nu=1.5
             )
         else:
@@ -243,7 +243,7 @@ class EmulatorSklearn(EmulatorBase):
         hom_white_kern = kernels.WhiteKernel(
             noise_level=0.05, noise_level_bounds=(1e-6, 1e2)
         )
-        kernel = rbf_kern + hom_white_kern
+        kernel = corr_kern + hom_white_kern
 
         # Fit a GP (optimize the kernel hyperparameters) to each PC.
         self.gps_ = [

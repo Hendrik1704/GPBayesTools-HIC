@@ -21,8 +21,9 @@ def keep_trained_state(method):
     Decorator for emulator validation methods, which train the emulator on a
     subset of the training data. The attributes of the emulator are restored
     after the call, so that the trained emulator is not changed. Training must
-    therefore replace attributes instead of modifying them in place. Random
-    number generators are copied, so that their state is restored as well.
+    therefore replace attributes instead of modifying them in place.
+    Attributes that are numpy random generators (``np.random.Generator``) are
+    copied, so that their state is restored as well.
 
     Parameters
     ----------
