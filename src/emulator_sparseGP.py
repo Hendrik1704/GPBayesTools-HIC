@@ -1132,7 +1132,9 @@ class PCASparseGPEnsemble:
             self.training_histories.append(emu.training_history)
             if verbose:
                 h = emu.training_history
-                print(f"  best ELBO={max(h['elbos']):.2f}, "
+                best = h.get('best_step')
+                best_elbo = h['elbos'][best] if best is not None else float('nan')
+                print(f"  ELBO of the selected parameters={best_elbo:.2f}, "
                       f"steps={h['n_steps']}, "
                       f"converged={h['converged']}, "
                       f"jitter={h['jitter']:.1e}")
