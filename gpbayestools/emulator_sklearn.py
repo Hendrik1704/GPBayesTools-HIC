@@ -161,7 +161,6 @@ class EmulatorSklearn(EmulatorBase):
         Z : ndarray of shape (npc, nev)
             The first npc PCs at the training points.
         """
-        logger.info("Performing PCA ...")
         Z = self._pca_of_all_data()
         return (self.design_points, Z.T)
 
@@ -200,11 +199,8 @@ class EmulatorSklearn(EmulatorBase):
         standardized_data = self.scaler_.fit_transform(data_to_use)
 
         if self.perform_no_pca:
-            logger.info("Skipping PCA. Using raw standardized data for GP training ...")
             Z = standardized_data
-            logger.info(f"Standardized data shape: {Z.shape}")
         else:
-            logger.info("Standardizing data and performing PCA ...")
             # Transform data with PCA. Use the first
             # `npc` components but save the full PC transformation for later.
             Z = self.pca_.fit_transform(standardized_data)
@@ -216,13 +212,17 @@ class EmulatorSklearn(EmulatorBase):
             Z = Z[:, : self.npc_]
 
             logger.info(
-                f"{self.npc_} PCs explain "
+                f"Using {self.npc_} PCs, which explain "
                 f"{self.pca_.explained_variance_ratio_[: self.npc_].sum():.5f} "
-                "of variance"
+                "of the variance"
             )
 
-        nev, nobs = self.model_data[event_mask, :].shape
-        logger.info(f"Train GP emulators with {nev} training points ...")
+        nev = Z.shape[0]
+        targets = "standardized observables" if self.perform_no_pca else "PCs"
+        logger.info(
+            f"Training {Z.shape[1]} GPs ({kernel_type} kernel) for the {targets} "
+            f"with {nev} training points ..."
+        )
 
         design_points = self.design_points[event_mask, :]
 
@@ -258,19 +258,17 @@ class EmulatorSklearn(EmulatorBase):
             ).fit(design_points, z)
             for z in Z.T
         ]
-        gp_scores = []
-        for i, gp in enumerate(self.gps_):
-            gp_scores.append(gp.score(design_points, Z.T[i]))
-        logger.info(f"GP scores: {gp_scores}")
-
-        if not self.perform_no_pca:
-            for n, gp in enumerate(self.gps_):
-                evr = self.pca_.explained_variance_ratio_[n]
-                logger.info(
-                    f"GP {n}: {evr:.5f} of variance, "
-                    f"LML = {gp.log_marginal_likelihood_value_:.5g}, "
-                    f"Score = {gp_scores[n]:.2f}, kernel: {gp.kernel_}"
-                )
+        for n, (gp, z) in enumerate(zip(self.gps_, Z.T, strict=True)):
+            evr = (
+                ""
+                if self.perform_no_pca
+                else f"{self.pca_.explained_variance_ratio_[n]:.5f} of the variance, "
+            )
+            logger.info(
+                f"GP {n}: {evr}"
+                f"LML = {gp.log_marginal_likelihood_value_:.5g}, "
+                f"R^2 = {gp.score(design_points, z):.4f}, kernel: {gp.kernel_}"
+            )
 
         if not self.perform_no_pca:
             # Construct the full linear transformation matrix, which is just the
@@ -322,6 +320,8 @@ class EmulatorSklearn(EmulatorBase):
             # Add small term to diagonal for numerical stability.
             self._cov_trunc.flat[:: self.nobs + 1] += 1e-4 * self.scaler_.var_
             self._cov_trunc_signal.flat[:: self.nobs + 1] += 1e-4 * self.scaler_.var_
+
+        logger.info("Emulator training finished")
 
     def _inverse_transform(self, Z):
         """

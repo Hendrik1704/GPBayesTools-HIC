@@ -150,11 +150,9 @@ class EmulatorSparseGP(EmulatorBase):
             PCASparseGPEnsemble.fit(). verbose_members is dropped for a single
             emulator.
         """
-        logger.info("Performing sparse GP emulator training ...")
         X = self.design_points[event_mask, :]
         Y = self.model_data[event_mask, :]
         Y_err = self.model_data_err[event_mask, :]
-        logger.info(f"Train sparse GP with {X.shape[0]} training points ...")
         npc = self.npc
 
         if self.n_ensemble <= 1:

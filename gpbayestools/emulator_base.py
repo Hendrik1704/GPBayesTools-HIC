@@ -459,9 +459,11 @@ class EmulatorBase:
         ValueError
             If `n_test_points` is not between 0 and nev - 1.
         """
+        choice = (
+            f"{n_test_points} random" if random_points else f"the last {n_test_points}"
+        )
         logger.info(
-            f"Validating the emulator at {n_test_points} "
-            f"{'random' if random_points else 'last'} test points ..."
+            f"Validating the emulator with {choice} training points as test points ..."
         )
         train_mask, test_mask = self._validation_masks(
             n_test_points, random_points, seed
@@ -504,9 +506,12 @@ class EmulatorBase:
         ValueError
             If `n_test_points` is not between 0 and nev - 1.
         """
+        choice = (
+            f"{n_test_points} random" if random_points else f"the last {n_test_points}"
+        )
         logger.info(
-            f"Validating the emulator at the training points without "
-            f"{n_test_points} {'random' if random_points else 'last'} test points ..."
+            "Validating the emulator at the training points, without "
+            f"{choice} training points as test points ..."
         )
         train_mask, _ = self._validation_masks(n_test_points, random_points, seed)
         self.train_emulator(train_mask, **train_kwargs)

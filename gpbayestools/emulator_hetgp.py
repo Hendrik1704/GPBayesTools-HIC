@@ -88,13 +88,13 @@ class EmulatorHetGP(EmulatorBase):
         Also compute the truncation covariance. `data` are the training data
         and `data_err` their statistical errors.
         """
-        logger.info("Performing output PCA for hetGP emulator ...")
         self.scaler_ = StandardScaler()
         standardized_outputs = self.scaler_.fit_transform(data)
         npc = self.npc
         if isinstance(npc, (int, np.integer)) and npc > min(data.shape):
             logger.warning(
-                f"Only {min(data.shape)} PCs available, using npc = {min(data.shape)}"
+                f"npc = {npc} is larger than the number of available PCs, using all "
+                f"{min(data.shape)} PCs"
             )
             npc = min(data.shape)
         self.pca_ = PCA(n_components=npc)
@@ -102,9 +102,8 @@ class EmulatorHetGP(EmulatorBase):
         self.npc_ = self.pca_.n_components_
         self._compute_truncation_cov(data, self.train_pcs_, data_err)
         logger.info(
-            f"Output PCA uses {self.npc_} PCs to explain "
-            f"{100.0 * self.pca_.explained_variance_ratio_.sum():.1f}% "
-            "of the variance ..."
+            f"Using {self.npc_} PCs, which explain "
+            f"{self.pca_.explained_variance_ratio_.sum():.5f} of the variance"
         )
 
     def _compute_truncation_cov(self, data, data_pca, data_err=None):
@@ -170,7 +169,6 @@ class EmulatorHetGP(EmulatorBase):
         event_mask : array_like of bool of shape (nev,)
             Mask of the training points to use.
         """
-        logger.info("Performing emulator training ...")
         # Subselect training data
         event_mask = np.asarray(event_mask, dtype=bool)
         design_points_masked = self.design_points[event_mask, :]
@@ -182,8 +180,8 @@ class EmulatorHetGP(EmulatorBase):
 
         nev_train = design_points_masked.shape[0]
         logger.info(
-            f"Train hetGP emulators for {nev_train} training points and "
-            f"{self.npc_} PCs ..."
+            f"Training {self.npc_} hetGP models for the PCs with {nev_train} "
+            "training points ..."
         )
 
         # Train one hetGP model per principal component of the outputs.
@@ -199,6 +197,8 @@ class EmulatorHetGP(EmulatorBase):
                 maxit=100,
             )
             self.gps_.append(model)
+            logger.debug(f"hetGP model {j + 1}/{self.npc_} trained")
+        logger.info("Emulator training finished")
 
     def predict(self, X, return_cov=True, include_noise=False):
         """

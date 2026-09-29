@@ -102,9 +102,11 @@ class EmulatorBAND(EmulatorBase):
         ValueError
             If `method` is not implemented.
         """
-        logger.info("Performing emulator training ...")
         nev, nobs = self.model_data[event_mask, :].shape
-        logger.info(f"Train GP emulators with {nev} training points ...")
+        logger.info(
+            f"Training the surmise {self.method} emulator with {nev} training "
+            "points ..."
+        )
         X = np.arange(nobs).reshape(-1, 1)
 
         design_points = self.design_points[event_mask, :]
@@ -146,6 +148,7 @@ class EmulatorBAND(EmulatorBase):
             )
         else:
             raise AssertionError(self.method)
+        logger.info("Emulator training finished")
 
     def _full_covariance(self, pred):
         """
