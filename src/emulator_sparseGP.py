@@ -8,6 +8,11 @@ References:
   - Hensman et al. (2015), "Scalable Variational Gaussian Process Classification"
   - Lakshminarayanan et al. (2017), "Simple and Scalable Predictive Uncertainty
     Estimation using Deep Ensembles"
+
+Importing this module enables 64-bit floats in JAX (``jax_enable_x64``) for
+the whole Python process. In single precision, the Cholesky decompositions
+and the predicted covariances are not accurate enough for the likelihood in
+the MCMC.
 """
 
 import logging
@@ -15,6 +20,8 @@ import numpy as np
 import pickle
 
 import jax
+# must be set before any JAX arrays are created
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import optax
 from sklearn.decomposition import PCA
@@ -367,7 +374,7 @@ class PCASparseGPEmulator:
 
         # Observation-noise variances in standardized PC units (data variance
         # ~1) are capped at this value. Larger errors carry no information, but
-        # overflow in float32 and make the ELBO non-finite.
+        # can overflow and make the ELBO non-finite.
         max_obs_var = 1e10
 
         if Y_err is not None:
