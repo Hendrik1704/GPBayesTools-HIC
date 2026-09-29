@@ -416,13 +416,13 @@ class EmulatorSklearn(EmulatorBase):
                     cov[i] = np.diag(gp_var[i] * self.scaler_.var_)
 
             if self.exp_and_cov_diagonal:
-                # For each prediction set the off-diagonal elements of the
-                # covariance matrix to zero
-                for i in range(cov.shape[0]):
-                    new_cov = np.zeros((self.nobs, self.nobs))
-                    fstd = np.sqrt(np.diag(cov[i]))
-                    np.fill_diagonal(new_cov, (fstd * mean[i]) ** 2)
-                    cov[i] = new_cov
+                # If the emulator is trained on the log of the data, we return
+                # the predictions in the original scale with diagonal
+                # covariance matrix.
+                std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
+                cov = np.zeros_like(cov)
+                idx = np.arange(self.nobs)
+                cov[:, idx, idx] = (std * mean) ** 2
 
             return mean, cov
         else:

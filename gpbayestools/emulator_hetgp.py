@@ -233,53 +233,32 @@ class EmulatorHetGP(EmulatorBase):
         pc_means = np.zeros((self.npc_, n_theta))
         pc_vars = np.zeros((self.npc_, n_theta))
 
-        for j, model in enumerate(self.gps_):
-            pred = model.predict(x=X)
-            mean_j = np.asarray(pred["mean"]).reshape(-1)
-            var_j = np.asarray(pred["sd2"]).reshape(-1)
+        for j, gp in enumerate(self.gps_):
+            pred = gp.predict(x=X)
+            pc_means[j] = np.asarray(pred["mean"]).reshape(-1)
+            pc_vars[j] = np.asarray(pred["sd2"]).reshape(-1)
             if include_noise and "nugs" in pred:
-                var_j = var_j + np.asarray(pred["nugs"]).reshape(-1)
-            pc_means[j, :] = mean_j
-            pc_vars[j, :] = var_j
+                pc_vars[j] += np.asarray(pred["nugs"]).reshape(-1)
 
         # Reconstruct observables from PCs
-        Z_pred = pc_means.T  # (n_theta, npc)
-        standardized_pred = self.pca_.inverse_transform(Z_pred)
-        Y_pred = self.scaler_.inverse_transform(standardized_pred)  # (n_theta, nobs)
+        mean = self.scaler_.inverse_transform(self.pca_.inverse_transform(pc_means.T))
 
-        # Build covariance matrices in observable space
-        components = self.pca_.components_  # (npc, nobs)
-        W = components.T  # (nobs, npc)
-        scales = self.scaler_.scale_  # (nobs,)
-        D = np.diag(scales)
-
-        covs = np.zeros((n_theta, self.nobs, self.nobs))
-        for k in range(n_theta):
-            var_z = np.maximum(pc_vars[:, k], 0.0)
-            Sigma_S = W @ np.diag(var_z) @ W.T
-            Sigma_Y = D @ Sigma_S @ D
-            if include_noise:
-                covs[k] = Sigma_Y + self._cov_trunc
-            else:
-                covs[k] = Sigma_Y + self._cov_trunc_signal
-
-        fpredmean = Y_pred
-        fpredcov = covs
+        # Covariance in the space of the observables: the PC variances are
+        # transformed with the PCA components and the standardization scales
+        W = self.pca_.components_.T * self.scaler_.scale_[:, None]  # (nobs, npc)
+        pc_vars = np.maximum(pc_vars, 0.0)
+        cov = np.einsum("ik,kn,jk->nij", W, pc_vars, W)
+        cov += self._cov_trunc if include_noise else self._cov_trunc_signal
 
         if self.exp_and_cov_diagonal:
             # If the emulator is trained on the log of the data, we return the
             # predictions in the original scale with diagonal covariance matrix.
-            fpredmean = np.exp(fpredmean)
-
-            fcov = np.zeros((n_theta, self.nobs, self.nobs))
-            for i in range(n_theta):
-                diagonal_cov = np.zeros((self.nobs, self.nobs))
-                fstd = np.sqrt(np.diag(fpredcov[i]))
-                np.fill_diagonal(diagonal_cov, (fstd * fpredmean[i]) ** 2)
-                fcov[i] = diagonal_cov
-            fpredcov = fcov
+            mean = np.exp(mean)
+            std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
+            cov = np.zeros_like(cov)
+            idx = np.arange(self.nobs)
+            cov[:, idx, idx] = (std * mean) ** 2
 
         if return_cov:
-            return (fpredmean, fpredcov)
-        else:
-            return fpredmean
+            return mean, cov
+        return mean

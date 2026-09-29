@@ -147,15 +147,15 @@ class EmulatorBAND(EmulatorBase):
         else:
             raise AssertionError(self.method)
 
-    def _full_covariance(self, gp):
+    def _full_covariance(self, pred):
         """
-        Covariance matrices of the surmise prediction `gp` with shape
+        Covariance matrices of the surmise prediction `pred` with shape
         (ntheta, nobs, nobs). surmise's covx() only contains the variance of
         the emulated PCs, while var() also contains the variance of the
         discarded PCs, which is added to the diagonal here.
         """
-        cov = np.array(gp.covx())
-        missing_var = gp.var().T - np.diagonal(cov, axis1=1, axis2=2)
+        cov = np.array(pred.covx())
+        missing_var = pred.var().T - np.diagonal(cov, axis1=1, axis2=2)
         idx = np.arange(cov.shape[1])
         cov[:, idx, idx] += np.clip(missing_var, 0.0, None)
         return cov
@@ -206,34 +206,25 @@ class EmulatorBAND(EmulatorBase):
             is True.
         """
         x = np.arange(self.nobs).reshape(-1, 1)
+        pred = self.emu_.predict(x=x, theta=X)
 
-        gp = self.emu_.predict(x=x, theta=X)
+        mean = pred.mean().T
+        cov = self._full_covariance(pred)
+        if not include_noise:
+            cov = cov - self._noise_covariance()[None, :, :]
+            # round-off can make variances slightly negative
+            idx = np.arange(self.nobs)
+            cov[:, idx, idx] = np.maximum(cov[:, idx, idx], 0.0)
 
         if self.exp_and_cov_diagonal:
             # If the emulator is trained on the log of the data, we return the
             # predictions in the original scale with diagonal covariance matrix.
-            fpredmean = np.exp(gp.mean().T)
-        else:
-            fpredmean = gp.mean().T
-
-        fpredcov = self._full_covariance(gp)
-        if not include_noise:
-            fpredcov = fpredcov - self._noise_covariance()[None, :, :]
-            # round-off can make variances slightly negative
+            mean = np.exp(mean)
+            std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
+            cov = np.zeros_like(cov)
             idx = np.arange(self.nobs)
-            fpredcov[:, idx, idx] = np.maximum(fpredcov[:, idx, idx], 0.0)
-
-        if self.exp_and_cov_diagonal:
-            fcov = np.zeros_like(fpredcov)
-            # Extract the diagonal of the covariance matrix for each prediction
-            for i in range(fpredcov.shape[0]):
-                diagonal_cov = np.zeros((self.nobs, self.nobs))
-                fstd = np.sqrt(np.diag(fpredcov[i]))
-                np.fill_diagonal(diagonal_cov, (fstd * fpredmean[i]) ** 2)
-                fcov[i] = diagonal_cov
-            fpredcov = fcov
+            cov[:, idx, idx] = (std * mean) ** 2
 
         if return_cov:
-            return (fpredmean, fpredcov)
-        else:
-            return fpredmean
+            return mean, cov
+        return mean

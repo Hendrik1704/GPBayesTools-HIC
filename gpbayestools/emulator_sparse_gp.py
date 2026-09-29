@@ -215,9 +215,9 @@ class EmulatorSparseGP(EmulatorBase):
 
         Returns
         -------
-        fpredmean : array (N_test, nobs)
+        mean : array (N_test, nobs)
             Predictive mean; exp(mean) with exp_and_cov_diagonal=True.
-        fpredcov : array (N_test, nobs, nobs)
+        cov : array (N_test, nobs, nobs)
             Predictive covariance, only returned if return_cov=True. With
             exp_and_cov_diagonal=True, transformed with the delta method.
 
@@ -230,25 +230,22 @@ class EmulatorSparseGP(EmulatorBase):
             raise RuntimeError("Call train_emulator() before predict().")
 
         X = np.atleast_2d(X)
-        Y_pred, full_cov = self.emu_.predict(
+        mean, cov = self.emu_.predict(
             X,
             include_noise=include_noise,
             include_truncation=include_truncation,
             include_pca_sampling=include_pca_sampling,
             include_obs_noise=include_obs_noise,
         )
+        mean = np.array(mean)
+        cov = np.array(cov)
 
-        Y_pred = np.array(Y_pred)
-        full_cov = np.array(full_cov)
-
-        # Inverse log-transform if needed.
         if self.exp_and_cov_diagonal:
-            Y_pred_exp = np.exp(Y_pred)
-            # delta method: Cov_y[i,j] = exp(mu_i) * Cov_log[i,j] * exp(mu_j)
-            outer_exp = Y_pred_exp[:, :, None] * Y_pred_exp[:, None, :]
-            full_cov = full_cov * outer_exp
-            Y_pred = Y_pred_exp
+            # delta method: Cov_y[i,j] = exp(mu_i) * Cov_log[i,j] * exp(mu_j),
+            # which keeps the correlations between the observables
+            mean = np.exp(mean)
+            cov = cov * mean[:, :, None] * mean[:, None, :]
 
         if return_cov:
-            return Y_pred, full_cov
-        return Y_pred
+            return mean, cov
+        return mean
