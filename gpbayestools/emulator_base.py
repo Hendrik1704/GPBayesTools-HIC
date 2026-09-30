@@ -277,7 +277,7 @@ class EmulatorBase:
             if self.log_trafo and np.any(temp_data[:, 0] <= 0):
                 raise ValueError(
                     "log_trafo requires positive observables, but "
-                    f"parameter point {event_id} has values <= 0"
+                    f"training point {event_id} has values <= 0"
                 )
             self.design_points.append(data_dict[event_id]["parameter"])
             if not self.log_trafo:
@@ -356,18 +356,20 @@ class EmulatorBase:
         """
         Sample model output from the predicted Gaussian distribution.
 
-        The samples have the same uncertainty as predict() (see
+        The samples are drawn from the mean and covariance of predict() (see
         `include_noise`). The points are sampled independently, only the
         correlations between the observables are taken into account.
 
         The samples are in the same space as the predictions: in log space for
-        log-transformed emulators, unless exp_and_cov_diagonal is set, in
-        which case the samples are drawn in log space and exponentiated
-        (log-normal).
+        log-transformed emulators, unless exp_and_cov_diagonal is set. Then
+        the samples are drawn from the full covariance in log space and
+        exponentiated, so they are log-normal and keep the correlations
+        between the observables, unlike the diagonal delta-method covariance
+        of predict().
 
         Parameters
         ----------
-        X : array_like of shape (nsamples_X, nparameters)
+        X : array_like of shape (n_points, nparameters)
             Parameter points. A 1D array is treated as a single point.
         n_samples : int, default=1
             Number of samples per parameter point.
@@ -379,12 +381,13 @@ class EmulatorBase:
 
         Returns
         -------
-        ndarray of shape (nsamples_X, n_samples, nobs)
+        ndarray of shape (n_points, n_samples, nobs)
             Samples of the observables.
         """
         X = np.atleast_2d(X)
         rng = np.random.default_rng(seed)
-        back_transform = self.log_trafo and not self._predictions_in_log_space()
+        # with exp_and_cov_diagonal, the samples are drawn in log space
+        back_transform = self.exp_and_cov_diagonal
         if back_transform:
             mean, cov = self._predict_log_space(X, include_noise)
         else:
@@ -448,12 +451,7 @@ class EmulatorBase:
             data = self.model_data[mask, :]
             data_err = self.model_data_err[mask, :]
 
-        return (
-            pred_mean.reshape(-1, self.nobs),
-            pred_std.reshape(-1, self.nobs),
-            np.array(data).reshape(-1, self.nobs),
-            np.array(data_err).reshape(-1, self.nobs),
-        )
+        return pred_mean, pred_std, data, data_err
 
     @staticmethod
     def _test_points_text(n_test_points, random_points):
@@ -520,8 +518,10 @@ class EmulatorBase:
 
         The emulator is trained without n_test_points test points (chosen
         as in `test_emulator_errors`) and predicts at the training points. The
-        resulting errors should be very small. The trained emulator is not
-        changed.
+        differences between the predictions and the training data should be
+        small compared with the statistical errors of the training data. The
+        predicted errors include the noise, as in `test_emulator_errors`. The
+        trained emulator is not changed.
 
         Parameters
         ----------
@@ -550,10 +550,13 @@ class EmulatorBase:
         train_mask, _ = self._validation_masks(
             n_test_points, random_points, seed, min_test_points=0
         )
-        logger.info(
-            "Validating the emulator at the training points, without "
-            f"{self._test_points_text(n_test_points, random_points)} as test "
-            "points ..."
-        )
+        if n_test_points == 0:
+            logger.info("Validating the emulator at all training points ...")
+        else:
+            logger.info(
+                "Validating the emulator at the training points, without "
+                f"{self._test_points_text(n_test_points, random_points)} as test "
+                "points ..."
+            )
         self.train_emulator(train_mask, **train_kwargs)
         return self._validation_output(train_mask)

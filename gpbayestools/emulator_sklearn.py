@@ -269,7 +269,7 @@ class EmulatorSklearn(EmulatorBase):
                 else f"{self.pca_.explained_variance_ratio_[n]:.5f} of the variance, "
             )
             logger.info(
-                f"GP {n}: {evr}"
+                f"GP {n + 1}: {evr}"
                 f"LML = {gp.log_marginal_likelihood_value_:.5g}, "
                 f"R^2 = {gp.score(design_points, z):.4f}, kernel: {gp.kernel_}"
             )
@@ -356,6 +356,14 @@ class EmulatorSklearn(EmulatorBase):
         function. With `include_noise`, the noise fitted by the GPs
         (WhiteKernel) is included, i.e. the uncertainty of a new noisy
         simulation.
+
+        The covariance also contains the covariance of the discarded PCs
+        (truncation). By default, the statistical noise of the training data
+        in these directions is removed from it, with `include_noise` the full
+        truncation covariance is used.
+
+        With ``exp_and_cov_diagonal=True``, the mean is exp(mean) and the
+        covariance is diagonal (see `EmulatorBase`).
 
         Parameters
         ----------

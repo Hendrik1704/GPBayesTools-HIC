@@ -181,7 +181,11 @@ class EmulatorBAND(EmulatorBase):
         mean variance is added to the diagonal instead.
 
         The variance of the discarded PCs is surmise's extravar, which is
-        zero for PCSK and not corrected for the noise of the training data.
+        added to the diagonal only, is zero for PCSK and is not corrected for
+        the noise of the training data.
+
+        With ``exp_and_cov_diagonal=True``, the mean is exp(mean) and the
+        covariance is diagonal (see `EmulatorBase`).
 
         Parameters
         ----------

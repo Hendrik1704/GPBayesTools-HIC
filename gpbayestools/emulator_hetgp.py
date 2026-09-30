@@ -227,6 +227,14 @@ class EmulatorHetGP(EmulatorBase):
         hetGP models (nugs) is included, i.e. the uncertainty of a new noisy
         simulation.
 
+        The covariance also contains the covariance of the discarded PCs
+        (truncation). By default, the statistical noise of the training data
+        in these directions is removed from it, with `include_noise` the full
+        truncation covariance is used.
+
+        With ``exp_and_cov_diagonal=True``, the mean is exp(mean) and the
+        covariance is diagonal (see `EmulatorBase`).
+
         Parameters
         ----------
         X : array_like of shape (nsamples, nparameters)
@@ -261,6 +269,8 @@ class EmulatorHetGP(EmulatorBase):
 
         # Reconstruct observables from PCs
         mean = self.scaler_.inverse_transform(self.pca_.inverse_transform(pc_means.T))
+        if not return_cov:
+            return np.exp(mean) if self.exp_and_cov_diagonal else mean
 
         # Covariance in the space of the observables: the PC variances are
         # transformed with the PCA components and the standardization scales
@@ -278,6 +288,4 @@ class EmulatorHetGP(EmulatorBase):
             idx = np.arange(self.nobs)
             cov[:, idx, idx] = (std * mean) ** 2
 
-        if return_cov:
-            return mean, cov
-        return mean
+        return mean, cov
