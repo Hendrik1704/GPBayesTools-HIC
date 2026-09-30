@@ -103,6 +103,16 @@ def test_validation(training_file, param_file, test_points):
     )
 
 
+def test_training_keeps_warning_filters(training_file, param_file):
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="test filter")
+        filters = list(warnings.filters)
+        EmulatorBAND(training_file, param_file, seed=1).train_emulator_auto_mask()
+        assert warnings.filters == filters
+
+
 def test_unknown_method(training_file, param_file):
     with pytest.raises(ValueError):
         EmulatorBAND(training_file, param_file, method="GP")

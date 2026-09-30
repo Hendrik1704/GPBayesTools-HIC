@@ -7,6 +7,7 @@ collaboration.
 """
 
 import logging
+import warnings
 
 import numpy as np
 import surmise
@@ -114,13 +115,16 @@ class EmulatorBAND(EmulatorBase):
         # training. A new generator is used for each training, so that the
         # same seed always gives the same emulator.
         surmise.set_RNG(np.random.default_rng(self.seed))
-        self.emu_ = emulator(
-            x=x,
-            theta=self.design_points[event_mask, :],
-            f=self.model_data[event_mask, :].T,
-            method=self.method,
-            args=args,
-        )
+        # surmise resets all warning filters of the process
+        # (warnings.resetwarnings), which are restored afterwards
+        with warnings.catch_warnings():
+            self.emu_ = emulator(
+                x=x,
+                theta=self.design_points[event_mask, :],
+                f=self.model_data[event_mask, :].T,
+                method=self.method,
+                args=args,
+            )
         logger.info("Emulator training finished")
 
     def _full_covariance(self, pred):
