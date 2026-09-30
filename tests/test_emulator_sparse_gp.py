@@ -19,6 +19,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from conftest import latin_hypercube
 
 from gpbayestools.emulator_sparse_gp import (
     EmulatorSparseGP,
@@ -100,15 +101,6 @@ def _hl_true_model(params, n_obs=6):
         + gamma**2 * np.cos(2.0 * np.pi * frac)
         + 3.0
     )
-
-
-def _lhd(n_samples, n_dim, rng):
-    """Simple random Latin-hypercube design in [0, 1]^n_dim."""
-    result = np.zeros((n_samples, n_dim))
-    for d in range(n_dim):
-        perm = rng.permutation(n_samples)
-        result[:, d] = (perm + rng.uniform(size=n_samples)) / n_samples
-    return result
 
 
 # =============================================================================
@@ -322,7 +314,7 @@ def test_wrapper(tmp_path):
 
     # 1. Generate synthetic training data
     rng = np.random.default_rng(42)
-    design = _lhd(N_DESIGN, N_PARAMS, rng)
+    design = latin_hypercube(N_DESIGN, N_PARAMS, rng)
 
     data_dict = {}
     for i in range(N_DESIGN):
