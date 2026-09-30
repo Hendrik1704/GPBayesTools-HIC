@@ -294,6 +294,8 @@ def test_parse_model_parameter_file(tmp_path):
         "alpha: a, zero, 1",
         "alpha: a, 1, 1",
         "alpha: a, 2, 1",
+        "alpha: a, 0, inf",
+        ": a, 0, 1",
         "beta: b, 0, 1",
     ],
 )

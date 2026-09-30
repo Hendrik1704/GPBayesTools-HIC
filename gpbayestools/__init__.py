@@ -111,7 +111,8 @@ def parse_model_parameter_file(parameter_file):
     Read a model parameter file.
 
     Each line has the format ``name: label, min, max``. Text after ``#`` is a
-    comment, and empty and comment lines are skipped.
+    comment, and empty and comment lines are skipped. The entries are
+    separated by commas, so the label must not contain commas.
 
     Parameters
     ----------
@@ -128,9 +129,10 @@ def parse_model_parameter_file(parameter_file):
     Raises
     ------
     ValueError
-        If a line does not have the format ``name: label, min, max``, if min
-        or max is not a number, if min >= max, or if a parameter is defined
-        twice. The message contains the file and the line number.
+        If a line does not have the format ``name: label, min, max``, if the
+        name is empty, if min or max is not a finite number, if min >= max,
+        or if a parameter is defined twice. The message contains the file
+        and the line number.
     """
     pardict = {}
     with open(parameter_file) as f:
@@ -144,6 +146,8 @@ def parse_model_parameter_file(parameter_file):
                 raise ValueError(f"{where}: expected 'name: label, min, max'")
             key, par = par.split(":", 1)
             key = key.strip()
+            if key == "":
+                raise ValueError(f"{where}: the parameter name is empty")
             val = [ival.strip() for ival in par.split(",")]
             if len(val) < 3:
                 raise ValueError(f"{where}: expected 'name: label, min, max'")
@@ -154,6 +158,8 @@ def parse_model_parameter_file(parameter_file):
                     f"{where}: min and max of {key!r} must be numbers, got "
                     f"{val[1]!r} and {val[2]!r}"
                 ) from None
+            if not (np.isfinite(val[1]) and np.isfinite(val[2])):
+                raise ValueError(f"{where}: min and max of {key!r} must be finite")
             if key in pardict:
                 raise ValueError(f"{where}: parameter {key!r} is defined twice")
             if not val[1] < val[2]:
