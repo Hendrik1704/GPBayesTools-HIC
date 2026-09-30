@@ -1,0 +1,5 @@
+# Parameters of the GBW saturation model for the fit of the HERA DIS data,
+# Q_s^2(x) = Q_s0^2 x^(-lambda) (1 - x), see arXiv:2504.02726
+# format: parameter_name: label, min, max
+Qs0: $Q_{s0}$ [GeV], 0.1, 0.8
+lambda: $\lambda$, 0.1, 0.5

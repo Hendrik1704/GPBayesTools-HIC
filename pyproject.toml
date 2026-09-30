@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpbayestools-hic"
+version = "3.0.0"
+description = "Gaussian Process Bayesian Toolkit with Monte Carlo Sampler Integration for Heavy Ion Collisions"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Sayed Afrid Jahan" },
+    { name = "Hendrik Roch" },
+]
+# surmise 1.0.0 requires Python >= 3.11
+requires-python = ">=3.11"
+# versions that work for us, maybe also lower versions work, but we have not
+# tested them
+dependencies = [
+    "surmise==1.0.0",
+    "pocomc==1.2.6",
+    "hetgpy==1.0.4",
+    "emcee>=3.1.4",
+    # jax requires numpy >= 2.0 and scipy >= 1.14
+    "numpy>=2.0",
+    "scipy>=1.14",
+    "dill>=0.3.8",
+    "scikit-learn>=1.4.0",
+    # process pool of pocoMC (run_pocomc with an integer pool)
+    "multiprocess>=0.70.16",
+    "jax>=0.10.2",
+    "optax>=0.2.4",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3.4"]
+# the same ruff version as in the format workflow
+dev = ["pytest>=8.3.4", "ruff==0.16.9"]
+# for the notebooks in examples/
+examples = ["matplotlib>=3.8", "jupyter"]
+
+[project.urls]
+Repository = "https://github.com/Hendrik1704/GPBayesTools-HIC"
+Changelog = "https://github.com/Hendrik1704/GPBayesTools-HIC/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+packages = ["gpbayestools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+# the notebooks are examples and are not formatted
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle, import sorting, pyupgrade, bugbear, pep8-naming
+select = ["F", "E", "W", "I", "UP", "B", "N"]
+# uppercase variable and argument names in functions are used for matrices
+# and data arrays (math notation, e.g. X as in scikit-learn)
+ignore = ["N806", "N803"]
+
+[tool.ruff.lint.per-file-ignores]
+# jax_enable_x64 must be set before the other JAX imports
+"gpbayestools/svgp.py" = ["E402"]
