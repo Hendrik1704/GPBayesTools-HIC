@@ -845,7 +845,26 @@ class BayesianAnalysis:
         seed : int or None, default=None
             Seed of the random number generator of the sampler, which makes
             the chain reproducible.
+
+        Raises
+        ------
+        ValueError
+            If `n_steps`, `n_walkers` or `n_start_parameters` is smaller than
+            1, if `n_temps` is negative, or if `max_temp` is smaller than 1.
         """
+        # checked before the (long) sampling
+        for name, value in (
+            ("n_steps", n_steps),
+            ("n_walkers", n_walkers),
+            ("n_start_parameters", n_start_parameters),
+        ):
+            if value < 1:
+                raise ValueError(f"{name} must be >= 1, got {value}")
+        if n_temps < 0:
+            raise ValueError(f"n_temps must be >= 0, got {n_temps}")
+        # the temperatures are spaced logarithmically from max_temp to 1
+        if max_temp < 1:
+            raise ValueError(f"max_temp must be >= 1, got {max_temp}")
         rng = np.random.default_rng(seed)
         chain_data = {}
 

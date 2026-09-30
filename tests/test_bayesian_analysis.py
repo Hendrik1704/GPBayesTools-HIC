@@ -355,6 +355,19 @@ def test_pocomc_with_process_pool(analysis, monkeypatch):
     assert np.all(np.abs(samples.mean(axis=0) - X_TRUE) < 3 * POST_STD)
 
 
+def test_ptlmc_checks_arguments(analysis):
+    for kwargs in (
+        {"n_steps": 0},
+        {"n_walkers": 0},
+        {"n_start_parameters": 0},
+        {"n_temps": -1},
+        {"max_temp": 0.5},
+    ):
+        with pytest.raises(ValueError):
+            analysis.run_ptlmc(**kwargs)
+    assert not analysis.chain_path("ptlmc").exists()
+
+
 def test_log_likelihood_of_chain_requires_chain(analysis):
     with pytest.raises(ValueError):
         analysis.compute_log_likelihood_for_chain()

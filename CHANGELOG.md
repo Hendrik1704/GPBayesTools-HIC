@@ -60,7 +60,7 @@ Bug fixes:
 - Raise a `ValueError` in `EmulatorSklearn` for unknown kernel types.
 - Training points with NaN or infinite observables or statistical errors are discarded when loading the training data in all emulators (an infinite error carries no information, a NaN error is unknown), except for the surmise methods for missing observables (see the new features). Previously non-finite observables passed the relative-error filter and non-finite errors were used.
 - MCMC with emcee: fix crashes for `n_steps < 10` and check an existing chain before continuing it (pocoMC chains or a different number of walkers raise a `ValueError`; `n_walkers` is taken from the chain if not given). The burn-in restart only uses distinct points with finite probability. Continuing a chain with a different number of parameters raises a clear error.
-- PTLMC draws at least one starting point per chain.
+- PTLMC draws at least one starting point per chain, and `run_ptlmc` checks its sizes before the sampling (`n_steps=0` wrote an empty chain).
 - `compute_log_likelihood_for_chain` creates its output directory before the computation.
 - Empty lines in parameter files are skipped, and keys are stripped.
 - Observables that are exactly zero are ignored in the relative-error filter of the training data, instead of discarding the whole training point.
