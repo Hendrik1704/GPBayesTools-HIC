@@ -306,17 +306,11 @@ def test_invalid_parameter_file(tmp_path, line):
         parse_model_parameter_file(path)
 
 
-def test_non_finite_errors_are_set_to_zero(modified_data, param_file):
+def test_non_finite_errors_are_discarded(modified_data, param_file):
     def modify(values, errors):
         errors[3, 2] = np.nan
         errors[5, 1] = np.inf
 
     emu = EmulatorSklearn(modified_data(modify), param_file)
-    assert emu.n_ev == 60
-    assert emu.model_data_err[3, 2] == 0 and emu.model_data_err[5, 1] == 0
-    # with the error filter, the point with the NaN error is kept and the
-    # point with the infinite error is discarded
-    emu = EmulatorSklearn(
-        modified_data(modify), param_file, max_rel_uncertainty_data=0.5
-    )
-    assert emu.n_ev == 59
+    assert emu.n_ev == 58
+    assert np.all(np.isfinite(emu.model_data_err))

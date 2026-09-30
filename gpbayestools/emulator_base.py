@@ -115,8 +115,9 @@ class EmulatorBase:
 
     It loads the training data and the model parameter file and implements
     the validation functions and `sample_y`. Training points with non-finite
-    observables are always discarded. All arguments except the two paths are
-    keyword-only in all emulators. Subclasses implement
+    observables or statistical errors are always discarded. All arguments
+    except the two paths are keyword-only in all emulators. Subclasses
+    implement
     ``train_emulator(event_mask)`` and ``predict(X, return_cov=True,
     include_noise=False)``.
 
@@ -194,10 +195,10 @@ class EmulatorBase:
         Largest relative statistical error of a training point.
 
         Observables that are exactly zero have no relative error and are
-        ignored, as are NaN errors, which are set to 0 after the loading.
+        ignored.
         """
         nonzero = temp_data[:, 0] != 0
-        return np.nanmax(
+        return np.max(
             np.abs(temp_data[nonzero, 1] / temp_data[nonzero, 0]), initial=0.0
         )
 
@@ -217,9 +218,11 @@ class EmulatorBase:
         n_filtered = 0
         for event_id in sorted_event_ids:
             temp_data = data_dict[event_id]["obs"].transpose()
-            if not np.all(np.isfinite(temp_data[:, 0])):
+            # an infinite error carries no information, a NaN error is unknown
+            if not np.all(np.isfinite(temp_data)):
                 logger.warning(
-                    f"Discarding training point {event_id}: non-finite observables"
+                    f"Discarding training point {event_id}: non-finite observables "
+                    "or statistical errors"
                 )
                 n_nonfinite += 1
                 continue
@@ -252,13 +255,6 @@ class EmulatorBase:
         self.design_points = np.array(self.design_points)
         self.model_data = np.array(self.model_data)
         self.model_data_err = np.abs(np.array(self.model_data_err))
-        n_nonfinite_err = int(np.sum(~np.isfinite(self.model_data_err)))
-        if n_nonfinite_err > 0:
-            logger.warning(
-                f"Setting {n_nonfinite_err} non-finite statistical errors of the "
-                "training data to 0"
-            )
-            self.model_data_err[~np.isfinite(self.model_data_err)] = 0.0
         n_discarded = n_nonfinite + n_filtered
         logger.info(
             f"Loaded {len(self.model_data)} training points with "
