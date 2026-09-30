@@ -166,6 +166,7 @@ class Design:
 
     Creates a design with the given number of points for the parameters in
     the parameter file. The class also implicitly converts to a numpy array.
+    All arguments except `parameter_file` are keyword-only.
 
     Parameters
     ----------
@@ -214,7 +215,13 @@ class Design:
     """
 
     def __init__(
-        self, parameter_file, npoints=500, validation=False, seed=None, method="maxpro"
+        self,
+        parameter_file,
+        *,
+        npoints=500,
+        validation=False,
+        seed=None,
+        method="maxpro",
     ):
         if method not in design_generators:
             raise ValueError(

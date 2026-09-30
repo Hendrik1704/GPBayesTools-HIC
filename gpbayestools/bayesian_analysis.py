@@ -181,17 +181,17 @@ class BayesianAnalysis:
 
     Parameters
     ----------
-    mcmc_path : str or path-like, default="./mcmc/chain.pkl"
-        Base path of the chain files. The parent directory is created if it
-        does not exist.
-    exp_data_path : str or path-like, default="./exp_data.pkl"
+    exp_data_path : str or path-like
         Path of the pickle file with the experimental data. It must contain a
         dictionary with exactly one data set, whose ``"obs"`` entry holds the
         values and the errors of the data points (see
         :meth:`_read_in_exp_data_pickle`).
-    parameter_file : str or path-like, default="./model.dat"
+    parameter_file : str or path-like
         Path of the model parameter file with the label and the range
         (minimum and maximum) of each parameter.
+    mcmc_path : str or path-like, default="./mcmc/chain.pkl"
+        Base path of the chain files (keyword-only). The parent directory is
+        created if it does not exist.
 
     Attributes
     ----------
@@ -227,9 +227,10 @@ class BayesianAnalysis:
 
     def __init__(
         self,
+        exp_data_path,
+        parameter_file,
+        *,
         mcmc_path="./mcmc/chain.pkl",
-        exp_data_path="./exp_data.pkl",
-        parameter_file="./model.dat",
     ):
         self.mcmc_path = Path(mcmc_path)
         self.mcmc_path.parent.mkdir(parents=True, exist_ok=True)

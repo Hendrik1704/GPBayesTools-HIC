@@ -35,7 +35,7 @@ def test_design_in_parameter_ranges(param_file, method):
     assert np.all(d.array >= [0, -2]) and np.all(d.array <= [1, 2])
     assert d.seed == 1
     np.testing.assert_array_equal(
-        d.array, Design(param_file, 20, seed=1, method=method).array
+        d.array, Design(param_file, npoints=20, seed=1, method=method).array
     )
 
 
