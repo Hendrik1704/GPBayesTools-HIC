@@ -946,8 +946,10 @@ class BayesianAnalysis:
         the package). pocoMC is a Preconditioned Monte Carlo (PMC) sampler
         that uses normalizing flows to precondition the target distribution.
 
-        The resampled posterior samples are stored in ``self.chain`` with
-        shape (nsamples, n_dim). They are written to ``chain_path("pocomc")``
+        The posterior samples are stored in ``self.chain`` with shape
+        (nsamples, n_dim). pocoMC resamples the weighted particles with
+        replacement, so the samples contain duplicates and their number is
+        not `n_total`. They are written to ``chain_path("pocomc")``
         together with the log-likelihood (``"logl"``), the log prior
         (``"logp"``), the log evidence (``"logz"``) and its error
         (``"logz_err"``). Points outside the parameter ranges get the finite
@@ -979,7 +981,8 @@ class BayesianAnalysis:
             also affects later code that uses these generators. None does not
             change the global random state.
         n_total : int, default=5000
-            Total number of effectively independent samples to be collected.
+            Effective sample size of the weighted particles at the end of
+            the run (not the number of returned samples).
         n_evidence : int, default=5000
             Number of importance samples used to estimate the evidence. If
             ``n_evidence=0``, the evidence is not estimated using importance
@@ -1000,8 +1003,13 @@ class BayesianAnalysis:
         prior : object or None, default=None
             Prior distribution implementing the ``logpdf`` and ``rvs`` methods
             and the ``dim`` and ``bounds`` attributes. If None, a uniform
-            prior within the parameter ranges is used. For more information on
-            customizing the prior, see the pocoMC documentation.
+            prior within the parameter ranges is used. The likelihood is
+            -1e300 outside the parameter ranges, so a prior with a wider
+            support is effectively truncated to the parameter ranges, and the
+            evidence includes this truncation. The prior is only used by
+            pocoMC, emcee and PTLMC always use the uniform prior. For more
+            information on customizing the prior, see the pocoMC
+            documentation.
 
         Raises
         ------

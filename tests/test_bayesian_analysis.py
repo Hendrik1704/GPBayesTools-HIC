@@ -262,11 +262,11 @@ def test_pocomc_and_log_likelihood_of_chain(analysis):
         seed=1,
     )
     assert analysis.chain.ndim == 2 and analysis.chain.shape[1] == 2
-    # pocoMC samples are independent
+    # the resampled pocoMC samples contain duplicates, the effective sample
+    # size is n_total
     samples = analysis.chain
     assert np.all(
-        np.abs(samples.mean(axis=0) - X_TRUE)
-        < 5 * POST_STD / np.sqrt(len(samples)) + 0.005
+        np.abs(samples.mean(axis=0) - X_TRUE) < 5 * POST_STD / np.sqrt(2000) + 0.005
     )
     np.testing.assert_allclose(samples.std(axis=0), POST_STD, rtol=0.2)
     with open(analysis.chain_path("pocomc"), "rb") as f:
