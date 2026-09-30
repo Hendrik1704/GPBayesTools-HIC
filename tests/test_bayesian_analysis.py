@@ -10,7 +10,9 @@ reproduce.
 Run with ``python -m pytest tests/test_bayesian_analysis.py``.
 """
 
+import os
 import pickle
+import stat
 
 import dill
 import multiprocess.pool
@@ -19,7 +21,7 @@ import pytest
 from conftest import LinearEmulator, write_param_file
 from scipy.stats import multivariate_normal
 
-from gpbayestools.bayesian_analysis import BayesianAnalysis, mvn_loglike
+from gpbayestools.bayesian_analysis import BayesianAnalysis, _write_pickle, mvn_loglike
 
 A = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, -1.0]])
 B = np.array([1.0, 2.0, 3.0, 4.0])
@@ -83,6 +85,25 @@ def check_posterior(samples, n_std=4):
 
 
 # ── Likelihood ───────────────────────────────────────────────────────
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions")
+def test_write_pickle_permissions(tmp_path):
+    umask = os.umask(0o022)
+    try:
+        # a new file gets the default permissions, not the 0600 of mkstemp
+        path = tmp_path / "chain.pkl"
+        _write_pickle(path, {"a": 1})
+        assert stat.S_IMODE(path.stat().st_mode) == 0o644
+        # an existing file keeps its permissions
+        path.chmod(0o640)
+        _write_pickle(path, {"a": 2})
+        assert stat.S_IMODE(path.stat().st_mode) == 0o640
+        with open(path, "rb") as f:
+            assert pickle.load(f) == {"a": 2}
+        assert list(tmp_path.iterdir()) == [path]
+    finally:
+        os.umask(umask)
+
+
 def test_mvn_loglike():
     rng = np.random.default_rng(0)
     M = rng.normal(size=(4, 4))

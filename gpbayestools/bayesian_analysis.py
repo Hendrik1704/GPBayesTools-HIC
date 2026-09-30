@@ -11,6 +11,7 @@ The `BayesianAnalysis` class provides the following samplers:
 import logging
 import os
 import pickle
+import stat
 import tempfile
 from pathlib import Path
 
@@ -109,12 +110,25 @@ def _write_pickle(path, data):
     """
     Write `data` to the pickle file `path` via a temporary file, so that an
     interrupted write does not destroy an existing file.
+
+    An existing file keeps its permissions, a new file gets the default
+    permissions of the process (0666 without the bits of the umask), like a
+    file created with open().
     """
     path = Path(path)
+    if path.exists():
+        mode = stat.S_IMODE(path.stat().st_mode)
+    else:
+        # the umask can only be read by setting it
+        umask = os.umask(0)
+        os.umask(umask)
+        mode = 0o666 & ~umask
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as f:
             pickle.dump(data, f)
+        # mkstemp creates the file readable only by its owner (0600)
+        os.chmod(tmp_path, mode)
         os.replace(tmp_path, path)
     except BaseException:
         os.remove(tmp_path)
