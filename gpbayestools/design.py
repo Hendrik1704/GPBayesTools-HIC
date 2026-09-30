@@ -59,6 +59,13 @@ def _generate_with_r(method, r_code, npoints, ndim, seed):
     lhs = np.array(
         [line.split() for line in proc.stdout.decode().splitlines()], dtype=float
     )
+    # the MaxPro output contains the run order as the first column
+    expected_shape = (npoints, ndim + 1 if method == "maxpro" else ndim)
+    if lhs.shape != expected_shape:
+        raise RuntimeError(
+            f"R returned a {method} design of shape {lhs.shape}, expected "
+            f"{expected_shape}"
+        )
 
     cachefile.parent.mkdir(parents=True, exist_ok=True)
     np.save(cachefile, lhs)
