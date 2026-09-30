@@ -461,3 +461,19 @@ def test_nan_recovery_keeps_jitter_of_best_parameters(monkeypatch):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+@pytest.mark.parametrize("n_ensemble", [1, 2])
+def test_wrapper_failed_refit_keeps_trained_emulator(
+    training_file, param_file, test_points, n_ensemble
+):
+    emu = EmulatorSparseGP(
+        training_file, param_file, npc=2, n_inducing=10, n_ensemble=n_ensemble, seed=1
+    )
+    emu.train_emulator_auto_mask(steps=20, verbose=False)
+    core, npc = emu.emu_, emu.npc_
+    mean, cov = emu.predict(test_points)
+    with pytest.raises(ValueError):
+        emu.train_emulator_auto_mask(steps=0, verbose=False)
+    assert emu.emu_ is core and emu.npc_ == npc
+    np.testing.assert_array_equal(emu.predict(test_points)[1], cov)

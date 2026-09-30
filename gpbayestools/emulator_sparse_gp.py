@@ -176,16 +176,14 @@ class EmulatorSparseGP(EmulatorBase):
         if self.n_ensemble <= 1:
             # verbose_members only exists for the ensemble
             fit_kwargs = {k: v for k, v in fit_kwargs.items() if k != "verbose_members"}
-            self.emu_ = PCASparseGPEmulator(
+            emu = PCASparseGPEmulator(
                 n_pc=npc,
                 M=self.n_inducing,
                 key=self._key(),
                 init_strategy=self.init_strategy,
             )
-            self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
-            self.npc_ = int(self.emu_.n_pc_)
         else:
-            self.emu_ = PCASparseGPEnsemble(
+            emu = PCASparseGPEnsemble(
                 n_ensemble=self.n_ensemble,
                 n_pc=npc,
                 M=self.n_inducing,
@@ -193,8 +191,11 @@ class EmulatorSparseGP(EmulatorBase):
                 init_strategy=self.init_strategy,
                 bootstrap=self.bootstrap,
             )
-            self.emu_.fit(X, Y, Y_err=Y_err, **fit_kwargs)
-            self.npc_ = int(self.emu_.n_pc_)
+        emu.fit(X, Y, Y_err=Y_err, **fit_kwargs)
+        # replaced only after a successful fit, so that a failed training
+        # keeps a previously trained emulator
+        self.emu_ = emu
+        self.npc_ = int(emu.n_pc_)
 
     # -------------------------
     # Prediction
