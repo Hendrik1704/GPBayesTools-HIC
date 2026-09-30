@@ -955,6 +955,13 @@ class BayesianAnalysis:
         (``"logz_err"``). Points outside the parameter ranges get the finite
         log-likelihood -1e300.
 
+        The log-likelihood is not normalized (see `mvn_loglike`), so ``logl``
+        and ``logz`` are larger than the normalized values by
+        ``n/2*log(2*pi)``, where n is the number of experimental data points.
+        Differences of ``logz`` (Bayes factors) are only meaningful between
+        runs with the same experimental data (same n and the same
+        ``log_trafo`` of the data).
+
         Parameters
         ----------
         n_effective : int, default=1000
