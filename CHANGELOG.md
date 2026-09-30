@@ -10,6 +10,7 @@ New features:
 - `EmulatorSklearn` and `EmulatorSparseGP` take an optional `seed` for reproducible training. For `EmulatorSparseGP`, the KMeans and Sobol initialisations of the inducing points are seeded as well, so that ensemble members start from different inducing points.
 - The validation functions `test_emulator_errors` and `test_emulator_errors_with_training_points` can choose random test points (`random_points=True`, reproducible with `seed`) instead of the last points of the training data.
 - The emulators share the base class `EmulatorBase` (`gpbayestools/emulator_base.py`), which implements loading and filtering the training data and the validation functions for all of them. It checks that the number of parameters in the parameter file matches the training data.
+- `EmulatorBAND` with `PCGPwM` or `PCGPwImpute` keeps training points with missing observables: non-finite observables (or observables with non-finite errors) are passed to surmise as missing (NaN), and only points without any finite observable are discarded. Before, these points were discarded, so both methods behaved like PCGP. surmise no longer removes points and observables with at least 80% missing values.
 
 New emulators:
 - Add the `EmulatorHetGP` emulator, a wrapper for the heteroskedastic GPs of the [hetgpy](https://hetgpy.readthedocs.io) package combined with a PCA of the outputs.
@@ -71,7 +72,7 @@ Bug fixes:
 - `EmulatorSklearn` limits `npc` to the number of available PCs instead of failing when fewer observables or training points than `npc` are given.
 - `EmulatorSklearn.output_pca_vs_param()` no longer refits the scaler and PCA of the trained emulator, which changed later predictions.
 - Raise a `ValueError` in `EmulatorSklearn` for unknown kernel types.
-- Training points with NaN or infinite observables or statistical errors are discarded when loading the training data in all emulators (an infinite error carries no information, a NaN error is unknown). Previously non-finite observables passed the relative-error filter and non-finite errors were used.
+- Training points with NaN or infinite observables or statistical errors are discarded when loading the training data in all emulators (an infinite error carries no information, a NaN error is unknown), except for the surmise methods for missing observables (see the new features). Previously non-finite observables passed the relative-error filter and non-finite errors were used.
 - The SVGP training caps observation errors that are more than 1e5 times larger than the spread of the training data. They overflowed in the float32 computations of earlier versions and made the training fail. `nan_patience` now counts consecutive NaN steps only.
 - `EmulatorSparseGP` accepts the `verbose_members` training argument also for a single emulator.
 - MCMC with emcee: fix crashes for `n_steps < 10` and check an existing chain before continuing it (pocoMC chains or a different number of walkers raise a `ValueError`; `n_walkers` is taken from the chain if not given). The burn-in restart only uses distinct points with finite probability.

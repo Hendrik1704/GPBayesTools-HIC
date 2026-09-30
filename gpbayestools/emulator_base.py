@@ -115,10 +115,13 @@ class EmulatorBase:
 
     It loads the training data and the model parameter file and implements
     the validation functions and `sample_y`. Training points with non-finite
-    observables or statistical errors are always discarded. All arguments
+    observables or statistical errors are discarded. Emulators that handle
+    missing observables (EmulatorBAND with PCGPwM or PCGPwImpute) only
+    discard points without any finite observable, the other non-finite
+    observables are set to NaN (missing) together with their errors. All
+    arguments
     except the two paths are keyword-only in all emulators. Subclasses
-    implement
-    ``train_emulator(event_mask)`` and ``predict(X, return_cov=True,
+    implement ``train_emulator(event_mask)`` and ``predict(X, return_cov=True,
     include_noise=False)``.
 
     Parameters
@@ -154,6 +157,9 @@ class EmulatorBase:
         differ, if `log_trafo` is True and a training point has observables
         <= 0, or if all training points are discarded.
     """
+
+    # True if the emulator can be trained with missing observables (NaN)
+    _missing_observables = False
 
     def __init__(
         self,
@@ -195,9 +201,9 @@ class EmulatorBase:
         Largest relative statistical error of a training point.
 
         Observables that are exactly zero have no relative error and are
-        ignored.
+        ignored, as are missing observables (NaN).
         """
-        nonzero = temp_data[:, 0] != 0
+        nonzero = (temp_data[:, 0] != 0) & np.isfinite(temp_data[:, 0])
         return np.max(
             np.abs(temp_data[nonzero, 1] / temp_data[nonzero, 0]), initial=0.0
         )
@@ -216,10 +222,15 @@ class EmulatorBase:
 
         n_nonfinite = 0
         n_filtered = 0
+        n_missing = 0
         for event_id in sorted_event_ids:
-            temp_data = data_dict[event_id]["obs"].transpose()
+            temp_data = np.array(data_dict[event_id]["obs"], dtype=float).T
             # an infinite error carries no information, a NaN error is unknown
-            if not np.all(np.isfinite(temp_data)):
+            missing = ~np.all(np.isfinite(temp_data), axis=1)
+            if self._missing_observables and not np.all(missing):
+                temp_data[missing, :] = np.nan
+                n_missing += int(np.sum(missing))
+            elif np.any(missing):
                 logger.warning(
                     f"Discarding training point {event_id}: non-finite observables "
                     "or statistical errors"
@@ -261,6 +272,11 @@ class EmulatorBase:
             f"{self.model_data.shape[1]} observables, discarded {n_discarded} "
             f"({n_nonfinite} non-finite, {n_filtered} with too large errors)"
         )
+        if n_missing > 0:
+            logger.warning(
+                f"{n_missing} non-finite observables of the training points are "
+                "treated as missing"
+            )
 
     def _check_event_mask(self, event_mask):
         """

@@ -34,10 +34,14 @@ class EmulatorBAND(EmulatorBase):
     per parameter for PCGP, PCGPwM and PCGPwImpute and 25 for PCSK), the GPs
     are then conditioned on all training points.
 
-    PCGPwM and PCGPwImpute are designed for missing observables. Training
-    points with non-finite values are discarded (see `EmulatorBase`), so
-    these methods never see missing values and behave like PCGP with the
-    PC threshold of 0.001.
+    PCGPwM and PCGPwImpute handle missing observables: for these methods,
+    non-finite observables of a training point (or observables with
+    non-finite errors) are passed to surmise as missing (NaN), and only
+    points without any finite observable are discarded. PCGPwM models the
+    missing values in the GPs of the PCs, PCGPwImpute imputes them before
+    the training. Without missing values, both behave like PCGP with the PC
+    threshold of 0.001. The other methods discard training points with
+    non-finite values (see `EmulatorBase`).
 
     Parameters
     ----------
@@ -49,7 +53,7 @@ class EmulatorBAND(EmulatorBase):
         Path to the model parameter file.
     method : {"PCGP", "PCSK", "PCGPwImpute", "PCGPwM"}, default="PCGP"
         surmise emulation method. PCSK uses the statistical errors of the
-        training data.
+        training data, PCGPwM and PCGPwImpute allow missing observables.
     log_trafo : bool, default=False
         If True, the emulator is trained on the log of the observables, which
         must be positive, and predict() returns the mean and covariance in log
@@ -92,6 +96,7 @@ class EmulatorBAND(EmulatorBase):
             )
         self.method = method
         self.seed = seed
+        self._missing_observables = method in ("PCGPwM", "PCGPwImpute")
         super().__init__(
             training_set_path,
             parameter_file,
@@ -112,10 +117,17 @@ class EmulatorBAND(EmulatorBase):
         Raises
         ------
         ValueError
-            If `event_mask` is not a boolean array of shape (n_ev,).
+            If `event_mask` is not a boolean array of shape (n_ev,), or if an
+            observable is missing in all selected training points.
         """
         event_mask = self._check_event_mask(event_mask)
         n_ev, n_obs = self.model_data[event_mask, :].shape
+        n_values = np.sum(np.isfinite(self.model_data[event_mask, :]), axis=0)
+        if np.any(n_values == 0):
+            raise ValueError(
+                f"The observables {np.flatnonzero(n_values == 0).tolist()} are "
+                "missing in all selected training points"
+            )
         logger.info(
             f"Training the surmise {self.method} emulator with {n_ev} training "
             "points ..."
@@ -143,6 +155,9 @@ class EmulatorBAND(EmulatorBase):
                 f=self.model_data[event_mask, :].T,
                 method=self.method,
                 args=args,
+                # keep points and observables with missing values, surmise
+                # would otherwise remove those with >= 80% missing values
+                options={"thetarmnan": False, "xrmnan": False},
             )
         logger.info("Emulator training finished")
 

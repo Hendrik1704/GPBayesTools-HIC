@@ -4,6 +4,8 @@ Tests for the wrapper of the surmise emulators (gpbayestools/emulator_band.py).
 Run with ``python -m pytest tests/test_emulator_band.py``.
 """
 
+import pickle
+
 import numpy as np
 import pytest
 from conftest import N_OBS, true_model
@@ -124,6 +126,63 @@ def test_training_keeps_warning_filters(training_file, param_file):
         filters = list(warnings.filters)
         EmulatorBAND(training_file, param_file, seed=1).train_emulator_auto_mask()
         assert warnings.filters == filters
+
+
+@pytest.fixture(scope="module")
+def missing_file(tmp_path_factory, design):
+    """Training data with missing observables in 10 points, one point without
+    any finite observable and one with an infinite error."""
+    values = true_model(design)
+    errors = 0.01 * values
+    rng = np.random.default_rng(3)
+    for i in range(10):
+        values[i, rng.choice(N_OBS, 2, replace=False)] = np.nan
+    values[10, :] = np.nan
+    errors[11, 0] = np.inf
+    data = {
+        str(i): {"parameter": design[i], "obs": np.vstack([values[i], errors[i]])}
+        for i in range(len(design))
+    }
+    path = tmp_path_factory.mktemp("missing") / "missing.pkl"
+    with open(path, "wb") as f:
+        pickle.dump(data, f)
+    return path
+
+
+@pytest.mark.parametrize("method", ["PCGPwM", "PCGPwImpute"])
+def test_missing_observables(missing_file, param_file, test_points, design, method):
+    emu = EmulatorBAND(missing_file, param_file, method=method, seed=1)
+    # only the point without any finite observable is discarded
+    assert emu.n_ev == len(design) - 1
+    missing = np.isnan(emu.model_data)
+    assert missing.sum() == 10 * 2 + 1
+    np.testing.assert_array_equal(missing, np.isnan(emu.model_data_err))
+    emu.train_emulator_auto_mask()
+    mean, cov = emu.predict(test_points)
+    assert np.all(np.isfinite(mean)) and np.all(np.isfinite(cov))
+    assert np.abs(mean / true_model(test_points) - 1).mean() < 0.05
+    # the training is reproducible
+    emu2 = EmulatorBAND(missing_file, param_file, method=method, seed=1)
+    emu2.train_emulator_auto_mask()
+    np.testing.assert_array_equal(mean, emu2.predict(test_points)[0])
+    # the validation returns the missing training data as NaN
+    pred, pred_err, data, _ = emu.test_emulator_errors(20, random_points=True, seed=1)
+    assert np.all(np.isfinite(pred)) and np.all(np.isfinite(pred_err))
+    assert np.isnan(data).sum() > 0
+    # an observable missing in all training points
+    mask = np.zeros(emu.n_ev, dtype=bool)
+    mask[:2] = True
+    emu.model_data[:2, 0] = np.nan
+    with pytest.raises(ValueError, match="missing in all"):
+        emu.train_emulator(mask)
+
+
+def test_missing_observables_discarded_by_other_methods(
+    missing_file, param_file, design
+):
+    emu = EmulatorBAND(missing_file, param_file, method="PCGP")
+    assert emu.n_ev == len(design) - 12
+    assert np.all(np.isfinite(emu.model_data))
 
 
 def test_unknown_method(training_file, param_file):
