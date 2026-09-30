@@ -234,10 +234,10 @@ class EmulatorBase:
         Largest relative statistical error of a training point.
 
         Observables that are exactly zero have no relative error and are
-        ignored.
+        ignored, as are NaN errors, which are set to 0 after the loading.
         """
         nonzero = temp_data[:, 0] != 0
-        return np.max(
+        return np.nanmax(
             np.abs(temp_data[nonzero, 1] / temp_data[nonzero, 0]), initial=0.0
         )
 

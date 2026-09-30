@@ -348,3 +348,9 @@ def test_non_finite_errors_are_set_to_zero(modified_data, param_file):
     emu = EmulatorSklearn(modified_data(modify), param_file)
     assert emu.nev == 60
     assert emu.model_data_err[3, 2] == 0 and emu.model_data_err[5, 1] == 0
+    # with the error filter, the point with the NaN error is kept and the
+    # point with the infinite error is discarded
+    emu = EmulatorSklearn(
+        modified_data(modify), param_file, max_rel_uncertainty_data=0.5
+    )
+    assert emu.nev == 59

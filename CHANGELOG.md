@@ -100,6 +100,7 @@ Bug fixes:
 - Training an `EmulatorBAND` keeps the warning filters of the process, which surmise resets with `warnings.resetwarnings()`.
 - The emulators check that the mask of `train_emulator` is a boolean array of shape (nev,). An integer array of 0 and 1 was used as indices of the training points by `EmulatorSklearn`, `EmulatorBAND` and `EmulatorSparseGP`. `EmulatorBAND.predict` accepts a single point as a 1D array or a list.
 - For the PCSK emulator of `EmulatorBAND`, `include_noise=True` includes the noise of the simulations, the mean variance of the statistical errors of the training data. PCSK models the noise with these errors, which surmise does not include in the predictive variance, so the uncertainty of new noisy simulations (and the errors of the validation functions) was underestimated by a large factor.
+- The relative-error filter of the training data (`max_rel_uncertainty_data`) ignores NaN errors, which are set to 0, instead of comparing with NaN.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
