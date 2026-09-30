@@ -13,6 +13,7 @@ Run with ``python -m pytest tests/test_bayesian_analysis.py``.
 import pickle
 
 import dill
+import multiprocess.pool
 import numpy as np
 import pytest
 from conftest import LinearEmulator, write_param_file
@@ -302,6 +303,35 @@ def test_pocomc_uses_pool(analysis):
     )
     assert CountingPool.n_calls > 0
     assert analysis.chain.shape[1] == 2
+
+
+def test_pocomc_with_process_pool(analysis, monkeypatch):
+    # with an integer pool, the analysis is sent to the processes once and
+    # only the small worker function with every task
+    import gpbayestools.bayesian_analysis as ba
+
+    sizes = []
+    map_orig = multiprocess.pool.Pool.map
+
+    def map_recording(self, func, iterable, *args, **kwargs):
+        sizes.append(len(dill.dumps(func)))
+        return map_orig(self, func, iterable, *args, **kwargs)
+
+    monkeypatch.setattr(multiprocess.pool.Pool, "map", map_recording)
+    analysis.run_pocomc(
+        n_effective=256,
+        n_active=128,
+        n_prior=256,
+        n_total=512,
+        n_evidence=0,
+        seed=1,
+        pool=2,
+    )
+    # the bound method with the analysis is much larger
+    assert sizes and max(sizes) < len(dill.dumps(analysis._log_likelihood_point)) / 5
+    assert ba._worker_analysis is None
+    samples = analysis.chain
+    assert np.all(np.abs(samples.mean(axis=0) - X_TRUE) < 3 * POST_STD)
 
 
 def test_log_likelihood_of_chain_requires_chain(analysis):

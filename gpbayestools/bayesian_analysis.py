@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 
 import emcee
+import multiprocess
 import numpy as np
 import pocomc
 from scipy.linalg import lapack
@@ -83,6 +84,25 @@ def mvn_loglike(y, cov):
         )
 
     return -0.5 * np.dot(y, alpha) - np.log(U.diagonal()).sum()
+
+
+# the BayesianAnalysis in the worker processes of the pool of run_pocomc
+_worker_analysis = None
+
+
+def _init_worker(analysis):
+    """Store `analysis` in a worker process of the pool of run_pocomc."""
+    global _worker_analysis
+    _worker_analysis = analysis
+
+
+def _worker_log_likelihood(x, finite=False):
+    """
+    Log-likelihood at the single point `x` in a worker process of the pool of
+    run_pocomc. The function is sent to the workers for each task, the
+    analysis with its emulators only once when the pool is created.
+    """
+    return _worker_analysis._log_likelihood_point(x, finite=finite)
 
 
 def _write_pickle(path, data):
@@ -999,9 +1019,11 @@ class BayesianAnalysis:
             likelihood is evaluated for all particles at once (vectorized). If
             `pool` is an integer greater than 1, a ``multiprocess`` pool with
             this number of processes is created and closed after the run (1
-            is the same as None); a
-            pool object with a ``map`` method (e.g. of mpi4py) is used
-            directly. With a pool, the likelihood is evaluated point by point
+            is the same as None). The analysis with its emulators is sent to
+            each process once when the pool is created. A pool object with a
+            ``map`` method (e.g. of mpi4py) is used directly, then the
+            analysis is sent with every task, which can be slow for large
+            emulators. With a pool, the likelihood is evaluated point by point
             in the processes of the pool.
         prior : object or None, default=None
             Prior distribution implementing the ``logpdf`` and ``rvs`` methods
@@ -1043,36 +1065,44 @@ class BayesianAnalysis:
                 )
 
         self._warn_overwrite("pocomc")
-        if isinstance(pool, int) and pool <= 1:
-            # pocoMC creates a pool only for more than one process
+        own_pool = isinstance(pool, int)
+        if own_pool and pool <= 1:
             pool = None
         # pocoMC uses the pool only for a likelihood that is not vectorized
         vectorize = pool is None
+        if vectorize:
+            likelihood = self.log_likelihood
+        elif own_pool:
+            # the analysis is sent to the processes only once, not with every
+            # task as for a bound method
+            pool = multiprocess.Pool(pool, initializer=_init_worker, initargs=(self,))
+            likelihood = _worker_log_likelihood
+        else:
+            likelihood = self._log_likelihood_point
         logger.info(
             f"Running pocoMC with n_effective={n_effective} "
             f"({'vectorized' if vectorize else 'with a pool'}) ..."
         )
-        sampler = pocomc.Sampler(
-            prior=prior,
-            likelihood=self.log_likelihood if vectorize else self._log_likelihood_point,
-            likelihood_kwargs={"finite": True},
-            n_effective=n_effective,
-            n_active=n_active,
-            n_prior=n_prior,
-            sample=sample,
-            n_max_steps=n_max_steps,
-            n_steps=n_ndim_steps * self.n_dim,
-            random_state=seed,
-            vectorize=vectorize,
-            pool=pool,
-        )
         try:
+            sampler = pocomc.Sampler(
+                prior=prior,
+                likelihood=likelihood,
+                likelihood_kwargs={"finite": True},
+                n_effective=n_effective,
+                n_active=n_active,
+                n_prior=n_prior,
+                sample=sample,
+                n_max_steps=n_max_steps,
+                n_steps=n_ndim_steps * self.n_dim,
+                random_state=seed,
+                vectorize=vectorize,
+                pool=pool,
+            )
             sampler.run(n_total=n_total, n_evidence=n_evidence)
         finally:
-            # pocoMC creates a pool for an integer `pool` but does not close it
-            if isinstance(pool, int) and sampler.pool is not None:
-                sampler.pool.close()
-                sampler.pool.join()
+            if own_pool and pool is not None:
+                pool.close()
+                pool.join()
 
         samples, logl, logp = sampler.posterior(resample=True)
         logz, logz_err = sampler.evidence()
