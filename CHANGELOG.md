@@ -51,6 +51,7 @@ Changes that are not backward compatible:
 - The sparse GP uses independent random subkeys of its key for the inducing-point initialization, the seeds of numpy/scikit-learn, the mini-batches and the bootstrap samples of the ensemble members, which were drawn from the same key before. The trained emulators differ from older versions for the same seed.
 - The `seed` of `run_emcee` no longer changes numpy's global random number generator: its state is restored after the emcee sampler is created, as for the other samplers.
 - `run_emcee` uses the vectorized emcee sampler (`vectorize=True`) instead of passing `BayesianAnalysis` as a dummy pool, and the `BayesianAnalysis.map` method is removed. The chains are the same.
+- `PCASparseGPEmulator.fit` returns the fitted emulator like `PCASparseGPEnsemble.fit` (was the training history, which is stored in `training_history_`).
 
 Bug fixes:
 - Fix `EmulatorSklearn.predict` with `return_cov=True`, which failed with NumPy 2 (`np.array(..., copy=False)`). The same applies to the log prior, likelihood and posterior of `BayesianAnalysis` for list inputs.

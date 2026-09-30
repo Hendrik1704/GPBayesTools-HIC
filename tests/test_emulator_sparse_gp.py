@@ -460,7 +460,7 @@ def test_nan_recovery_keeps_jitter_of_best_parameters(monkeypatch):
     Y = np.column_stack([np.sin(3 * X[:, 0]) + k * X[:, 1] for k in range(4)])
     monkeypatch.setattr(svgp, "jnp", FailingIsfinite())
     em = PCASparseGPEmulator(n_pc=2, M=15, key=_KEY)
-    history = em.fit(X, Y, steps=100, jitter_init=1e-5, verbose=False)
+    history = em.fit(X, Y, steps=100, jitter_init=1e-5, verbose=False).training_history_
     monkeypatch.undo()
     assert history["best_step"] is not None and history["best_step"] < 96
     assert history["jitter_final"] > 1e-5

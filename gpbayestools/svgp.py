@@ -551,8 +551,9 @@ class PCASparseGPEmulator:
 
         Returns
         -------
-        dict
-            Training history, also stored as ``self.training_history_``:
+        PCASparseGPEmulator
+            The fitted emulator (self). The training history is stored as
+            the dict ``self.training_history_``:
 
             - 'elbos': the finite ELBO values (mini-batch estimates with
               batch_size < N), 'steps': their iteration numbers, 'n_steps':
@@ -1072,7 +1073,7 @@ class PCASparseGPEmulator:
                 f"{best_score:.3f} at step {best_step}, jitter = {self.jitter_:.1e}"
             )
 
-        return self.training_history_
+        return self
 
     # -------------------------
     # Predict
