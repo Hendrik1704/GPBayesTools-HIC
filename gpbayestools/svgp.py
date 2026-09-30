@@ -253,8 +253,9 @@ class PCASparseGPEmulator:
             decomposition.
         key : jax.random.PRNGKey or None
             Random key for reproducibility. Independent subkeys are derived
-            from it for the inducing-point initialization and the
-            mini-batches. None uses ``PRNGKey(0)`` (default None).
+            from it for the inducing-point initialization, the seeds of
+            numpy/scikit-learn/scipy and the mini-batches. None uses
+            ``PRNGKey(0)`` (default None).
         init_strategy : str
             Inducing-point initialization strategy: 'maxmin' (default, best
             coverage in moderate D), 'kmeans', 'kmeans_pp', 'random' or
@@ -646,23 +647,23 @@ class PCASparseGPEmulator:
             Yp = jnp.array((Yp - np.array(self.pc_mean_)) / np.array(self.pc_std_))
 
             Yn_np = np.array(Yn)
-            P_out = Yn_np.shape[1]
+            P = Yn_np.shape[1]
             W_ret = self.pca_.components_
             lam_ret = self.pca_.explained_variance_
-            if self.n_pc_ < P_out:
+            if self.n_pc_ < P:
                 Sigma_data = np.cov(Yn_np.T)
                 Sigma_ret = (W_ret * lam_ret[:, None]).T @ W_ret
                 Sigma_trunc = Sigma_data - Sigma_ret
                 vals, vecs = np.linalg.eigh(Sigma_trunc)
                 vals = np.maximum(vals, 0.0)
                 self.trunc_cov_yn_ = jnp.array(vecs @ (vals[:, None] * vecs.T))
-                ppca_approx = float(self.pca_.noise_variance_) * (P_out - self.n_pc_)
+                ppca_approx = float(self.pca_.noise_variance_) * (P - self.n_pc_)
                 logger.debug(
                     f"Trace of the truncation covariance: {float(np.sum(vals)):.4g} "
                     f"(PPCA approximation: {ppca_approx:.4g})"
                 )
             else:
-                self.trunc_cov_yn_ = jnp.zeros((P_out, P_out))
+                self.trunc_cov_yn_ = jnp.zeros((P, P))
                 logger.debug("No truncation covariance, all PCs are retained")
         else:
             self.Xm_ = _fixed_pca_state["Xm"]
@@ -738,7 +739,7 @@ class PCASparseGPEmulator:
         # truncation covariance without this noise, is used for predictions
         # of the model function (include_noise=False).
         self.trunc_cov_signal_yn_ = self.trunc_cov_yn_
-        if Y_err is not None and self.trunc_cov_yn_ is not None:
+        if Y_err is not None:
             _noise_yn = _mean_C_Y / np.outer(_Ys_np, _Ys_np)
             self.trunc_cov_signal_yn_ = jnp.array(
                 truncation_signal(np.array(self.trunc_cov_yn_), _noise_yn)
@@ -908,12 +909,15 @@ class PCASparseGPEmulator:
                 f"Early stopping: patience={patience}, es_rel_tol={es_rel_tol:.1e}, "
                 f"ema_alpha={ema_alpha} (window of {es_check_interval} steps)"
             )
-        if auto_lr_backoff:
-            logger.debug(
-                f"NaN recovery: nan_patience={nan_patience}, "
-                f"max_lr_backoff_retries={max_lr_backoff_retries}, "
+        logger.debug(
+            f"NaN recovery: nan_patience={nan_patience}, jitter_max={jitter_max:.1e}"
+            + (
+                f", max_lr_backoff_retries={max_lr_backoff_retries}, "
                 f"lr_backoff_factor={lr_backoff_factor:.3f}"
+                if auto_lr_backoff
+                else ", no learning-rate backoff"
             )
+        )
 
         n_iterations = 0
         for i in range(steps):
@@ -1025,7 +1029,7 @@ class PCASparseGPEmulator:
                     break
 
             if verbose and (i % print_every == 0 or i == steps - 1):
-                ema_str = f", EMA={ema:.3f}" if ema is not None else ""
+                ema_str = f", EMA={ema:.3f}"
                 es_str = (
                     f", pat={es_patience_count}/{patience}" if early_stopping else ""
                 )
@@ -1060,7 +1064,7 @@ class PCASparseGPEmulator:
             "inducing_lr_final": current_inducing_lr,
         }
 
-        if verbose:
+        if verbose and best_step is not None:
             elbo_str = "EMA of the ELBO" if B < N_full else "ELBO"
             logger.info(
                 f"Training finished after {n_iterations} steps ({actual_steps} with "
@@ -1162,11 +1166,11 @@ class PCASparseGPEmulator:
 
         Kzz = self.kernel(Z, Z, p) + self.jitter_ * jnp.eye(self.M)
         Lz = jnp.linalg.cholesky(Kzz)
-        Ksz = self.kernel(Xn, Z, p)
+        Kxz = self.kernel(Xn, Z, p)
 
         # Same whitened SVGP formulation as in elbo_fn()
-        A_half = jax.scipy.linalg.solve_triangular(Lz, Ksz.T, lower=True)  # (M, N_test)
-        qdiag = jnp.sum(A_half**2, axis=0)  # (N_test,) = diag(Ksz Kzz^{-1} Kzs)
+        A_half = jax.scipy.linalg.solve_triangular(Lz, Kxz.T, lower=True)  # (M, N_test)
+        qdiag = jnp.sum(A_half**2, axis=0)  # (N_test,) = diag(Kxz Kzz^{-1} Kxz^T)
         # Returns per-test-point output-output covariance (N_test, P, P) — sufficient
         # for single-proposal MCMC / Bayesian calibration.  Does NOT compute the joint
         # covariance Cov(f(x_a), f(x_b)) for a≠b (needed for active learning / BALD).
@@ -1209,7 +1213,7 @@ class PCASparseGPEmulator:
         # Back-project from original PC space -> normalized output (Yn) space
         W = jnp.array(self.pca_.components_)  # (n_pc, P)
         Wt = W.T  # (P, n_pc)
-        P_size = W.shape[1]
+        P = W.shape[1]
         full_cov = jnp.einsum(
             "pi,ni,qi->npq", Wt, vars_total_orig, Wt
         )  # (N_test, P, P)
@@ -1233,10 +1237,10 @@ class PCASparseGPEmulator:
             trunc_cov_yn = self.trunc_cov_yn_
         else:
             trunc_cov_yn = self.trunc_cov_signal_yn_
-        if include_truncation and trunc_cov_yn is not None:
+        if include_truncation:
             full_cov = full_cov + trunc_cov_yn[None, :, :]
         else:
-            trunc_cov_yn = jnp.zeros((P_size, P_size))
+            trunc_cov_yn = jnp.zeros((P, P))
 
         # Scale from Yn space to original Y space: Cov_Y[p,q] = Ys[p]*Cov_Yn[p,q]*Ys[q]
         Ys = jnp.array(self.Ys_)
@@ -1268,7 +1272,7 @@ class PCASparseGPEmulator:
                 nugget_cov_yn = jnp.einsum("pi,i,qi->pq", Wt, nugget_orig, Wt)  # (P, P)
                 nugget_cov = (nugget_cov_yn * Ys_outer)[None, :, :]
             else:
-                nugget_cov = jnp.zeros((1, P_size, P_size))
+                nugget_cov = jnp.zeros((1, P, P))
 
             # Known observation noise from Y_err (optional, gated by include_obs_noise).
             # Uses the stored full (n_pc, n_pc) covariance — correct for both
@@ -1280,13 +1284,13 @@ class PCASparseGPEmulator:
                 obs_cov_yn = Wt @ obs_cov_pc_orig @ W
                 obs_noise_cov = (obs_cov_yn * Ys_outer)[None, :, :]
             else:
-                obs_noise_cov = jnp.zeros((1, P_size, P_size))
+                obs_noise_cov = jnp.zeros((1, P, P))
 
             # Truncation covariance in Y space (exact, not PPCA)
-            if include_truncation and trunc_cov_yn is not None:
+            if include_truncation:
                 trunc_cov_y = (trunc_cov_yn * Ys_outer)[None, :, :]
             else:
-                trunc_cov_y = jnp.zeros((1, P_size, P_size))
+                trunc_cov_y = jnp.zeros((1, P, P))
 
             # PCA sampling covariance in Y space
             if include_pca_sampling:
@@ -1294,7 +1298,7 @@ class PCASparseGPEmulator:
                 pca_samp_cov_yn = jnp.einsum("pi,i,qi->pq", Wt, pca_samp_pc, Wt)
                 pca_samp_cov = (pca_samp_cov_yn * Ys_outer)[None, :, :]
             else:
-                pca_samp_cov = jnp.zeros((1, P_size, P_size))
+                pca_samp_cov = jnp.zeros((1, P, P))
 
             return (
                 Y_pred,
