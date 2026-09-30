@@ -25,7 +25,19 @@ class EmulatorBAND(EmulatorBase):
     the BAND collaboration (surmise).
 
     The number of principal components is chosen by surmise, so there is no
-    npc argument.
+    npc argument. surmise keeps all PCs whose squared singular value of the
+    standardized training data exceeds a small threshold (0.1 for PCGP, 0.001
+    for the other methods, out of a total of n_ev * n_obs), i.e. in practice
+    all PCs except exactly degenerate directions. PCSK additionally drops PCs
+    whose mean ratio of noise to signal exceeds 8. The hyperparameters are
+    optimized on a random subset of the training points (at most 20 points
+    per parameter for PCGP, PCGPwM and PCGPwImpute and 25 for PCSK), the GPs
+    are then conditioned on all training points.
+
+    PCGPwM and PCGPwImpute are designed for missing observables. Training
+    points with non-finite values are discarded (see `EmulatorBase`), so
+    these methods never see missing values and behave like PCGP with the
+    PC threshold of 0.001.
 
     Parameters
     ----------
@@ -175,8 +187,9 @@ class EmulatorBAND(EmulatorBase):
         mean variance is added to the diagonal instead.
 
         The variance of the discarded PCs is surmise's extravar, which is
-        added to the diagonal only, is zero for PCSK and is not corrected for
-        the noise of the training data.
+        added to the diagonal only and is not corrected for the noise of the
+        training data. It is zero for PCSK, so PCSK predicts no uncertainty in
+        the directions of the PCs it dropped.
 
         With ``exp_and_cov_diagonal=True``, the mean is exp(mean) and the
         covariance is diagonal (see `EmulatorBase`).
@@ -189,8 +202,9 @@ class EmulatorBAND(EmulatorBase):
             If True, the covariance is returned as well.
         include_noise : bool, default=False
             If True, the noise of the simulations is included in the
-            covariance (the nugget of the GPs, for PCSK the mean variance of the
-            statistical errors of the training data).
+            covariance (the nugget of the GPs, for PCSK the variance of the
+            statistical errors averaged over the training points, which is
+            the same for all points `X`).
 
         Returns
         -------
