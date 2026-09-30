@@ -327,7 +327,10 @@ def test_old_emulator_with_parameter_pca_raises():
     with pytest.raises(ValueError, match="parameterTrafoPCA"):
         EmulatorSklearn._migrate_legacy_state(state)
     state["parameterTrafoPCA_"] = False
-    assert EmulatorSklearn._migrate_legacy_state(state)["log_trafo"] is False
+    migrated = EmulatorSklearn._migrate_legacy_state(state)
+    assert migrated["log_trafo"] is False
+    # exp_and_cov_diagonal did not exist before version 1.2.0
+    assert migrated["exp_and_cov_diagonal"] is False
 
 
 def test_non_finite_errors_are_set_to_zero(modified_data, param_file):

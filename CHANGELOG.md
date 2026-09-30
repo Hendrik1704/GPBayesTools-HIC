@@ -96,6 +96,7 @@ Bug fixes:
 - `Design.write_files` accepts the base directory as a string. `Design` raises a clear error for MaxPro designs with one parameter (R crashed) and includes the error message of R when R fails. The docstring says that a validation design needs a different seed than the main design.
 - `BayesianAnalysis` raises a clear error when the likelihood is evaluated without loaded emulators and for non-finite experimental data values or infinite errors, warns when NaN errors of the experimental data are set to 0, and warns when `compute_log_likelihood_for_chain` overwrites its output file. `log_likelihood_point_by_point` uses `log_likelihood` for each point instead of a copy of its code.
 - The initial walker positions of `run_emcee` are drawn before the emcee sampler is created. Before, emcee copied the state of numpy's global random number generator first, so that its first random numbers were the ones of the initial positions. The chains differ from earlier versions for the same seed. Continuing a chain with a different number of parameters raises a clear error.
+- Emulators saved with versions 1.0.0 and 1.1.0, which did not have `exp_and_cov_diagonal`, can predict after loading (they failed with an `AttributeError`).
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.

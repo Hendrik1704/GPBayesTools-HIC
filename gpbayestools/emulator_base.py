@@ -188,9 +188,11 @@ class EmulatorBase:
     # attributes of the emulators saved with versions < 3.0.0 and their
     # current names (None for removed attributes), in the order in which they
     # are renamed, and default values of attributes that did not exist in
-    # these versions
+    # these versions (in addition to _base_legacy_defaults)
     _legacy_attributes = []
     _legacy_defaults = {}
+    # exp_and_cov_diagonal did not exist before version 1.2.0
+    _base_legacy_defaults = {"exp_and_cov_diagonal": False}
 
     def __setstate__(self, state):
         """Restore the state after unpickling, renaming legacy attributes."""
@@ -217,7 +219,8 @@ class EmulatorBase:
                 state.pop(old, None)
             elif old in state and new not in state:
                 state[new] = state.pop(old)
-        for name, default in cls._legacy_defaults.items():
+        defaults = {**cls._base_legacy_defaults, **cls._legacy_defaults}
+        for name, default in defaults.items():
             if name not in state:
                 state[name] = default(state) if callable(default) else default
         return state
