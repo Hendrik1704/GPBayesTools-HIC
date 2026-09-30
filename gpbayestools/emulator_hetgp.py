@@ -1,5 +1,6 @@
 """
-Training for Gaussian process emulators.
+Emulator of the model outputs with heteroskedastic GPs of the PCs of the
+outputs (training, prediction and validation).
 
 Uses the `Gaussian process regression with heteroskedastic emulator
 <https://hetgpy.readthedocs.io/en/v1.0.4/>`_ implemented in the `hetgpy` package.

@@ -1,5 +1,6 @@
 """
-Training for Gaussian process emulators.
+Emulator of the model outputs with the GP emulators of surmise (training,
+prediction and validation).
 
 Uses the `Gaussian process regression
 <https://surmise.readthedocs.io/en/latest/index.html>`_ implemented by the BAND

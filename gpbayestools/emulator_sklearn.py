@@ -1,5 +1,6 @@
 """
-Training for Gaussian process emulators.
+Emulator of the model outputs with scikit-learn GPs of the PCs of the
+outputs (training, prediction and validation).
 
 Uses the `scikit-learn <http://scikit-learn.org>`_ implementations of
 `principal component analysis (PCA)

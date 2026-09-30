@@ -2,8 +2,8 @@
 Sparse variational Gaussian processes (SVGP) with a PCA of the outputs.
 
 Implements a PCA-reduced sparse variational GP emulator using JAX and optax:
-the single emulator PCASparseGPEmulator and the bootstrap ensemble
-PCASparseGPEnsemble. The emulator interface of the package is
+the single emulator PCASparseGPEmulator and the ensemble PCASparseGPEnsemble
+(optionally trained on bootstrap samples). The emulator interface of the package is
 EmulatorSparseGP in emulator_sparse_gp.py.
 
 Importing this module enables 64-bit floats in JAX (``jax_enable_x64``) for
