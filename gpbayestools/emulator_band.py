@@ -31,8 +31,8 @@ class EmulatorBAND(EmulatorBase):
     ----------
     training_set_path : str or path-like
         Path to the pickle file with the training data, a dictionary
-        ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
-        nobs) with the values and statistical errors}}``.
+        ``{event_id: {'parameter': array (n_parameters,), 'obs': array (2,
+        n_obs) with the values and statistical errors}}``.
     parameter_file : str or path-like
         Path to the model parameter file.
     method : {"PCGP", "PCSK", "PCGPwImpute", "PCGPwM"}, default="PCGP"
@@ -101,22 +101,22 @@ class EmulatorBAND(EmulatorBase):
 
         Parameters
         ----------
-        event_mask : ndarray of bool of shape (nev,)
+        event_mask : ndarray of bool of shape (n_ev,)
             Mask of the training points to use.
 
         Raises
         ------
         ValueError
-            If `event_mask` is not a boolean array of shape (nev,).
+            If `event_mask` is not a boolean array of shape (n_ev,).
         """
         event_mask = self._check_event_mask(event_mask)
-        nev, nobs = self.model_data[event_mask, :].shape
+        n_ev, n_obs = self.model_data[event_mask, :].shape
         logger.info(
-            f"Training the surmise {self.method} emulator with {nev} training "
+            f"Training the surmise {self.method} emulator with {n_ev} training "
             "points ..."
         )
         # the observables are the "x" locations of surmise
-        x = np.arange(nobs).reshape(-1, 1)
+        x = np.arange(n_obs).reshape(-1, 1)
         args = {"warnings": True}
         if self.method == "PCSK":
             # PCSK uses the statistical errors of the training data
@@ -144,7 +144,7 @@ class EmulatorBAND(EmulatorBase):
     def _full_covariance(self, pred):
         """
         Covariance matrices of the surmise prediction `pred` with shape
-        (ntheta, nobs, nobs). surmise's covx() only contains the variance of
+        (ntheta, n_obs, n_obs). surmise's covx() only contains the variance of
         the emulated PCs, while var() also contains the variance of the
         discarded PCs, which is added to the diagonal here.
         """
@@ -190,7 +190,7 @@ class EmulatorBAND(EmulatorBase):
 
         Parameters
         ----------
-        X : array_like of shape (nsamples, nparameters)
+        X : array_like of shape (nsamples, n_parameters)
             Parameter points. A 1D array is treated as a single point.
         return_cov : bool, default=True
             If True, the covariance is returned as well.
@@ -201,14 +201,14 @@ class EmulatorBAND(EmulatorBase):
 
         Returns
         -------
-        mean : ndarray of shape (nsamples, nobs)
+        mean : ndarray of shape (nsamples, n_obs)
             Predicted mean.
-        cov : ndarray of shape (nsamples, nobs, nobs)
+        cov : ndarray of shape (nsamples, n_obs, n_obs)
             Covariance between the observables. Only returned if `return_cov`
             is True.
         """
         X = np.atleast_2d(np.asarray(X, dtype=float))
-        x = np.arange(self.nobs).reshape(-1, 1)
+        x = np.arange(self.n_obs).reshape(-1, 1)
         pred = self.emu_.predict(x=x, theta=X)
 
         mean = pred.mean().T
@@ -217,12 +217,12 @@ class EmulatorBAND(EmulatorBase):
 
         cov = self._full_covariance(pred)
         if include_noise and self.method == "PCSK":
-            idx = np.arange(self.nobs)
+            idx = np.arange(self.n_obs)
             cov[:, idx, idx] += self._sim_noise_var
         elif not include_noise:
             cov = cov - self._noise_covariance()[None, :, :]
             # round-off can make variances slightly negative
-            idx = np.arange(self.nobs)
+            idx = np.arange(self.n_obs)
             cov[:, idx, idx] = np.maximum(cov[:, idx, idx], 0.0)
 
         if self.exp_and_cov_diagonal:
@@ -231,7 +231,7 @@ class EmulatorBAND(EmulatorBase):
             mean = np.exp(mean)
             std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
             cov = np.zeros_like(cov)
-            idx = np.arange(self.nobs)
+            idx = np.arange(self.n_obs)
             cov[:, idx, idx] = (std * mean) ** 2
 
         return mean, cov

@@ -92,15 +92,15 @@ def truncation_signal(trunc_cov, noise_cov):
 
     Parameters
     ----------
-    trunc_cov : ndarray of shape (nobs, nobs)
+    trunc_cov : ndarray of shape (n_obs, n_obs)
         Truncation covariance of the discarded PCs.
-    noise_cov : ndarray of shape (nobs, nobs)
+    noise_cov : ndarray of shape (n_obs, n_obs)
         Covariance of the statistical noise of the training data, in the same
         (e.g. standardized) units as `trunc_cov`.
 
     Returns
     -------
-    ndarray of shape (nobs, nobs)
+    ndarray of shape (n_obs, n_obs)
         Signal part of the truncation covariance.
     """
     vals, vecs = np.linalg.eigh(0.5 * (trunc_cov + trunc_cov.T))
@@ -124,8 +124,8 @@ class EmulatorBase:
     ----------
     training_set_path : str or path-like
         Path to the pickle file with the training data, a dictionary
-        ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
-        nobs) with the values and statistical errors}}``.
+        ``{event_id: {'parameter': array (n_parameters,), 'obs': array (2,
+        n_obs) with the values and statistical errors}}``.
     parameter_file : str or path-like
         Path to the model parameter file.
     log_trafo : bool, default=False
@@ -177,11 +177,11 @@ class EmulatorBase:
         self.design_min = np.array([val[1] for val in self.pardict.values()])
         self.design_max = np.array([val[2] for val in self.pardict.values()])
 
-        self.nev, self.nobs = self.model_data.shape
-        self.nparameters = self.design_points.shape[1]
-        if self.nparameters != len(self.pardict):
+        self.n_ev, self.n_obs = self.model_data.shape
+        self.n_parameters = self.design_points.shape[1]
+        if self.n_parameters != len(self.pardict):
             raise ValueError(
-                f"The training data have {self.nparameters} parameters, but the "
+                f"The training data have {self.n_parameters} parameters, but the "
                 f"parameter file {parameter_file} has {len(self.pardict)}"
             )
 
@@ -213,6 +213,9 @@ class EmulatorBase:
             ("logTrafo_", "log_trafo"),
             ("max_rel_uncertainty_data_", "max_rel_uncertainty_data"),
             ("exp_and_cov_diagonal_", "exp_and_cov_diagonal"),
+            ("nev", "n_ev"),
+            ("nobs", "n_obs"),
+            ("nparameters", "n_parameters"),
         ] + cls._legacy_attributes
         for old, new in renames:
             if new is None:
@@ -309,13 +312,13 @@ class EmulatorBase:
     def _check_event_mask(self, event_mask):
         """
         Return `event_mask` as an array after checking that it is a boolean
-        mask of shape (nev,). An integer array would be used as indices of
+        mask of shape (n_ev,). An integer array would be used as indices of
         the training points.
         """
         mask = np.asarray(event_mask)
-        if mask.dtype != bool or mask.shape != (self.nev,):
+        if mask.dtype != bool or mask.shape != (self.n_ev,):
             raise ValueError(
-                f"event_mask must be a boolean array of shape ({self.nev},), got "
+                f"event_mask must be a boolean array of shape ({self.n_ev},), got "
                 f"dtype {mask.dtype} and shape {mask.shape}"
             )
         return mask
@@ -329,7 +332,7 @@ class EmulatorBase:
         **train_kwargs
             Keyword arguments passed to ``train_emulator``.
         """
-        self.train_emulator(np.ones(self.nev, dtype=bool), **train_kwargs)
+        self.train_emulator(np.ones(self.n_ev, dtype=bool), **train_kwargs)
 
     # -------------------------
     # Validation
@@ -369,7 +372,7 @@ class EmulatorBase:
 
         Parameters
         ----------
-        X : array_like of shape (n_points, nparameters)
+        X : array_like of shape (n_points, n_parameters)
             Parameter points. A 1D array is treated as a single point.
         n_samples : int, default=1
             Number of samples per parameter point.
@@ -381,7 +384,7 @@ class EmulatorBase:
 
         Returns
         -------
-        ndarray of shape (n_points, n_samples, nobs)
+        ndarray of shape (n_points, n_samples, n_obs)
             Samples of the observables.
         """
         X = np.atleast_2d(X)
@@ -410,17 +413,17 @@ class EmulatorBase:
         chosen points if random_points is True. At least `min_test_points`
         test points and 2 training points are required.
         """
-        if not min_test_points <= n_test_points <= self.nev - 2:
+        if not min_test_points <= n_test_points <= self.n_ev - 2:
             raise ValueError(
                 f"n_test_points must be between {min_test_points} and "
-                f"{self.nev - 2} (at least 2 training points), got {n_test_points}"
+                f"{self.n_ev - 2} (at least 2 training points), got {n_test_points}"
             )
         if random_points:
             rng = np.random.default_rng(seed)
-            test_idx = rng.choice(self.nev, n_test_points, replace=False)
+            test_idx = rng.choice(self.n_ev, n_test_points, replace=False)
         else:
-            test_idx = np.arange(self.nev - n_test_points, self.nev)
-        test_mask = np.zeros(self.nev, dtype=bool)
+            test_idx = np.arange(self.n_ev - n_test_points, self.n_ev)
+        test_mask = np.zeros(self.n_ev, dtype=bool)
         test_mask[test_idx] = True
         return ~test_mask, test_mask
 
@@ -476,7 +479,7 @@ class EmulatorBase:
         Parameters
         ----------
         n_test_points : int, default=1
-            Number of test points, between 1 and nev - 2.
+            Number of test points, between 1 and n_ev - 2.
         random_points : bool, default=False
             If False, the test points are the last points of the training
             data. If True, they are chosen randomly.
@@ -490,13 +493,13 @@ class EmulatorBase:
         pred_mean, pred_err, data, data_err : ndarray
             The emulator predictions, their errors, the values of the
             observables and their errors at the test points, each of shape
-            (n_test_points, nobs), in the original scale of the
+            (n_test_points, n_obs), in the original scale of the
             observables.
 
         Raises
         ------
         ValueError
-            If `n_test_points` is not between 1 and nev - 2.
+            If `n_test_points` is not between 1 and n_ev - 2.
         """
         train_mask, test_mask = self._validation_masks(
             n_test_points, random_points, seed, min_test_points=1
@@ -527,7 +530,7 @@ class EmulatorBase:
         ----------
         n_test_points : int, default=1
             Number of test points excluded from the training, between 0 and
-            nev - 2.
+            n_ev - 2.
         random_points : bool, default=False
             If True, the test points are chosen randomly, otherwise they are
             the last points of the training data.
@@ -540,12 +543,12 @@ class EmulatorBase:
         -------
         pred_mean, pred_err, data, data_err : ndarray
             The same four arrays as `test_emulator_errors`, with
-            (nev - n_test_points) rows.
+            (n_ev - n_test_points) rows.
 
         Raises
         ------
         ValueError
-            If `n_test_points` is not between 0 and nev - 2.
+            If `n_test_points` is not between 0 and n_ev - 2.
         """
         train_mask, _ = self._validation_masks(
             n_test_points, random_points, seed, min_test_points=0

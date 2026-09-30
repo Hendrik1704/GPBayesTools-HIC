@@ -146,7 +146,7 @@ class EmulatorSparseGP(EmulatorBase):
 
         Parameters
         ----------
-        event_mask : array of bool (nev,)
+        event_mask : array of bool (n_ev,)
             True entries are included in the training.
         **fit_kwargs
             Forwarded to PCASparseGPEmulator.fit() or
@@ -156,7 +156,7 @@ class EmulatorSparseGP(EmulatorBase):
         Raises
         ------
         ValueError
-            If `event_mask` is not a boolean array of shape (nev,).
+            If `event_mask` is not a boolean array of shape (n_ev,).
         """
         event_mask = self._check_event_mask(event_mask)
         X = self.design_points[event_mask, :]
@@ -204,7 +204,7 @@ class EmulatorSparseGP(EmulatorBase):
 
         Parameters
         ----------
-        X : array (N_test, nparameters) or (nparameters,)
+        X : array (N_test, n_parameters) or (n_parameters,)
             Parameter points in the original (non-normalized) space.
         return_cov : bool
             If True, also return the covariance matrices (default True).
@@ -224,9 +224,9 @@ class EmulatorSparseGP(EmulatorBase):
 
         Returns
         -------
-        mean : array (N_test, nobs)
+        mean : array (N_test, n_obs)
             Predictive mean; exp(mean) with exp_and_cov_diagonal=True.
-        cov : array (N_test, nobs, nobs)
+        cov : array (N_test, n_obs, n_obs)
             Predictive covariance, only returned if return_cov=True. With
             exp_and_cov_diagonal=True, transformed with the delta method.
 

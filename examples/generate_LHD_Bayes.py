@@ -20,6 +20,6 @@ logging.basicConfig(level=logging.INFO)
 # method: 'maxpro' (maximum projection design, R package MaxPro) or
 #         'maximin' (maximin design, R package lhs)
 design = Design(
-    "./modelDesign_example.txt", npoints=100, validation=False, seed=42, method="maxpro"
+    "./modelDesign_example.txt", n_points=100, validation=False, seed=42, method="maxpro"
 )
 design.write_files(Path("./designs"))

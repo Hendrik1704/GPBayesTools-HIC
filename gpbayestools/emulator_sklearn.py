@@ -39,8 +39,8 @@ class EmulatorSklearn(EmulatorBase):
     ----------
     training_set_path : str or path-like
         Path to the pickle file with the training data, a dictionary
-        ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
-        nobs) with the values and statistical errors}}``.
+        ``{event_id: {'parameter': array (n_parameters,), 'obs': array (2,
+        n_obs) with the values and statistical errors}}``.
     parameter_file : str or path-like
         Path to the model parameter file.
     npc : int or float, default=10
@@ -153,9 +153,9 @@ class EmulatorSklearn(EmulatorBase):
 
         Returns
         -------
-        design_points : ndarray of shape (nev, nparameters)
+        design_points : ndarray of shape (n_ev, n_parameters)
             Parameter points of the training data.
-        Z : ndarray of shape (n, nev)
+        Z : ndarray of shape (n, n_ev)
             The first n PCs at the training points, where n is the number of
             PCs chosen by `npc` for all training data.
         """
@@ -173,7 +173,7 @@ class EmulatorSklearn(EmulatorBase):
 
         Parameters
         ----------
-        event_mask : ndarray of bool of shape (nev,)
+        event_mask : ndarray of bool of shape (n_ev,)
             Mask of the training points to use.
         kernel_type : {"RBF", "Matern"}, default="RBF"
             Correlation kernel of the GPs: Gaussian (RBF) or Matern with
@@ -184,7 +184,7 @@ class EmulatorSklearn(EmulatorBase):
         ------
         ValueError
             If `kernel_type` is unknown or if `event_mask` is not a boolean
-            array of shape (nev,).
+            array of shape (n_ev,).
         """
         # check before the trained emulator is modified
         if kernel_type not in ("RBF", "Matern"):
@@ -207,7 +207,7 @@ class EmulatorSklearn(EmulatorBase):
             # Transform data with PCA. Use the first
             # `npc` components but save the full PC transformation for later.
             Z = self.pca_.fit_transform(standardized_data)
-            # the PCA has at most min(n_training_points, nobs) components
+            # the PCA has at most min(n_training_points, n_obs) components
             self.npc_ = number_of_pcs(
                 self.npc,
                 self.pca_.explained_variance_ratio_,
@@ -220,11 +220,11 @@ class EmulatorSklearn(EmulatorBase):
                 "of the variance"
             )
 
-        nev = Z.shape[0]
+        n_ev = Z.shape[0]
         targets = "standardized observables" if self.perform_no_pca else "PCs"
         logger.info(
             f"Training {Z.shape[1]} GPs ({kernel_type} kernel) for the {targets} "
-            f"with {nev} training points ..."
+            f"with {n_ev} training points ..."
         )
 
         design_points = self.design_points[event_mask, :]
@@ -301,7 +301,7 @@ class EmulatorSklearn(EmulatorBase):
             # that are actually emulated.
             A = self._trans_matrix[: self.npc_]
             self._var_trans = np.einsum("ki,kj->kij", A, A, optimize=False).reshape(
-                self.npc_, self.nobs**2
+                self.npc_, self.n_obs**2
             )
 
             # Compute the covariance matrix of the PCs that are not emulated
@@ -323,8 +323,8 @@ class EmulatorSklearn(EmulatorBase):
             ) * np.outer(scale, scale)
 
             # Add small term to diagonal for numerical stability.
-            self._cov_trunc.flat[:: self.nobs + 1] += 1e-4 * self.scaler_.var_
-            self._cov_trunc_signal.flat[:: self.nobs + 1] += 1e-4 * self.scaler_.var_
+            self._cov_trunc.flat[:: self.n_obs + 1] += 1e-4 * self.scaler_.var_
+            self._cov_trunc_signal.flat[:: self.n_obs + 1] += 1e-4 * self.scaler_.var_
 
         logger.info("Emulator training finished")
 
@@ -332,7 +332,7 @@ class EmulatorSklearn(EmulatorBase):
         """
         Inverse transform principal components to observables.
 
-        `Z` has shape (..., npc), the result `Y` has shape (..., nobs).
+        `Z` has shape (..., npc), the result `Y` has shape (..., n_obs).
         """
         Y = np.dot(Z, self._trans_matrix[: Z.shape[-1]])
         Y += self.scaler_.mean_
@@ -368,7 +368,7 @@ class EmulatorSklearn(EmulatorBase):
 
         Parameters
         ----------
-        X : array_like of shape (nsamples, nparameters)
+        X : array_like of shape (nsamples, n_parameters)
             Parameter points. A 1D array is treated as a single point.
         return_cov : bool, default=True
             If True, the covariance is returned as well.
@@ -378,9 +378,9 @@ class EmulatorSklearn(EmulatorBase):
 
         Returns
         -------
-        mean : ndarray of shape (nsamples, nobs)
+        mean : ndarray of shape (nsamples, n_obs)
             Predicted mean.
-        cov : ndarray of shape (nsamples, nobs, nobs)
+        cov : ndarray of shape (nsamples, n_obs, n_obs)
             Covariance between the observables. Only returned if `return_cov`
             is True.
         """
@@ -415,7 +415,7 @@ class EmulatorSklearn(EmulatorBase):
                 # Compute the covariance at each sample point using the
                 # pre-calculated arrays (see train_emulator).
                 cov = np.dot(gp_var, self._var_trans).reshape(
-                    X.shape[0], self.nobs, self.nobs
+                    X.shape[0], self.n_obs, self.n_obs
                 )
                 if include_noise:
                     cov += self._cov_trunc
@@ -424,7 +424,7 @@ class EmulatorSklearn(EmulatorBase):
             else:
                 # Create a covariance matrix for each sample point from gp_var,
                 # transformed from standardized units back to observable units
-                cov = np.zeros((X.shape[0], self.nobs, self.nobs))
+                cov = np.zeros((X.shape[0], self.n_obs, self.n_obs))
                 for i in range(X.shape[0]):
                     cov[i] = np.diag(gp_var[i] * self.scaler_.var_)
 
@@ -434,7 +434,7 @@ class EmulatorSklearn(EmulatorBase):
                 # covariance matrix.
                 std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
                 cov = np.zeros_like(cov)
-                idx = np.arange(self.nobs)
+                idx = np.arange(self.n_obs)
                 cov[:, idx, idx] = (std * mean) ** 2
 
             return mean, cov

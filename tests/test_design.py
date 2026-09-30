@@ -11,11 +11,11 @@ from gpbayestools.design import Design
 def fake_r(monkeypatch):
     """Replace the R call by a random design with the same columns."""
 
-    def generate(method, r_code, npoints, ndim, seed):
-        points = np.random.default_rng(seed).uniform(size=(npoints, ndim))
+    def generate(method, r_code, n_points, n_dim, seed):
+        points = np.random.default_rng(seed).uniform(size=(n_points, n_dim))
         if method == "maxpro":
             # MaxProRunOrder adds the run order as the first column
-            return np.column_stack([np.arange(1, npoints + 1), points])
+            return np.column_stack([np.arange(1, n_points + 1), points])
         return points
 
     monkeypatch.setattr(design, "_generate_with_r", generate)
@@ -30,17 +30,17 @@ def param_file(tmp_path):
 
 @pytest.mark.parametrize("method", ["maxpro", "maximin"])
 def test_design_in_parameter_ranges(param_file, method):
-    d = Design(param_file, npoints=20, seed=1, method=method)
+    d = Design(param_file, n_points=20, seed=1, method=method)
     assert np.asarray(d).shape == (20, 2)
     assert np.all(d.array >= [0, -2]) and np.all(d.array <= [1, 2])
     assert d.seed == 1
     np.testing.assert_array_equal(
-        d.array, Design(param_file, npoints=20, seed=1, method=method).array
+        d.array, Design(param_file, n_points=20, seed=1, method=method).array
     )
 
 
 def test_write_files(param_file, tmp_path):
-    d = Design(param_file, npoints=3, seed=1, validation=True)
+    d = Design(param_file, n_points=3, seed=1, validation=True)
     # the base directory can be a string
     d.write_files(str(tmp_path / "out"))
     files = sorted((tmp_path / "out" / "validation").iterdir())
@@ -56,4 +56,4 @@ def test_invalid_options(param_file, tmp_path):
     one_parameter.write_text("a: $a$, 0, 1\n")
     with pytest.raises(ValueError):
         Design(one_parameter)
-    assert Design(one_parameter, npoints=5, seed=1, method="maximin").ndim == 1
+    assert Design(one_parameter, n_points=5, seed=1, method="maximin").n_dim == 1

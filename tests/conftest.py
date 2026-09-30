@@ -94,7 +94,7 @@ class LinearEmulator:
         self.A = np.asarray(A, dtype=float)
         self.b = np.asarray(b, dtype=float)
         self.cov = np.asarray(cov, dtype=float)
-        self.nobs = len(self.b)
+        self.n_obs = len(self.b)
 
     def predict(self, X, return_cov=True):
         X = np.atleast_2d(X)

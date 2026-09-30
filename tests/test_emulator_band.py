@@ -39,7 +39,7 @@ def test_covariance_contains_variance_of_discarded_pcs(
     emu = EmulatorBAND(training_file, param_file, method=method, seed=1, log_trafo=True)
     emu.train_emulator_auto_mask()
     _, cov = emu.predict(test_points, include_noise=True)
-    x = np.arange(emu.nobs).reshape(-1, 1)
+    x = np.arange(emu.n_obs).reshape(-1, 1)
     var = emu.emu_.predict(x=x, theta=test_points).var().T
     if method == "PCSK":
         # the noise of the simulations, which surmise does not include

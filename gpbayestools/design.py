@@ -32,7 +32,7 @@ from . import cachedir, parse_model_parameter_file
 logger = logging.getLogger(__name__)
 
 
-def _generate_with_r(method, r_code, npoints, ndim, seed):
+def _generate_with_r(method, r_code, n_points, n_dim, seed):
     """
     Run `r_code` in R and return the design it writes to stdout as an array.
 
@@ -40,7 +40,7 @@ def _generate_with_r(method, r_code, npoints, ndim, seed):
     it exists.
     """
     cachefile = (
-        cachedir / "lhs" / method / f"npoints{npoints}_ndim{ndim}_seed{seed}.npy"
+        cachedir / "lhs" / method / f"n_points{n_points}_ndim{n_dim}_seed{seed}.npy"
     )
 
     if cachefile.exists():
@@ -60,7 +60,7 @@ def _generate_with_r(method, r_code, npoints, ndim, seed):
         [line.split() for line in proc.stdout.decode().splitlines()], dtype=float
     )
     # the MaxPro output contains the run order as the first column
-    expected_shape = (npoints, ndim + 1 if method == "maxpro" else ndim)
+    expected_shape = (n_points, n_dim + 1 if method == "maxpro" else n_dim)
     if lhs.shape != expected_shape:
         raise RuntimeError(
             f"R returned a {method} design of shape {lhs.shape}, expected "
@@ -72,30 +72,30 @@ def _generate_with_r(method, r_code, npoints, ndim, seed):
     return lhs
 
 
-def generate_maximin_lhs(npoints, ndim, seed):
+def generate_maximin_lhs(n_points, n_dim, seed):
     """
-    Generate a maximin Latin-hypercube sample (LHS) in [0, 1]^ndim.
+    Generate a maximin Latin-hypercube sample (LHS) in [0, 1]^n_dim.
 
     The sample is generated with the R package lhs and cached.
 
     Parameters
     ----------
-    npoints : int
+    n_points : int
         Number of design points.
-    ndim : int
+    n_dim : int
         Number of dimensions (parameters).
     seed : int
         Random seed passed to R's ``set.seed()``.
 
     Returns
     -------
-    ndarray of shape (npoints, ndim)
-        The design points in [0, 1]^ndim.
+    ndarray of shape (n_points, n_dim)
+        The design points in [0, 1]^n_dim.
     """
     logger.debug(
-        "Generating a maximin LHS: npoints = %d, ndim = %d, seed = %d",
-        npoints,
-        ndim,
+        "Generating a maximin LHS: n_points = %d, n_dim = %d, seed = %d",
+        n_points,
+        n_dim,
         seed,
     )
     return _generate_with_r(
@@ -103,38 +103,38 @@ def generate_maximin_lhs(npoints, ndim, seed):
         f"""
         library('lhs')
         set.seed({seed})
-        write.table(maximinLHS({npoints}, {ndim}), col.names=FALSE, row.names=FALSE)
+        write.table(maximinLHS({n_points}, {n_dim}), col.names=FALSE, row.names=FALSE)
         """,
-        npoints,
-        ndim,
+        n_points,
+        n_dim,
         seed,
     )
 
 
-def generate_maxpro_lhs(npoints, ndim, seed):
+def generate_maxpro_lhs(n_points, n_dim, seed):
     """
-    Generate a maximum projection Latin-hypercube sample (LHS) in [0, 1]^ndim.
+    Generate a maximum projection Latin-hypercube sample (LHS) in [0, 1]^n_dim.
 
     The sample is generated with the R package MaxPro and cached.
 
     Parameters
     ----------
-    npoints : int
+    n_points : int
         Number of design points.
-    ndim : int
+    n_dim : int
         Number of dimensions (parameters).
     seed : int
         Random seed passed to R's ``set.seed()``.
 
     Returns
     -------
-    ndarray of shape (npoints, ndim)
-        The design points in [0, 1]^ndim.
+    ndarray of shape (n_points, n_dim)
+        The design points in [0, 1]^n_dim.
     """
     logger.debug(
-        "Generating a maximum projection LHS: npoints = %d, ndim = %d, seed = %d",
-        npoints,
-        ndim,
+        "Generating a maximum projection LHS: n_points = %d, n_dim = %d, seed = %d",
+        n_points,
+        n_dim,
         seed,
     )
     lhs = _generate_with_r(
@@ -142,11 +142,11 @@ def generate_maxpro_lhs(npoints, ndim, seed):
         f"""
         library(MaxPro)
         set.seed({seed})
-        write.table(MaxProRunOrder(MaxProLHD({npoints}, {ndim})$Design)$Design,"""
+        write.table(MaxProRunOrder(MaxProLHD({n_points}, {n_dim})$Design)$Design,"""
         """ col.names=FALSE, row.names=FALSE)
         """,
-        npoints,
-        ndim,
+        n_points,
+        n_dim,
         seed,
     )
     # the first column of MaxProRunOrder is the run order
@@ -172,7 +172,7 @@ class Design:
     ----------
     parameter_file : str or path-like
         Path to the model parameter file.
-    npoints : int, default=500
+    n_points : int, default=500
         Number of design points.
     validation : bool, default=False
         If True, the design is a validation design, which only changes the
@@ -195,12 +195,12 @@ class Design:
         ``parse_model_parameter_file``.
     param_min, param_max : ndarray
         Minimum and maximum values of the parameters.
-    ndim : int
+    n_dim : int
         Number of parameters (i.e. dimensions).
     points : list of str
         Design point names ``parameter_000``, ``parameter_001``, ... (used as
         file names by `write_files`).
-    array : ndarray of shape (npoints, ndim)
+    array : ndarray of shape (n_points, n_dim)
         The actual design array.
     seed : int
         The random seed used to generate the design.
@@ -218,7 +218,7 @@ class Design:
         self,
         parameter_file,
         *,
-        npoints=500,
+        n_points=500,
         validation=False,
         seed=None,
         method="maxpro",
@@ -231,15 +231,15 @@ class Design:
         self.pardict = parse_model_parameter_file(parameter_file)
         self.design_type = "validation" if validation else "main"
 
-        self.ndim = len(self.pardict.keys())
-        if method == "maxpro" and self.ndim < 2:
+        self.n_dim = len(self.pardict.keys())
+        if method == "maxpro" and self.n_dim < 2:
             raise ValueError(
                 "MaxPro designs require at least two parameters, use method='maximin'"
             )
 
         # use padded numbers for design point names
-        fmt = "parameter_{:0" + str(len(str(npoints - 1))) + "d}"
-        self.points = [fmt.format(i) for i in range(npoints)]
+        fmt = "parameter_{:0" + str(len(str(n_points - 1))) + "d}"
+        self.points = [fmt.format(i) for i in range(n_points)]
 
         # set default seeds
         if seed is None:
@@ -260,9 +260,9 @@ class Design:
         # generate the Latin-Hypercube samples
         self.array = self.param_min + (
             self.param_max - self.param_min
-        ) * design_generators[method](npoints, self.ndim, seed)
+        ) * design_generators[method](n_points, self.n_dim, seed)
         logger.info(
-            f"Generated a {method} design with {npoints} points for {self.ndim} "
+            f"Generated a {method} design with {n_points} points for {self.n_dim} "
             f"parameters (seed {seed})"
         )
 

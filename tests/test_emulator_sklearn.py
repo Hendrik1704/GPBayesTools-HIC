@@ -41,7 +41,7 @@ def test_prediction_accuracy_and_shapes(emulator, test_points):
 
 def test_event_mask_must_be_boolean(emulator):
     # an integer array would select the training points by index
-    for mask in (np.ones(emulator.nev, dtype=int), np.ones(5, dtype=bool)):
+    for mask in (np.ones(emulator.n_ev, dtype=int), np.ones(5, dtype=bool)):
         with pytest.raises(ValueError, match="event_mask"):
             emulator.train_emulator(mask)
 
@@ -125,7 +125,7 @@ def test_sample_y(emulator, test_points):
 def test_output_pca_does_not_change_emulator(emulator, test_points):
     before = emulator.predict(test_points)
     design_points, Z = emulator.output_pca_vs_param()
-    assert Z.shape == (emulator.npc_, emulator.nev)
+    assert Z.shape == (emulator.npc_, emulator.n_ev)
     after = emulator.predict(test_points)
     for a, b in zip(before, after, strict=True):
         np.testing.assert_array_equal(a, b)
@@ -134,7 +134,7 @@ def test_output_pca_does_not_change_emulator(emulator, test_points):
 def test_unknown_kernel(emulator, test_points):
     before = emulator.predict(test_points)
     with pytest.raises(ValueError):
-        emulator.train_emulator(np.ones(emulator.nev, dtype=bool), kernel_type="rbf")
+        emulator.train_emulator(np.ones(emulator.n_ev, dtype=bool), kernel_type="rbf")
     # the trained emulator is not modified
     for a, b in zip(before, emulator.predict(test_points), strict=True):
         np.testing.assert_array_equal(a, b)
@@ -159,7 +159,7 @@ def test_validation(emulator, test_points):
     assert np.abs(pred / data - 1).mean() < 0.05
 
     train = emulator.test_emulator_errors_with_training_points(n_test_points=10)
-    assert train[0].shape == (emulator.nev - 10, N_OBS)
+    assert train[0].shape == (emulator.n_ev - 10, N_OBS)
     assert np.abs(train[0] / train[2] - 1).mean() < 0.05
 
     # the validation does not change the trained emulator
@@ -178,11 +178,11 @@ def test_validation_random_points(emulator):
     data = emulator.test_emulator_errors(10, random_points=True, seed=5)[2]
     np.testing.assert_array_equal(data, emulator.model_data[test_mask])
     # at least one test point and two training points are required
-    for n_test_points in (0, emulator.nev - 1):
+    for n_test_points in (0, emulator.n_ev - 1):
         with pytest.raises(ValueError):
             emulator.test_emulator_errors(n_test_points)
     with pytest.raises(ValueError):
-        emulator.test_emulator_errors_with_training_points(emulator.nev - 1)
+        emulator.test_emulator_errors_with_training_points(emulator.n_ev - 1)
 
 
 def test_validation_untrained_emulator_stays_untrained(training_file, param_file):
@@ -219,7 +219,7 @@ def test_non_finite_points_are_discarded(modified_data, param_file, design):
         values[5, 1] = np.inf
 
     emu = EmulatorSklearn(modified_data(modify), param_file)
-    assert emu.nev == len(design) - 2
+    assert emu.n_ev == len(design) - 2
     assert np.all(np.isfinite(emu.model_data))
 
 
@@ -231,11 +231,11 @@ def test_relative_error_filter(modified_data, param_file):
 
     path = modified_data(modify)
     # no filter by default
-    assert EmulatorSklearn(path, param_file).nev == 60
+    assert EmulatorSklearn(path, param_file).n_ev == 60
     # only the point with the large relative error is discarded, the zero
     # observable has no relative error
     emu = EmulatorSklearn(path, param_file, max_rel_uncertainty_data=0.1)
-    assert emu.nev == 59
+    assert emu.n_ev == 59
     # log transformation requires positive observables
     with pytest.raises(ValueError):
         EmulatorSklearn(path, param_file, log_trafo=True)
@@ -246,7 +246,7 @@ def test_negative_values_with_log_trafo(modified_data, param_file):
         values[2, 0] *= -1
 
     path = modified_data(modify)
-    assert EmulatorSklearn(path, param_file).nev == 60
+    assert EmulatorSklearn(path, param_file).n_ev == 60
     with pytest.raises(ValueError):
         EmulatorSklearn(path, param_file, log_trafo=True)
 
@@ -259,7 +259,7 @@ def test_negative_values_with_log_trafo(modified_data, param_file):
     emu = EmulatorSklearn(
         path, param_file, log_trafo=True, max_rel_uncertainty_data=0.1
     )
-    assert emu.nev == 59
+    assert emu.n_ev == 59
 
 
 def test_all_points_discarded(modified_data, param_file):
@@ -348,11 +348,11 @@ def test_non_finite_errors_are_set_to_zero(modified_data, param_file):
         errors[5, 1] = np.inf
 
     emu = EmulatorSklearn(modified_data(modify), param_file)
-    assert emu.nev == 60
+    assert emu.n_ev == 60
     assert emu.model_data_err[3, 2] == 0 and emu.model_data_err[5, 1] == 0
     # with the error filter, the point with the NaN error is kept and the
     # point with the infinite error is discarded
     emu = EmulatorSklearn(
         modified_data(modify), param_file, max_rel_uncertainty_data=0.5
     )
-    assert emu.nev == 59
+    assert emu.n_ev == 59

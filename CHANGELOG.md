@@ -52,6 +52,7 @@ Changes that are not backward compatible:
 - The `seed` of `run_emcee` no longer changes numpy's global random number generator: its state is restored after the emcee sampler is created, as for the other samplers.
 - `run_emcee` uses the vectorized emcee sampler (`vectorize=True`) instead of passing `BayesianAnalysis` as a dummy pool, and the `BayesianAnalysis.map` method is removed. The chains are the same.
 - `PCASparseGPEmulator.fit` returns the fitted emulator like `PCASparseGPEnsemble.fit` (was the training history, which is stored in `training_history_`).
+- Counts use the `n_` prefix: the emulator attributes `n_ev`, `n_obs` and `n_parameters` (were `nev`, `nobs`, `nparameters`; converted when old emulators are loaded), `BayesianAnalysis.n_dim` and `n_obs` (were `ndim`, `nobs`), and `Design(..., n_points=...)`, `Design.n_dim` and `generate_maxpro_lhs`/`generate_maximin_lhs(n_points, n_dim, seed)` (were `npoints`, `ndim`).
 
 Bug fixes:
 - Fix `EmulatorSklearn.predict` with `return_cov=True`, which failed with NumPy 2 (`np.array(..., copy=False)`). The same applies to the log prior, likelihood and posterior of `BayesianAnalysis` for list inputs.

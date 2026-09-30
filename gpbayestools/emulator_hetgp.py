@@ -32,8 +32,8 @@ class EmulatorHetGP(EmulatorBase):
     ----------
     training_set_path : str or path-like
         Path to the pickle file with the training data, a dictionary
-        ``{event_id: {'parameter': array (nparameters,), 'obs': array (2,
-        nobs) with the values and statistical errors}}``.
+        ``{event_id: {'parameter': array (n_parameters,), 'obs': array (2,
+        n_obs) with the values and statistical errors}}``.
     parameter_file : str or path-like
         Path to the model parameter file.
     log_trafo : bool, default=False
@@ -167,13 +167,13 @@ class EmulatorHetGP(EmulatorBase):
 
         Parameters
         ----------
-        event_mask : ndarray of bool of shape (nev,)
+        event_mask : ndarray of bool of shape (n_ev,)
             Mask of the training points to use.
 
         Raises
         ------
         ValueError
-            If `event_mask` is not a boolean array of shape (nev,).
+            If `event_mask` is not a boolean array of shape (n_ev,).
         """
         # Subselect training data
         event_mask = self._check_event_mask(event_mask)
@@ -184,9 +184,9 @@ class EmulatorHetGP(EmulatorBase):
         )
         Z = self.train_pcs_
 
-        nev = design_points.shape[0]
+        n_ev = design_points.shape[0]
         logger.info(
-            f"Training {self.npc_} hetGP models for the PCs with {nev} "
+            f"Training {self.npc_} hetGP models for the PCs with {n_ev} "
             "training points ..."
         )
 
@@ -238,7 +238,7 @@ class EmulatorHetGP(EmulatorBase):
 
         Parameters
         ----------
-        X : array_like of shape (nsamples, nparameters)
+        X : array_like of shape (nsamples, n_parameters)
             Parameter points. A 1D array is treated as a single point.
         return_cov : bool, default=True
             If True, the covariance is returned as well.
@@ -248,9 +248,9 @@ class EmulatorHetGP(EmulatorBase):
 
         Returns
         -------
-        mean : ndarray of shape (nsamples, nobs)
+        mean : ndarray of shape (nsamples, n_obs)
             Predicted mean.
-        cov : ndarray of shape (nsamples, nobs, nobs)
+        cov : ndarray of shape (nsamples, n_obs, n_obs)
             Covariance between the observables. Only returned if `return_cov`
             is True.
         """
@@ -275,7 +275,7 @@ class EmulatorHetGP(EmulatorBase):
 
         # Covariance in the space of the observables: the PC variances are
         # transformed with the PCA components and the standardization scales
-        W = self.pca_.components_.T * self.scaler_.scale_[:, None]  # (nobs, npc)
+        W = self.pca_.components_.T * self.scaler_.scale_[:, None]  # (n_obs, npc)
         pc_vars = np.maximum(pc_vars, 0.0)
         cov = np.einsum("ik,kn,jk->nij", W, pc_vars, W)
         cov += self._cov_trunc if include_noise else self._cov_trunc_signal
@@ -286,7 +286,7 @@ class EmulatorHetGP(EmulatorBase):
             mean = np.exp(mean)
             std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
             cov = np.zeros_like(cov)
-            idx = np.arange(self.nobs)
+            idx = np.arange(self.n_obs)
             cov[:, idx, idx] = (std * mean) ** 2
 
         return mean, cov

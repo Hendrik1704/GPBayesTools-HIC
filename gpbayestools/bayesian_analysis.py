@@ -114,7 +114,7 @@ class LoggingEnsembleSampler(emcee.EnsembleSampler):
 
         Parameters
         ----------
-        initial_state : array_like of shape (nwalkers, ndim) or emcee.State
+        initial_state : array_like of shape (nwalkers, n_dim) or emcee.State
             Initial positions of the walkers.
         nsteps : int
             Number of steps. Must be at least 1.
@@ -200,19 +200,19 @@ class BayesianAnalysis:
     pardict : dict
         The parameters of the parameter file, see
         ``parse_model_parameter_file``.
-    ndim : int
+    n_dim : int
         Number of parameters.
     labels : list of str
         Labels of the parameters.
-    param_min, param_max : ndarray of shape (ndim,)
+    param_min, param_max : ndarray of shape (n_dim,)
         Ranges of the parameters (bounds of the uniform prior).
     prior_volume : float
         Volume of the parameter space.
-    exp_data : ndarray of shape (1, nobs)
+    exp_data : ndarray of shape (1, n_obs)
         Values of the experimental data points.
-    exp_data_cov : ndarray of shape (nobs, nobs)
+    exp_data_cov : ndarray of shape (n_obs, n_obs)
         Diagonal covariance matrix of the experimental data points.
-    nobs : int
+    n_obs : int
         Number of experimental data points.
     emulators : list
         The emulators loaded with `load_emulators`.
@@ -242,7 +242,7 @@ class BayesianAnalysis:
 
         # load the model parameter file
         self.pardict = parse_model_parameter_file(parameter_file)
-        self.ndim = len(self.pardict.keys())
+        self.n_dim = len(self.pardict.keys())
         self.labels = []
         self.param_min = []
         self.param_max = []
@@ -256,11 +256,11 @@ class BayesianAnalysis:
         # the volume of the uniform prior
         diff = self.param_max - self.param_min
         self.prior_volume = np.prod(diff)
-        logger.info(f"Loaded {self.ndim} model parameters from {parameter_file}")
+        logger.info(f"Loaded {self.n_dim} model parameters from {parameter_file}")
 
         # load the experimental data to be fit
         self.exp_data, self.exp_data_cov = self._read_in_exp_data_pickle(exp_data_path)
-        self.nobs = self.exp_data.shape[1]
+        self.n_obs = self.exp_data.shape[1]
         self.emulators = []
         self.chain = False
         # sampler that generated self.chain
@@ -287,18 +287,18 @@ class BayesianAnalysis:
             the number of experimental data points.
         """
         emu_list = [load_emulator(emu_path) for emu_path in emulator_path_list]
-        nobs_emu = [emu.nobs for emu in emu_list]
-        if sum(nobs_emu) != self.nobs:
+        n_obs_emu = [emu.n_obs for emu in emu_list]
+        if sum(n_obs_emu) != self.n_obs:
             raise ValueError(
                 "The emulators have {} observables in total ({}), but the "
                 "experimental data have {} data points".format(
-                    sum(nobs_emu), ", ".join(map(str, nobs_emu)), self.nobs
+                    sum(n_obs_emu), ", ".join(map(str, n_obs_emu)), self.n_obs
                 )
             )
         self.emulators = emu_list
         logger.info(
             "Loaded {} emulators with {} observables in total ({})".format(
-                len(emu_list), self.nobs, ", ".join(map(str, nobs_emu))
+                len(emu_list), self.n_obs, ", ".join(map(str, n_obs_emu))
             )
         )
 
@@ -308,27 +308,27 @@ class BayesianAnalysis:
 
         The predictions of the emulators are concatenated, and the covariance
         is block diagonal with one block per emulator. Returns arrays of shape
-        (n, nobs) and (n, nobs, nobs), and raises a ValueError if no emulators
-        are loaded or if they do not predict `nobs` observables in total.
+        (n, n_obs) and (n, n_obs, n_obs), and raises a ValueError if no emulators
+        are loaded or if they do not predict `n_obs` observables in total.
         """
         if not self.emulators:
             raise ValueError("No emulators are loaded, call load_emulators first")
         n_preds = X.shape[0]
-        model_pred = np.zeros([n_preds, self.nobs])
-        model_pred_cov = np.zeros([n_preds, self.nobs, self.nobs])
+        model_pred = np.zeros([n_preds, self.n_obs])
+        model_pred_cov = np.zeros([n_preds, self.n_obs, self.n_obs])
         curr_idx = 0
         for emu_i in self.emulators:
             model_Y, model_cov = emu_i.predict(X, return_cov=True)
-            nobs_i = model_Y.shape[1]
-            model_pred[:, curr_idx : curr_idx + nobs_i] = model_Y
+            n_obs_i = model_Y.shape[1]
+            model_pred[:, curr_idx : curr_idx + n_obs_i] = model_Y
             model_pred_cov[
-                :, curr_idx : curr_idx + nobs_i, curr_idx : curr_idx + nobs_i
+                :, curr_idx : curr_idx + n_obs_i, curr_idx : curr_idx + n_obs_i
             ] = model_cov
-            curr_idx += nobs_i
-        if curr_idx != self.nobs:
+            curr_idx += n_obs_i
+        if curr_idx != self.n_obs:
             raise ValueError(
                 f"The emulators predict {curr_idx} observables, but the experimental "
-                f"data have {self.nobs} data points"
+                f"data have {self.n_obs} data points"
             )
         return model_pred, model_pred_cov
 
@@ -346,7 +346,7 @@ class BayesianAnalysis:
 
         Parameters
         ----------
-        X : array_like of shape (n, ndim) or (ndim,)
+        X : array_like of shape (n, n_dim) or (n_dim,)
             Points in parameter space.
 
         Returns
@@ -370,7 +370,7 @@ class BayesianAnalysis:
 
         Parameters
         ----------
-        X : array_like of shape (n, ndim) or (ndim,)
+        X : array_like of shape (n, n_dim) or (n_dim,)
             Points in parameter space.
         finite : bool, default=False
             If True, points outside the parameter ranges get the finite value
@@ -416,7 +416,7 @@ class BayesianAnalysis:
 
         Parameters
         ----------
-        X : ndarray of shape (n, ndim)
+        X : ndarray of shape (n, n_dim)
             Points in parameter space.
 
         Returns
@@ -446,7 +446,7 @@ class BayesianAnalysis:
 
         Parameters
         ----------
-        X : array_like of shape (n, ndim) or (ndim,)
+        X : array_like of shape (n, n_dim) or (n_dim,)
             Points in parameter space.
 
         Returns
@@ -464,7 +464,7 @@ class BayesianAnalysis:
         whose ``"obs"`` array holds the values in the first and the errors in
         the second row. The covariance matrix is diagonal with the squared
         errors (NaN errors are set to 0 with a warning). Returns the data of
-        shape (1, nobs) and the covariance of shape (nobs, nobs). Raises a
+        shape (1, n_obs) and the covariance of shape (n_obs, n_obs). Raises a
         ValueError for non-finite values or infinite errors.
         """
         with open(filepath, "rb") as fp:
@@ -509,10 +509,10 @@ class BayesianAnalysis:
 
         Returns
         -------
-        ndarray of shape (n, ndim)
+        ndarray of shape (n, n_dim)
             Random positions.
         """
-        return np.random.uniform(self.param_min, self.param_max, (n, self.ndim))
+        return np.random.uniform(self.param_min, self.param_max, (n, self.n_dim))
 
     def chain_path(self, sampler):
         """
@@ -571,7 +571,7 @@ class BayesianAnalysis:
         half, the walkers are moved to the most likely distinct points found
         so far. The production steps are thinned by `n_thin` and appended to
         the chain file. ``self.chain`` is the whole chain of the file, with
-        shape (n_walkers, n_saved, ndim), where n_saved is the total number of
+        shape (n_walkers, n_saved, n_dim), where n_saved is the total number of
         saved (thinned) steps.
 
         Parameters
@@ -639,17 +639,17 @@ class BayesianAnalysis:
             if n_thin is None:
                 n_thin = 10
         else:
-            # emcee chains have shape (n_walkers, n_steps, ndim), pocoMC samples
-            # (nsamples, ndim)
+            # emcee chains have shape (n_walkers, n_steps, n_dim), pocoMC samples
+            # (nsamples, n_dim)
             if chain_data["chain"].ndim != 3:
                 raise ValueError(
                     f"The chain in {chain_file} was not generated with emcee and "
                     "cannot be continued, use a different mcmc_path"
                 )
-            if chain_data["chain"].shape[2] != self.ndim:
+            if chain_data["chain"].shape[2] != self.n_dim:
                 raise ValueError(
                     f"The chain in {chain_file} has {chain_data['chain'].shape[2]} "
-                    f"parameters, but the parameter file has {self.ndim}"
+                    f"parameters, but the parameter file has {self.n_dim}"
                 )
             if n_walkers is None:
                 n_walkers = chain_data["chain"].shape[0]
@@ -697,7 +697,7 @@ class BayesianAnalysis:
             # numpy's global random number generator
             initial_state = self.random_pos(n_walkers)
         sampler = LoggingEnsembleSampler(
-            n_walkers, self.ndim, self.log_posterior, vectorize=True
+            n_walkers, self.n_dim, self.log_posterior, vectorize=True
         )
         if seed is not None:
             np.random.set_state(global_random_state)
@@ -758,7 +758,7 @@ class BayesianAnalysis:
         chain_data["last_position"] = state.coords
         chain_data["n_thin"] = n_thin
 
-        # shape (n_walkers, n_steps, ndim)
+        # shape (n_walkers, n_steps, n_dim)
         thinned_chain = np.swapaxes(sampler.get_chain(), 0, 1)[:, ::n_thin, :]
         if "chain" in chain_data:
             chain_data["chain"] = np.concatenate(
@@ -796,7 +796,7 @@ class BayesianAnalysis:
         them are optimized with L-BFGS-B before the sampling. The first
         ``2 * n_steps`` steps tune the step size and are discarded. The
         samples of the temperature-1 chains are stored in ``self.chain`` with
-        shape (n_walkers, n_steps, ndim) and written to
+        shape (n_walkers, n_steps, n_dim) and written to
         ``chain_path("ptlmc")``, overwriting an existing file.
 
         Parameters
@@ -819,7 +819,7 @@ class BayesianAnalysis:
         chain_data = {}
 
         def draw_func(n):
-            return rng.uniform(self.param_min, self.param_max, (n, self.ndim))
+            return rng.uniform(self.param_min, self.param_max, (n, self.n_dim))
 
         self._warn_overwrite("ptlmc")
         logger.info(
@@ -830,7 +830,7 @@ class BayesianAnalysis:
             logpostfunc=self.log_posterior,
             draw_func=draw_func,
             rng=rng,
-            ndim=self.ndim,
+            ndim=self.n_dim,
             theta0=None,
             numtemps=n_temps,
             numchain=n_walkers,
@@ -839,12 +839,12 @@ class BayesianAnalysis:
             nstartparameters=n_start_parameters,
         )
 
-        # shape (n_walkers, n_steps, ndim)
+        # shape (n_walkers, n_steps, n_dim)
         self.chain = result_dict["theta"]
 
         self.chain_sampler = "ptlmc"
 
-        # Write the chain to file (n_walkers, n_steps, self.ndim)
+        # Write the chain to file (n_walkers, n_steps, self.n_dim)
         chain_data["chain"] = self.chain
         logger.info(f"Writing the PTLMC chains to {self.chain_path('ptlmc')}")
         _write_pickle(self.chain_path("ptlmc"), chain_data)
@@ -900,7 +900,7 @@ class BayesianAnalysis:
         logger.info(
             f"Computing the log-likelihood of the {self.chain_sampler} chain ..."
         )
-        points = self.chain.reshape(-1, self.ndim)
+        points = self.chain.reshape(-1, self.n_dim)
         n_points = len(points)
         # the emulators predict many points at once much faster than single
         # points, so the log-likelihood is computed in batches
@@ -917,8 +917,8 @@ class BayesianAnalysis:
             log_like[start : start + batch_size] = self.log_likelihood(
                 points[start : start + batch_size]
             )
-        # emcee/PTLMC chains have shape (n_walkers, n_steps, ndim),
-        # pocoMC samples have shape (n_samples, ndim)
+        # emcee/PTLMC chains have shape (n_walkers, n_steps, n_dim),
+        # pocoMC samples have shape (n_samples, n_dim)
         log_like = log_like.reshape(self.chain.shape[:-1])
 
         logger.info(f"Writing the log-likelihood of the chain to {output_path}")
@@ -946,7 +946,7 @@ class BayesianAnalysis:
         that uses normalizing flows to precondition the target distribution.
 
         The resampled posterior samples are stored in ``self.chain`` with
-        shape (nsamples, ndim). They are written to ``chain_path("pocomc")``
+        shape (nsamples, n_dim). They are written to ``chain_path("pocomc")``
         together with the log-likelihood (``"logl"``), the log prior
         (``"logp"``), the log evidence (``"logz"``) and its error
         (``"logz_err"``). Points outside the parameter ranges get the finite
@@ -985,7 +985,7 @@ class BayesianAnalysis:
             sampling and the SMC estimate is used instead.
         n_ndim_steps : int, default=2
             Number of MCMC steps per parameter after the log-probability
-            plateau, passed to pocoMC as ``n_steps = n_ndim_steps * ndim``. It
+            plateau, passed to pocoMC as ``n_steps = n_ndim_steps * n_dim``. It
             controls the early stopping of the MCMC steps of each iteration.
         pool : int, pool object or None, default=None
             Parallelization of the likelihood evaluations. If None, the
@@ -1016,7 +1016,7 @@ class BayesianAnalysis:
         if prior is None:
             logger.info("Using a uniform prior for all parameters")
             prior_distributions = []
-            for i in range(self.ndim):
+            for i in range(self.n_dim):
                 prior_distributions.append(
                     uniform(self.param_min[i], self.param_max[i] - self.param_min[i])
                 )
@@ -1024,9 +1024,9 @@ class BayesianAnalysis:
         else:
             logger.info("Using the given prior")
             # Check the dimensions of the prior
-            if self.ndim != prior.dim:
+            if self.n_dim != prior.dim:
                 raise ValueError(
-                    f"prior.dim = {prior.dim} does not match the {self.ndim} "
+                    f"prior.dim = {prior.dim} does not match the {self.n_dim} "
                     "model parameters"
                 )
 
@@ -1049,7 +1049,7 @@ class BayesianAnalysis:
             n_prior=n_prior,
             sample=sample,
             n_max_steps=n_max_steps,
-            n_steps=n_ndim_steps * self.ndim,
+            n_steps=n_ndim_steps * self.n_dim,
             random_state=seed,
             vectorize=vectorize,
             pool=pool,
