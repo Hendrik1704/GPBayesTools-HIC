@@ -902,16 +902,29 @@ class BayesianAnalysis:
         logger.info(
             f"Computing the log-likelihood of the {self.chain_sampler} chain ..."
         )
-        reshape_chain = self.chain.reshape(-1, self.ndim)
-        likelihood = self.log_likelihood_point_by_point(reshape_chain)
+        points = self.chain.reshape(-1, self.ndim)
+        n_points = len(points)
+        # the emulators predict many points at once much faster than single
+        # points, so the log-likelihood is computed in batches
+        batch_size = 1000
+        n_batches = -(-n_points // batch_size)
+        log_every = max(n_batches // 10, 1)
+        log_like = np.empty(n_points)
+        for i, start in enumerate(range(0, n_points, batch_size)):
+            if i % log_every == 0:
+                logger.info(
+                    "Evaluating the log-likelihood at points "
+                    f"{start + 1}-{min(start + batch_size, n_points)}/{n_points} ..."
+                )
+            log_like[start : start + batch_size] = self.log_likelihood(
+                points[start : start + batch_size]
+            )
         # emcee/PTLMC chains have shape (n_walkers, n_steps, ndim),
-        # pocoMC samples have shape (nsamples, ndim)
-        likelihood = likelihood.reshape(self.chain.shape[:-1])
+        # pocoMC samples have shape (n_samples, ndim)
+        log_like = log_like.reshape(self.chain.shape[:-1])
 
-        # Write the log_likelihood to file
         logger.info(f"Writing the log-likelihood of the chain to {output_path}")
-        likelihood_data = {"log_likelihood": likelihood}
-        _write_pickle(output_path, likelihood_data)
+        _write_pickle(output_path, {"log_likelihood": log_like})
 
     def run_pocomc(
         self,

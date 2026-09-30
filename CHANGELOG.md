@@ -106,6 +106,7 @@ Bug fixes:
 - The chain files and the log-likelihood file of `BayesianAnalysis` are written via a temporary file, so that an interrupted write does not destroy an existing emcee chain, which contains all previous runs.
 - `run_pocomc(pool=1)` runs without a pool like `pool=None` instead of failing in pocoMC.
 - `parse_model_parameter_file` also rejects empty parameter names and infinite ranges, and its docstring says that labels must not contain commas.
+- `compute_log_likelihood_for_chain` evaluates the log-likelihood in batches of 1000 points instead of point by point, which is much faster, since the emulators predict many points at once.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
