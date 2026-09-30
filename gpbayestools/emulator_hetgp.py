@@ -86,12 +86,13 @@ class EmulatorHetGP(EmulatorBase):
         check_npc(npc)
         self.npc = npc
 
-    def _fit_output_pca(self, data, data_err=None):
+    def _fit_output_pca(self, data, data_err):
         """
         Fit the output standardization and PCA to the training data.
 
         Also compute the truncation covariance. `data` are the training data
-        and `data_err` their statistical errors.
+        and `data_err` their statistical errors. Returns the PCs of the
+        training data.
         """
         self.scaler_ = StandardScaler()
         standardized_outputs = self.scaler_.fit_transform(data)
@@ -100,20 +101,21 @@ class EmulatorHetGP(EmulatorBase):
         full_pca = PCA(svd_solver="full").fit(standardized_outputs)
         self.npc_ = number_of_pcs(self.npc, full_pca.explained_variance_ratio_)
         self.pca_ = PCA(n_components=self.npc_, svd_solver="full")
-        self.train_pcs_ = self.pca_.fit_transform(standardized_outputs)
-        self._compute_truncation_cov(data, self.train_pcs_, data_err)
+        pcs = self.pca_.fit_transform(standardized_outputs)
+        self._compute_truncation_cov(data, pcs, data_err)
         logger.info(
             f"Using {self.npc_} PCs, which explain "
             f"{self.pca_.explained_variance_ratio_.sum():.5f} of the variance"
         )
+        return pcs
 
-    def _compute_truncation_cov(self, data, data_pca, data_err=None):
+    def _compute_truncation_cov(self, data, pcs, data_err):
         """
         Compute the covariance of the PCs discarded by the output PCA.
 
         The covariance is in observable units. It is added to the predicted
         covariance, since the emulator cannot resolve this part of the
-        variance. `data` are the training data, `data_pca` their principal
+        variance. `data` are the training data, `pcs` their principal
         components and `data_err` their statistical errors.
 
         The truncation covariance also contains the statistical noise of the
@@ -122,17 +124,15 @@ class EmulatorHetGP(EmulatorBase):
         function (include_noise=False).
         """
         standardized_outputs = self.scaler_.transform(data)
-        residuals = standardized_outputs - self.pca_.inverse_transform(data_pca)
+        residuals = standardized_outputs - self.pca_.inverse_transform(pcs)
         scale = self.scaler_.scale_
         # covariances in standardized units
         trunc_cov_scaled = np.cov(residuals, rowvar=False)
         self._cov_trunc = trunc_cov_scaled * np.outer(scale, scale)
-        self._cov_trunc_signal = self._cov_trunc
-        if data_err is not None:
-            noise_cov_scaled = np.diag(np.mean((data_err / scale) ** 2, axis=0))
-            self._cov_trunc_signal = truncation_signal(
-                trunc_cov_scaled, noise_cov_scaled
-            ) * np.outer(scale, scale)
+        noise_cov_scaled = np.diag(np.mean((data_err / scale) ** 2, axis=0))
+        self._cov_trunc_signal = truncation_signal(
+            trunc_cov_scaled, noise_cov_scaled
+        ) * np.outer(scale, scale)
 
     def __getstate__(self):
         """
@@ -179,10 +179,9 @@ class EmulatorHetGP(EmulatorBase):
         event_mask = self._check_event_mask(event_mask)
         design_points = self.design_points[event_mask, :]
         # fit the output PCA only to the training points
-        self._fit_output_pca(
+        Z = self._fit_output_pca(
             self.model_data[event_mask, :], self.model_data_err[event_mask, :]
         )
-        Z = self.train_pcs_
 
         n_ev = design_points.shape[0]
         logger.info(
