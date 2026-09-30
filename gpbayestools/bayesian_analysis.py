@@ -60,9 +60,9 @@ def mvn_loglike(y, cov):
     numpy.linalg.LinAlgError
         If `cov` is not positive definite.
     """
-    # Compute the Cholesky decomposition of the covariance.
+    # Compute the Cholesky decomposition cov = U^T U (upper triangular U).
     # Use bare LAPACK function to avoid scipy.linalg wrapper overhead.
-    L, info = lapack.dpotrf(cov, clean=False)
+    U, info = lapack.dpotrf(cov, clean=False)
 
     if info < 0:
         raise ValueError(
@@ -75,14 +75,14 @@ def mvn_loglike(y, cov):
         )
 
     # Solve for alpha = cov^-1.y using the Cholesky decomp.
-    alpha, info = lapack.dpotrs(L, y)
+    alpha, info = lapack.dpotrs(U, y)
 
     if info != 0:
         raise ValueError(
             f"lapack dpotrs error: the {-info}-th argument had an illegal value"
         )
 
-    return -0.5 * np.dot(y, alpha) - np.log(L.diagonal()).sum()
+    return -0.5 * np.dot(y, alpha) - np.log(U.diagonal()).sum()
 
 
 def _write_pickle(path, data):
@@ -170,7 +170,8 @@ class BayesianAnalysis:
     The experimental data are used as they are given. For emulators that
     return predictions in log space (``log_trafo=True`` and
     ``exp_and_cov_diagonal=False``), the experimental data must be
-    log-transformed by the user as well.
+    log-transformed by the user as well: log(y) for the values and the
+    relative errors sigma/y for the errors.
 
     Each sampler writes its chain to its own file, which is derived from
     `mcmc_path` by adding the name of the sampler, e.g. for the default
@@ -354,9 +355,9 @@ class BayesianAnalysis:
             (boundaries included) and ``-inf`` outside.
         """
         X = np.atleast_2d(np.asarray(X))
-        lp = np.log(np.ones(X.shape[0]) / self.prior_volume)
-        lp[~self._inside(X)] = -np.inf
-        return lp
+        log_prior = np.full(X.shape[0], -np.log(self.prior_volume))
+        log_prior[~self._inside(X)] = -np.inf
+        return log_prior
 
     def log_likelihood(self, X, finite=False):
         """
@@ -388,9 +389,9 @@ class BayesianAnalysis:
             If the covariance matrix at a point is not positive definite.
         """
         X = np.atleast_2d(np.asarray(X))
-        lp = np.zeros(X.shape[0])
+        log_like = np.zeros(X.shape[0])
         inside = self._inside(X)
-        lp[~inside] = -1e300 if finite else -np.inf
+        log_like[~inside] = -1e300 if finite else -np.inf
 
         if np.any(inside):
             model_Y, model_cov = self._predict(X[inside])
@@ -398,8 +399,8 @@ class BayesianAnalysis:
             # the experimental covariance
             dY = model_Y - self.exp_data
             cov = model_cov + self.exp_data_cov
-            lp[inside] += list(map(mvn_loglike, dY, cov))
-        return lp
+            log_like[inside] += list(map(mvn_loglike, dY, cov))
+        return log_like
 
     def _log_likelihood_point(self, x, finite=False):
         """Log-likelihood at the single point `x` as a float."""
@@ -425,7 +426,7 @@ class BayesianAnalysis:
         """
         X = np.atleast_2d(np.asarray(X))
         n_points = X.shape[0]
-        lp = np.zeros(n_points)
+        log_like = np.zeros(n_points)
         log_every = max(n_points // 10, 1)
 
         for k in range(n_points):
@@ -433,8 +434,8 @@ class BayesianAnalysis:
                 logger.info(
                     f"Evaluating the log-likelihood at point {k + 1}/{n_points} ..."
                 )
-            lp[k] = self.log_likelihood(X[k])[0]
-        return lp
+            log_like[k] = self.log_likelihood(X[k])[0]
+        return log_like
 
     def log_posterior(self, X):
         """
@@ -465,9 +466,6 @@ class BayesianAnalysis:
         shape (1, nobs) and the covariance of shape (nobs, nobs). Raises a
         ValueError for non-finite values or infinite errors.
         """
-        model_data = []
-        model_data_err = []
-
         with open(filepath, "rb") as fp:
             data_dict = pickle.load(fp)
         if len(data_dict) != 1:
@@ -476,32 +474,25 @@ class BayesianAnalysis:
                 f"set, but contains {len(data_dict)}"
             )
 
-        for event_id in data_dict.keys():
-            temp_data = data_dict[event_id]["obs"].transpose()
-            model_data.append(temp_data[:, 0])
-            model_data_err.append(temp_data[:, 1])
-        logger.info(
-            f"Loaded {model_data[0].shape[0]} experimental data points from {filepath}"
-        )
-        model_data = np.array(model_data)
-        model_data_err = np.abs(np.array(model_data_err))
-        if not np.all(np.isfinite(model_data)):
+        # the "obs" array of the only data set holds the values and the errors
+        (data_set,) = data_dict.values()
+        exp_values, exp_errors = np.asarray(data_set["obs"], dtype=float)
+        exp_errors = np.abs(exp_errors)
+        if not np.all(np.isfinite(exp_values)):
             raise ValueError(f"The experimental data in {filepath} are not finite")
-        if np.any(np.isinf(model_data_err)):
+        if np.any(np.isinf(exp_errors)):
             raise ValueError(
                 f"The experimental data in {filepath} have infinite errors"
             )
-        n_nan = int(np.sum(np.isnan(model_data_err)))
+        n_nan = int(np.sum(np.isnan(exp_errors)))
         if n_nan > 0:
             logger.warning(f"Setting {n_nan} NaN errors of the experimental data to 0")
-            model_data_err = np.nan_to_num(model_data_err)
-        nobs = model_data.shape[1]
+            exp_errors = np.nan_to_num(exp_errors)
+        logger.info(
+            f"Loaded {len(exp_values)} experimental data points from {filepath}"
+        )
 
-        data_cov = np.zeros((nobs, nobs))
-        model_data_err = model_data_err.flatten()
-        np.fill_diagonal(data_cov, (model_data_err) ** 2)
-
-        return model_data, data_cov
+        return exp_values[np.newaxis, :], np.diag(exp_errors**2)
 
     def random_pos(self, n=1):
         """
@@ -680,8 +671,9 @@ class BayesianAnalysis:
                 logger.info("Continuing the existing chain, n_burn_steps is ignored")
         if n_steps % n_thin != 0:
             logger.warning(
-                f"n_steps = {n_steps} is not a multiple of n_thin = {n_thin}, the "
-                "thinned samples are not equally spaced where the chain is continued"
+                f"n_steps = {n_steps} is not a multiple of n_thin = {n_thin}, so "
+                "the thinned samples will not be equally spaced if the chain is "
+                "continued"
             )
 
         if burn_in:
