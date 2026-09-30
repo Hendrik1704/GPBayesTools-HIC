@@ -4,18 +4,10 @@ Fast synthetic end-to-end tests for the sparse variational GP emulator.
 Tests are intentionally small-scale (N=300, M=30, steps=400) so the full
 suite finishes in a few minutes on CPU.
 
-Tests covered
--------------
-  T1  PCASparseGPEmulator smoke test — shapes and training_history keys
-  T2  Y_err increases predictive variance
-  T3  PCASparseGPEnsemble shapes, shared PCA basis, Y_err effect
-  T4  Variance decomposition identity  within + between members == full_cov
-  T5  predict_members consistency  mean(member means) == ensemble Y_pred
-  T6  OOD within-members uncertainty higher than in-domain
-  T7  Calibration: empirical 1σ / 2σ coverage within generous bounds
-  T8  API contract  return_var_decomposition=False returns 2-tuple
-  T9  Y_err shape mismatch raises ValueError
-  T10 EmulatorSparseGP high-level wrapper end-to-end (pickle format)
+The tests cover the single emulator (shapes, training history, effect of
+Y_err, calibration, option checks, NaN recovery, failed refits), the
+ensemble (shapes, shared PCA basis, equal-weight mixture of the members,
+out-of-domain uncertainty) and the EmulatorSparseGP wrapper end to end.
 
 Run with ``python -m pytest tests/test_emulator_sparse_gp.py``.
 """
@@ -61,7 +53,7 @@ def _true(X):
     )
 
 
-_Y_tr = _true(_X_tr) + 0.05 * jax.random.normal(_KEY, (_N, _P))
+_Y_tr = _true(_X_tr) + 0.05 * jax.random.normal(jax.random.fold_in(_KEY, 1), (_N, _P))
 # Heteroscedastic errors — larger near x=1
 _Y_err = 0.02 + 0.08 * jnp.abs(_X_tr[:, :1]) * jnp.ones((_N, _P))
 
@@ -155,9 +147,6 @@ def ensembles():
     )
 
 
-# =============================================================================
-# T1 — PCASparseGPEmulator smoke test
-# =============================================================================
 def test_single_emulator_smoke():
     em = PCASparseGPEmulator(n_pc=N_PC, M=M, key=_KEY)
     em.fit(_X_tr, _Y_tr, **_FIT_KW)
@@ -174,9 +163,6 @@ def test_single_emulator_smoke():
     )
 
 
-# =============================================================================
-# T2 — Y_err increases predictive variance
-# =============================================================================
 def test_y_err_increases_variance(em_pair):
     em_no, em_yes = em_pair
     _, cov_no = em_no.predict(_X_te, include_obs_noise=True)
@@ -190,13 +176,10 @@ def test_y_err_increases_variance(em_pair):
     )
     check(
         "trunc_cov_yn_ stored after fit",
-        hasattr(em_yes, "trunc_cov_yn_") and em_yes.trunc_cov_yn_ is not None,
+        em_yes.trunc_cov_yn_ is not None,
     )
 
 
-# =============================================================================
-# T3 — PCASparseGPEnsemble shapes, shared PCA basis, Y_err effect
-# =============================================================================
 def test_ensemble_shapes_and_shared_pca(ensembles):
     ens_yes = ensembles["ens_yes"]
     yp_yes, cov_yes, dec_yes = (
@@ -229,27 +212,20 @@ def test_ensemble_shapes_and_shared_pca(ensembles):
     )
 
 
-# =============================================================================
-# T4 — Variance decomposition identity
-# =============================================================================
 def test_variance_decomposition(ensembles):
-    cov_yes, dec_yes = ensembles["cov_yes"], ensembles["dec_yes"]
-    tot_diag = jnp.diagonal(cov_yes, axis1=1, axis2=2)
-    ale_diag = jnp.diagonal(dec_yes["within_members"], axis1=1, axis2=2)
-    epi_diag = jnp.diagonal(dec_yes["between_members"], axis1=1, axis2=2)
-    max_err = float(jnp.max(jnp.abs(tot_diag - (ale_diag + epi_diag))))
-    check(
-        "within + between members == full_cov diag (tol=1e-5)",
-        max_err < 1e-5,
-        f"max_abs_err={max_err:.2e}",
-    )
-    check("within_members diag ≥ 0", bool(jnp.all(ale_diag >= 0)))
-    check("between_members diag ≥ 0", bool(jnp.all(epi_diag >= 0)))
+    # the ensemble is the equal-weight mixture of its members
+    ens_yes, dec_yes = ensembles["ens_yes"], ensembles["dec_yes"]
+    member_preds = ens_yes.predict_members(_X_te, include_obs_noise=True)
+    means = np.stack([np.asarray(m) for m, _ in member_preds])  # (K, N, P)
+    covs = np.stack([np.asarray(c) for _, c in member_preds])  # (K, N, P, P)
+    residuals = means - means.mean(axis=0)
+    within = covs.mean(axis=0)
+    between = np.einsum("knp,knq->npq", residuals, residuals) / len(means)
+    np.testing.assert_allclose(dec_yes["within_members"], within, atol=1e-12)
+    np.testing.assert_allclose(dec_yes["between_members"], between, atol=1e-12)
+    np.testing.assert_allclose(ensembles["cov_yes"], within + between, atol=1e-12)
 
 
-# =============================================================================
-# T5 — predict_members consistency
-# =============================================================================
 def test_predict_members(ensembles):
     ens_yes, yp_yes = ensembles["ens_yes"], ensembles["yp_yes"]
     member_preds = ens_yes.predict_members(_X_te)
@@ -266,20 +242,17 @@ def test_predict_members(ensembles):
     )
 
 
-# =============================================================================
-# T6 — OOD within-members uncertainty higher than in-domain
-# =============================================================================
 def test_out_of_domain_uncertainty(ensembles):
     ens_yes = ensembles["ens_yes"]
     _, cov_id, dec_id = ens_yes.predict(_X_te, return_var_decomposition=True)
     _, cov_ood, dec_ood = ens_yes.predict(_X_ood, return_var_decomposition=True)
 
-    ale_id = float(jnp.diagonal(dec_id["within_members"], axis1=1, axis2=2).mean())
-    ale_ood = float(jnp.diagonal(dec_ood["within_members"], axis1=1, axis2=2).mean())
+    within_id = float(jnp.diagonal(dec_id["within_members"], axis1=1, axis2=2).mean())
+    within_ood = float(jnp.diagonal(dec_ood["within_members"], axis1=1, axis2=2).mean())
     check(
         "GP within-members uncertainty higher OOD than in-domain",
-        ale_ood > ale_id,
-        f"in-domain={ale_id:.4e}  OOD={ale_ood:.4e}",
+        within_ood > within_id,
+        f"in-domain={within_id:.4e}  OOD={within_ood:.4e}",
     )
 
     tot_id = float(jnp.diagonal(cov_id, axis1=1, axis2=2).mean())
@@ -291,9 +264,6 @@ def test_out_of_domain_uncertainty(ensembles):
     )
 
 
-# =============================================================================
-# T7 — Calibration: 1σ / 2σ empirical coverage
-# =============================================================================
 def test_calibration_coverage(em_pair):
     _, em_yes = em_pair
     X_cal = jax.random.uniform(jax.random.PRNGKey(55), (500, _D))
@@ -319,9 +289,6 @@ def test_calibration_coverage(em_pair):
     check("2σ coverage > 1σ coverage", cov_2s > cov_1s)
 
 
-# =============================================================================
-# T8 — API contract: return_var_decomposition=False returns 2-tuple
-# =============================================================================
 def test_predict_without_decomposition(ensembles):
     ens_yes, yp_yes = ensembles["ens_yes"], ensembles["yp_yes"]
     out = ens_yes.predict(_X_te, include_obs_noise=True, return_var_decomposition=False)
@@ -335,9 +302,6 @@ def test_predict_without_decomposition(ensembles):
     )
 
 
-# =============================================================================
-# T9 — Y_err shape mismatch raises ValueError
-# =============================================================================
 def test_y_err_shape_mismatch():
     bad_err = jnp.ones((_N, _P + 1))  # wrong last dimension
     em_bad = PCASparseGPEmulator(n_pc=N_PC, M=10, key=_KEY)
@@ -345,9 +309,6 @@ def test_y_err_shape_mismatch():
         em_bad.fit(_X_tr, _Y_tr, bad_err, **{**_FIT_KW, "verbose": False, "steps": 1})
 
 
-# =============================================================================
-# T10 — EmulatorSparseGP high-level wrapper (pickle format)
-# =============================================================================
 def test_wrapper(tmp_path):
     N_DESIGN = 60
     N_OBS = 6
@@ -408,8 +369,8 @@ def test_wrapper(tmp_path):
     n_test = 5
     test_par = rng.uniform(size=(n_test, N_PARAMS))
     pred_mean, pred_cov = emu.predict(test_par, return_cov=True)
-    check("predict Y_pred shape", pred_mean.shape == (n_test, N_OBS))
-    check("predict full_cov shape", pred_cov.shape == (n_test, N_OBS, N_OBS))
+    check("predict mean shape", pred_mean.shape == (n_test, N_OBS))
+    check("predict cov shape", pred_cov.shape == (n_test, N_OBS, N_OBS))
     check(
         "predict cov diag ≥ 0",
         bool(np.all(np.diagonal(pred_cov, axis1=1, axis2=2) >= 0)),
@@ -420,7 +381,10 @@ def test_wrapper(tmp_path):
     _, cov_all = emu.predict(test_par, include_noise=True, include_obs_noise=True)
     _, cov_off = emu.predict(test_par, include_obs_noise=False)
     check("include_obs_noise follows include_noise", np.allclose(cov_noise, cov_all))
-    check("include_obs_noise=False by default", np.allclose(pred_cov, cov_off))
+    check(
+        "include_obs_noise follows include_noise=False by default",
+        np.allclose(pred_cov, cov_off),
+    )
 
     # 4. test_emulator_errors
     emu_pred, emu_pred_err, vali_data, vali_data_err = emu.test_emulator_errors(
@@ -498,7 +462,7 @@ def test_nan_recovery_keeps_jitter_of_best_parameters(monkeypatch):
     em = PCASparseGPEmulator(n_pc=2, M=15, key=_KEY)
     history = em.fit(X, Y, steps=100, jitter_init=1e-5, verbose=False)
     monkeypatch.undo()
-    assert history["best_step"] < 96
+    assert history["best_step"] is not None and history["best_step"] < 96
     assert history["jitter_final"] > 1e-5
     assert em.jitter_ == history["jitter"] == 1e-5
 
