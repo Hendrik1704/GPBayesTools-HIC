@@ -139,11 +139,11 @@ def test_exp_data_checks(files, tmp_path):
         )
 
     ok = np.ones(4)
-    for values, errors in ((np.array([1, np.nan, 1, 1]), ok), (ok, ok * np.inf)):
+    nan = np.array([1, np.nan, 1, 1])
+    for values, errors in ((nan, ok), (ok, ok * np.inf), (ok, 0.1 * nan)):
         with pytest.raises(ValueError):
             analysis_with(values, errors)
-    # NaN errors are set to 0
-    analysis = analysis_with(2 * ok, np.array([0.1, np.nan, 0.1, 0.1]))
+    analysis = analysis_with(2 * ok, np.array([0.1, 0, 0.1, 0.1]))
     np.testing.assert_array_equal(analysis.exp_data, 2 * ok[np.newaxis])
     np.testing.assert_allclose(np.diag(analysis.exp_data_cov), [0.01, 0, 0.01, 0.01])
 

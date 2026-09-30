@@ -463,9 +463,9 @@ class BayesianAnalysis:
         The pickle file must contain a dictionary with exactly one entry,
         whose ``"obs"`` array holds the values in the first and the errors in
         the second row. The covariance matrix is diagonal with the squared
-        errors (NaN errors are set to 0 with a warning). Returns the data of
-        shape (1, n_obs) and the covariance of shape (n_obs, n_obs). Raises a
-        ValueError for non-finite values or infinite errors.
+        errors. Returns the data of shape (1, n_obs) and the covariance of
+        shape (n_obs, n_obs). Raises a ValueError for non-finite values or
+        errors.
         """
         with open(filepath, "rb") as fp:
             data_dict = pickle.load(fp)
@@ -481,14 +481,10 @@ class BayesianAnalysis:
         exp_errors = np.abs(exp_errors)
         if not np.all(np.isfinite(exp_values)):
             raise ValueError(f"The experimental data in {filepath} are not finite")
-        if np.any(np.isinf(exp_errors)):
+        if not np.all(np.isfinite(exp_errors)):
             raise ValueError(
-                f"The experimental data in {filepath} have infinite errors"
+                f"The experimental data in {filepath} have non-finite errors"
             )
-        n_nan = int(np.sum(np.isnan(exp_errors)))
-        if n_nan > 0:
-            logger.warning(f"Setting {n_nan} NaN errors of the experimental data to 0")
-            exp_errors = np.nan_to_num(exp_errors)
         logger.info(
             f"Loaded {len(exp_values)} experimental data points from {filepath}"
         )
