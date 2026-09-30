@@ -19,6 +19,7 @@ References
    Uncertainty Estimation using Deep Ensembles".
 """
 
+import functools
 import logging
 
 import jax
@@ -31,7 +32,7 @@ import optax
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 
-from .emulator_base import number_of_pcs, truncation_signal
+from .emulator_base import check_npc, number_of_pcs, truncation_signal
 
 _INIT_STRATEGIES = ("maxmin", "kmeans", "kmeans_pp", "random", "sobol")
 
@@ -42,6 +43,53 @@ _SUBKEY_IDS = {"init": 0, "numpy": 1, "train": 2, "bootstrap": 3}
 def _subkey(key, purpose):
     """Independent subkey of `key` for `purpose` (see `_SUBKEY_IDS`)."""
     return jax.random.fold_in(key, _SUBKEY_IDS[purpose])
+
+
+def _restore_state_on_error(fit):
+    """
+    Restore the attributes of the object if the decorated `fit` fails, so
+    that a failed refit keeps the previously trained state.
+    """
+
+    @functools.wraps(fit)
+    def wrapper(self, *args, **kwargs):
+        state = self.__dict__.copy()
+        try:
+            return fit(self, *args, **kwargs)
+        except BaseException:
+            self.__dict__.clear()
+            self.__dict__.update(state)
+            raise
+
+    return wrapper
+
+
+def _check_y_err(Y_err, Y):
+    """
+    Check the shape of the observation errors `Y_err` of the outputs `Y`,
+    (N, P) standard deviations or (N, P, P) covariance matrices.
+    """
+    N, P = np.shape(Y)
+    Y_err = np.asarray(Y_err, dtype=float)
+    if Y_err.ndim == 2:
+        if Y_err.shape != (N, P):
+            raise ValueError(
+                f"Y_err shape {Y_err.shape} must match Y shape {(N, P)} for the "
+                "(N, P) diagonal-error format."
+            )
+    elif Y_err.ndim == 3:
+        if Y_err.shape != (N, P, P):
+            raise ValueError(
+                f"Y_err shape {Y_err.shape} expected {(N, P, P)} for the (N, P, P) "
+                "full-covariance format."
+            )
+        if np.any(np.diagonal(Y_err, axis1=1, axis2=2) < 0):
+            raise ValueError(
+                "Y_err contains covariance matrices with negative diagonal "
+                "entries. Check your input."
+            )
+    else:
+        raise ValueError(f"Y_err must be shape (N, P) or (N, P, P); got {Y_err.shape}.")
 
 
 def _fit_pca(Yn, n_pc):
@@ -371,6 +419,7 @@ class PCASparseGPEmulator:
     # -------------------------
     # Fit
     # -------------------------
+    @_restore_state_on_error
     def fit(
         self,
         X,
@@ -525,9 +574,11 @@ class PCASparseGPEmulator:
         ValueError
             If Y_err has an invalid shape or negative diagonal covariance
             entries, if M exceeds the number of training points, if
-            init_strategy is unknown, or if lr_backoff_factor,
-            max_lr_backoff_retries, nan_patience, ema_alpha, jitter_init or
-            print_every are out of range.
+            init_strategy is unknown, or if n_pc, steps, batch_size,
+            lr_backoff_factor, max_lr_backoff_retries, nan_patience,
+            ema_alpha, jitter_init or print_every are out of range. The
+            attributes of the emulator are restored if fit() fails, so that a
+            failed refit keeps the previously trained emulator.
         RuntimeError
             If the Cholesky decomposition of Kzz fails at jitter_max at
             startup, or if the loss stays NaN after all jitter increases and
@@ -550,6 +601,13 @@ class PCASparseGPEmulator:
             )
         if print_every < 1:
             raise ValueError(f"print_every must be >= 1, got {print_every}")
+        if steps < 1:
+            raise ValueError(f"steps must be >= 1, got {steps}")
+        if batch_size is not None and batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1 or None, got {batch_size}")
+        check_npc(self.n_pc)
+        if Y_err is not None:
+            _check_y_err(Y_err, Y)
         if self.init_strategy not in _INIT_STRATEGIES:
             raise ValueError(
                 f"Unknown init_strategy {self.init_strategy!r}, use one of "
@@ -637,11 +695,6 @@ class PCASparseGPEmulator:
         if Y_err is not None:
             _yerr = np.asarray(Y_err, dtype=float)
             if _yerr.ndim == 2:
-                if _yerr.shape != np.array(Y).shape:
-                    raise ValueError(
-                        f"Y_err shape {_yerr.shape} must match Y shape "
-                        f"{np.array(Y).shape} for the (N, P) diagonal-error format."
-                    )
                 _yerr_max = np.sqrt(max_obs_var) * _Ys_np
                 n_capped = int(np.sum(_yerr > _yerr_max[None, :]))
                 if n_capped > 0:
@@ -659,19 +712,8 @@ class PCASparseGPEmulator:
                     "RMS of Y_err: "
                     f"{float(np.sqrt(np.mean(_yerr**2))):.4g} (original Y units)"
                 )
-            elif _yerr.ndim == 3:
-                _P = np.array(Y).shape[1]
-                if _yerr.shape != (N_full, _P, _P):
-                    raise ValueError(
-                        f"Y_err shape {_yerr.shape} expected ({N_full}, {_P}, {_P}) "
-                        f"for the (N, P, P) full-covariance format."
-                    )
-                _diags = np.array([np.diag(c) for c in _yerr])
-                if np.any(_diags < 0):
-                    raise ValueError(
-                        "Y_err contains covariance matrices with negative diagonal "
-                        "entries. Check your input."
-                    )
+            else:
+                # (N, P, P) covariance matrices, checked by _check_y_err
                 obs_var_full = jnp.array(
                     np.clip(
                         np.einsum("ij,njk,ik->ni", _W_scaled, _yerr, _W_scaled),
@@ -685,10 +727,6 @@ class PCASparseGPEmulator:
                 _evals, _evecs = np.linalg.eigh(_mean_obs_cov_pc)
                 _mean_obs_cov_pc = _evecs @ (
                     np.maximum(_evals, 0.0)[:, None] * _evecs.T
-                )
-            else:
-                raise ValueError(
-                    f"Y_err must be shape (N, P) or (N, P, P); got {_yerr.shape}."
                 )
             self.mean_obs_cov_pc_ = jnp.array(_mean_obs_cov_pc)
         else:
@@ -905,7 +943,6 @@ class PCASparseGPEmulator:
                     f"parameters with {jitter_str}"
                 )
                 jitter = new_jitter
-                self.jitter_ = jitter
                 # restart from the best parameters with a finite ELBO, or
                 # from the initial parameters if there are none yet
                 restart_params = best_params if best_params is not None else p_init
@@ -1396,6 +1433,7 @@ class PCASparseGPEnsemble:
         self.members_ = []
         self.training_histories_ = []
 
+    @_restore_state_on_error
     def fit(self, X, Y, Y_err=None, verbose=True, verbose_members=False, **fit_kwargs):
         """
         Train all ensemble members.
@@ -1417,14 +1455,25 @@ class PCASparseGPEnsemble:
             Log the training output of the individual members (default
             False).
         **fit_kwargs
-            Forwarded verbatim to PCASparseGPEmulator.fit() (steps,
-            batch_size, kernel_lr, early_stopping, ...).
+            Forwarded to PCASparseGPEmulator.fit() (steps, batch_size,
+            kernel_lr, early_stopping, ...); its verbose argument is set by
+            `verbose_members`.
 
         Returns
         -------
         PCASparseGPEnsemble
             The fitted ensemble (self).
+
+        Raises
+        ------
+        ValueError
+            If n_pc or Y_err is invalid, or for the errors of
+            PCASparseGPEmulator.fit(). The attributes of the ensemble are
+            restored if fit() fails.
         """
+        check_npc(self.n_pc)
+        if Y_err is not None:
+            _check_y_err(Y_err, Y)
         self.members_ = []
         self.training_histories_ = []
         keys = jax.random.split(self.base_key, self.n_ensemble)

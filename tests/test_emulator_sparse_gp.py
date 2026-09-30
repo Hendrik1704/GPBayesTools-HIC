@@ -447,6 +447,31 @@ def test_npc_and_option_checks():
     assert em.pca_ is pca
 
 
+def test_failed_refit_keeps_trained_state():
+    rng = np.random.default_rng(0)
+    X = rng.uniform(size=(40, 3))
+    Y = np.column_stack([np.sin(3 * X[:, 0]) + k * X[:, 1] for k in range(4)])
+    em = PCASparseGPEmulator(n_pc=2, M=10, key=_KEY)
+    em.fit(X, Y, steps=20, verbose=False)
+    mean, cov = em.predict(X[:3])
+    em.n_pc = 4
+    for kwargs in (dict(Y_err=np.ones((5, 4))), dict(steps=0), dict(batch_size=0)):
+        with pytest.raises(ValueError):
+            em.fit(X, Y, verbose=False, **{"steps": 20, **kwargs})
+        assert em.n_pc_ == 2
+        np.testing.assert_array_equal(em.predict(X[:3])[1], cov)
+    em.n_pc = 0
+    with pytest.raises(ValueError):
+        em.fit(X, Y, steps=20, verbose=False)
+
+    ens = PCASparseGPEnsemble(n_ensemble=2, n_pc=2, M=10, base_key=_KEY)
+    ens.fit(X, Y, steps=20, verbose=False)
+    ens.init_strategy = "grid"
+    with pytest.raises(ValueError):
+        ens.fit(X, Y, steps=20, verbose=False)
+    assert len(ens.members_) == 2
+
+
 def test_nan_recovery_keeps_jitter_of_best_parameters(monkeypatch):
     # force non-finite ELBOs in the last steps: the jitter is increased, but
     # the returned best parameters were trained with the initial jitter

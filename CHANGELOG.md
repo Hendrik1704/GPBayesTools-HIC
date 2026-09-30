@@ -101,6 +101,7 @@ Bug fixes:
 - The emulators check that the mask of `train_emulator` is a boolean array of shape (nev,). An integer array of 0 and 1 was used as indices of the training points by `EmulatorSklearn`, `EmulatorBAND` and `EmulatorSparseGP`. `EmulatorBAND.predict` accepts a single point as a 1D array or a list.
 - For the PCSK emulator of `EmulatorBAND`, `include_noise=True` includes the noise of the simulations, the mean variance of the statistical errors of the training data. PCSK models the noise with these errors, which surmise does not include in the predictive variance, so the uncertainty of new noisy simulations (and the errors of the validation functions) was underestimated by a large factor.
 - The relative-error filter of the training data (`max_rel_uncertainty_data`) ignores NaN errors, which are set to 0, instead of comparing with NaN.
+- A failed `fit` of `PCASparseGPEmulator` or `PCASparseGPEnsemble` restores the previous state. Before, a refit that failed, e.g. because of an invalid `Y_err` or a NaN loss, left a partly updated emulator, which could predict wrong values without an error (e.g. a PCA with more components than trained GPs, or the untrained initial parameters). `n_pc`, `steps`, `batch_size` and the shape of `Y_err` are checked before the fit.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
