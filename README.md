@@ -89,8 +89,8 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 Use `pip install -e ".[dev]"` for an editable installation with the dependencies for the tests
 and the code formatting, and `pip install ".[examples]"` for the notebooks in `examples/`. The modules are then imported from `gpbayestools`, e.g.
 `from gpbayestools.emulator_band import EmulatorBAND`.
-Emulators saved with versions < 3.0.0, in which the package was called `src`, can be loaded
-with `gpbayestools.load_emulator`.
+Emulators and chains saved with versions < 3.0.0 cannot be loaded; retrain the emulators with
+the current version.
 
 ## Logging
 

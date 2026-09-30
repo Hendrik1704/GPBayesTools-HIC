@@ -659,11 +659,15 @@ class BayesianAnalysis:
                         chain_data["chain"].shape[0], n_walkers
                     )
                 )
-            # chains saved with older versions do not contain the thinning
-            n_thin_chain = chain_data.get("n_thin")
+            if "n_thin" not in chain_data or "last_position" not in chain_data:
+                raise ValueError(
+                    f"The chain in {chain_file} was created with a version < 3.0.0 "
+                    "and cannot be continued, use a different mcmc_path"
+                )
+            n_thin_chain = chain_data["n_thin"]
             if n_thin is None:
-                n_thin = 10 if n_thin_chain is None else n_thin_chain
-            elif n_thin_chain is not None and n_thin != n_thin_chain:
+                n_thin = n_thin_chain
+            elif n_thin != n_thin_chain:
                 raise ValueError(
                     f"The existing chain was thinned with n_thin = {n_thin_chain}, "
                     f"but n_thin = {n_thin}"
@@ -743,11 +747,8 @@ class BayesianAnalysis:
             sampler.reset()
             logger.info("Burn-in finished, starting the production run ...")
         else:
-            # the last walker positions of the previous run, or for chains
-            # saved with older versions, the last thinned sample
-            initial_state = chain_data.get(
-                "last_position", chain_data["chain"][:, -1, :]
-            )
+            # the last walker positions of the previous run
+            initial_state = chain_data["last_position"]
 
         state = sampler.run_mcmc(
             initial_state,

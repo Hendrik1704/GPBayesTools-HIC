@@ -63,13 +63,6 @@ class EmulatorBAND(EmulatorBase):
 
     _METHODS = ("PCGP", "PCSK", "PCGPwImpute", "PCGPwM")
 
-    _legacy_attributes = [("method_", "method"), ("rng_", None), ("emu", "emu_")]
-    _legacy_defaults = {
-        "seed": None,
-        # computed from all training data, the training mask is not stored
-        "_sim_noise_var": lambda state: np.mean(state["model_data_err"] ** 2, axis=0),
-    }
-
     def __init__(
         self,
         training_set_path,

@@ -185,49 +185,6 @@ class EmulatorBase:
                 f"parameter file {parameter_file} has {len(self.pardict)}"
             )
 
-    # attributes of the emulators saved with versions < 3.0.0 and their
-    # current names (None for removed attributes), in the order in which they
-    # are renamed, and default values of attributes that did not exist in
-    # these versions (in addition to _base_legacy_defaults)
-    _legacy_attributes = []
-    _legacy_defaults = {}
-    # exp_and_cov_diagonal did not exist before version 1.2.0
-    _base_legacy_defaults = {"exp_and_cov_diagonal": False}
-
-    def __setstate__(self, state):
-        """Restore the state after unpickling, renaming legacy attributes."""
-        self.__dict__.update(self._migrate_legacy_state(state))
-
-    @classmethod
-    def _migrate_legacy_state(cls, state):
-        """Rename the attributes of emulators saved with versions < 3.0.0."""
-        if "logTrafo_" not in state:
-            return state
-        if state.get("parameterTrafoPCA_", False):
-            raise ValueError(
-                "The emulator was trained with parameterTrafoPCA=True, which was "
-                "removed in version 3.0.0. Use version v2.0.1 to load it."
-            )
-        state = dict(state)
-        renames = [
-            ("logTrafo_", "log_trafo"),
-            ("max_rel_uncertainty_data_", "max_rel_uncertainty_data"),
-            ("exp_and_cov_diagonal_", "exp_and_cov_diagonal"),
-            ("nev", "n_ev"),
-            ("nobs", "n_obs"),
-            ("nparameters", "n_parameters"),
-        ] + cls._legacy_attributes
-        for old, new in renames:
-            if new is None:
-                state.pop(old, None)
-            elif old in state and new not in state:
-                state[new] = state.pop(old)
-        defaults = {**cls._base_legacy_defaults, **cls._legacy_defaults}
-        for name, default in defaults.items():
-            if name not in state:
-                state[name] = default(state) if callable(default) else default
-        return state
-
     # -------------------------
     # Training data
     # -------------------------

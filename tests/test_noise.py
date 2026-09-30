@@ -168,39 +168,3 @@ def test_sample_y_log_normal(noisy_training_file, param_file, test_points):
     mean = emu.predict(test_points)[0]
     np.testing.assert_allclose(np.median(samples, axis=1), mean, rtol=0.01)
     assert emu.exp_and_cov_diagonal
-
-
-def test_legacy_attribute_names(trained, test_points):
-    # emulators saved with versions < 3.0.0 have other attribute names, which
-    # are renamed when they are loaded; only the emulators of the published
-    # analyses (EmulatorSklearn and EmulatorBAND) can be loaded
-    name, emu, _ = trained
-    if name not in ("EmulatorSklearn", "PCGP", "PCSK"):
-        pytest.skip("old versions can only be loaded for EmulatorSklearn and BAND")
-    state = emu.__getstate__() if hasattr(type(emu), "__getstate__") else None
-    state = dict(state if state is not None else emu.__dict__)
-    renames = [
-        ("logTrafo_", "log_trafo"),
-        ("max_rel_uncertainty_data_", "max_rel_uncertainty_data"),
-        ("exp_and_cov_diagonal_", "exp_and_cov_diagonal"),
-        ("nev", "n_ev"),
-        ("nobs", "n_obs"),
-        ("nparameters", "n_parameters"),
-    ] + type(emu)._legacy_attributes
-    for old, new in reversed(renames):
-        if new in state:
-            state[old] = state.pop(new)
-    # attributes that did not exist in the old versions get default values
-    for name in type(emu)._legacy_defaults:
-        state.pop(name, None)
-    legacy = type(emu).__new__(type(emu))
-    legacy.__setstate__(state)
-    assert "logTrafo_" not in legacy.__dict__
-    # the old emulators have no truncation covariance without the noise
-    # (default: the full one), which is only used with include_noise=False
-    for a, b in zip(
-        legacy.predict(test_points, include_noise=True),
-        emu.predict(test_points, include_noise=True),
-        strict=True,
-    ):
-        np.testing.assert_array_equal(a, b)

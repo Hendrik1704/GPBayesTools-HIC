@@ -306,42 +306,6 @@ def test_invalid_parameter_file(tmp_path, line):
         parse_model_parameter_file(path)
 
 
-def test_load_emulator_saved_with_old_package_name(emulator, test_points, tmp_path):
-    # emulators saved with versions < 3.0.0 refer to the class
-    # src.emulator.Emulator; with pickle protocol 2 the reference is stored
-    # as plain text and can be replaced to create such a file
-    import dill
-
-    from gpbayestools import load_emulator
-
-    data = dill.dumps(emulator, protocol=2)
-    new_ref = b"cgpbayestools.emulator_sklearn\nEmulatorSklearn\n"
-    assert new_ref in data
-    path = tmp_path / "old_emulator.dill"
-    path.write_bytes(data.replace(new_ref, b"csrc.emulator\nEmulator\n"))
-    with pytest.raises(ModuleNotFoundError):
-        with open(path, "rb") as f:
-            dill.load(f)
-    loaded = load_emulator(path)
-    assert type(loaded) is type(emulator)
-    for a, b in zip(
-        loaded.predict(test_points), emulator.predict(test_points), strict=True
-    ):
-        np.testing.assert_array_equal(a, b)
-
-
-def test_old_emulator_with_parameter_pca_raises():
-    # the parameterTrafoPCA option of versions < 3.0.0 was removed
-    state = {"logTrafo_": False, "parameterTrafoPCA_": True}
-    with pytest.raises(ValueError, match="parameterTrafoPCA"):
-        EmulatorSklearn._migrate_legacy_state(state)
-    state["parameterTrafoPCA_"] = False
-    migrated = EmulatorSklearn._migrate_legacy_state(state)
-    assert migrated["log_trafo"] is False
-    # exp_and_cov_diagonal did not exist before version 1.2.0
-    assert migrated["exp_and_cov_diagonal"] is False
-
-
 def test_non_finite_errors_are_set_to_zero(modified_data, param_file):
     def modify(values, errors):
         errors[3, 2] = np.nan

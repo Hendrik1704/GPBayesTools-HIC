@@ -82,25 +82,6 @@ class EmulatorSklearn(EmulatorBase):
         If `npc` is neither an int nor a float.
     """
 
-    _legacy_attributes = [
-        ("npc", "npc_"),
-        ("npc_requested_", "npc"),
-        ("nrestarts", "n_restarts"),
-        ("perform_no_PCA_", "perform_no_pca"),
-        ("seed_", "seed"),
-        ("alpha_", "alpha"),
-        ("scaler", "scaler_"),
-        ("pca", "pca_"),
-        ("gps", "gps_"),
-    ]
-    _legacy_defaults = {
-        "npc": lambda state: state.get("npc_"),
-        "perform_no_pca": False,
-        "seed": None,
-        "alpha": 0.1,
-        "_cov_trunc_signal": lambda state: state.get("_cov_trunc"),
-    }
-
     def __init__(
         self,
         training_set_path,
