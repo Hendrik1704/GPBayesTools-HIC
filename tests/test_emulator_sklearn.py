@@ -117,8 +117,8 @@ def test_sample_y(emulator, test_points):
     std = np.sqrt(np.diagonal(cov, axis1=1, axis2=2))
     # sample mean within 5 standard errors of the predicted mean
     assert np.all(np.abs(samples.mean(axis=1) - mean) < 5 * std / np.sqrt(4000))
-    # sample variance within 15% of the predicted variance (the prediction
-    # contains a small additional term for numerical stability)
+    # sample variance within 15% of the predicted variance (statistical
+    # fluctuations of the 4000 samples)
     np.testing.assert_allclose(samples.var(axis=1), std**2, rtol=0.15)
 
 

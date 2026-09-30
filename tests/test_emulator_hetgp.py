@@ -1,8 +1,8 @@
 """
-Synthetic end-to-end tests for the hetGPy emulator.
+Synthetic end-to-end tests for the hetGP emulator (EmulatorHetGP).
 
 A Latin-Hypercube design in 3 parameters is evaluated with a known
-analytical model (sum-of-sines + polynomial) that produces 20 observables
+analytical model (sine, cosine and product terms) that produces 20 observables
 per design point, with small Gaussian noise to mimic statistical errors.
 The emulator is trained on these data and tested for
 
@@ -20,6 +20,7 @@ import sys
 import dill
 import numpy as np
 import pytest
+from conftest import latin_hypercube
 
 from gpbayestools.emulator_hetgp import EmulatorHetGP
 
@@ -65,16 +66,6 @@ def true_model(params, n_obs=N_OBS):
     # Shift so all values are strictly positive (needed for log_trafo)
     values += 3.0
     return values
-
-
-# ── 1.  Generate a Latin-Hypercube design ────────────────────────────
-def latin_hypercube(n_samples, n_dim, rng):
-    """Simple random LHD in [0, 1]^n_dim."""
-    result = np.zeros((n_samples, n_dim))
-    for d in range(n_dim):
-        perm = rng.permutation(n_samples)
-        result[:, d] = (perm + rng.uniform(size=n_samples)) / n_samples
-    return result
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
@@ -168,10 +159,11 @@ def test_covariance_includes_truncation(emulator, test_params):
         _, pred_cov = emulator.predict(test_params, include_noise=include_noise)
         for cov in pred_cov:
             np.testing.assert_allclose(cov, cov.T)
-            # the truncation covariance is positive semi-definite, so it can
-            # only increase the predicted variances
-            assert np.all(np.diag(cov) >= np.diag(trunc) - 1e-12)
             assert np.linalg.eigvalsh(cov).min() > -1e-10 * np.abs(cov).max()
+            # without the truncation covariance, the covariance of the npc
+            # emulated PCs has rank npc
+            eigvals = np.linalg.eigvalsh(cov - trunc)
+            assert np.all(np.abs(eigvals[: -emulator.npc_]) < 1e-8 * eigvals[-1])
 
 
 def test_validation(data_files):
