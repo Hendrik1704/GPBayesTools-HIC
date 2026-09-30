@@ -320,8 +320,8 @@ def sampler(
     return sampler_info
 
 
-# This function is taken from the surmise package (version 1.0.0) and
-# modified to skip swaps between chains with the same temperature
+# This function is taken from the surmise package (version 1.0.0), with the
+# random number generator passed as an argument
 def temp_exchange(lpostf, temps, iters=1, rng=None):
     """
     Propose swaps of the chains between neighboring temperatures.
@@ -338,12 +338,12 @@ def temp_exchange(lpostf, temps, iters=1, rng=None):
         # choose random values to check for swapping
         rtv = rng.choice(range(1, lpostf.shape[0]), lpostf.shape[0])
         for rt in rtv:
+            # chains with the same temperature (e.g. the temperature-1
+            # chains) are always swapped. This mixes the states of all
+            # temperature-1 chains with the one next to the tempered chains,
+            # so that all of them can reach the other modes of the posterior
+            # (the saved walker traces are therefore not continuous).
             rhoh = 1 / temps[rt - 1] - 1 / temps[rt]
-            if rhoh == 0:
-                # chains with the same temperature (e.g. the temperature-1
-                # chains) would always be swapped, which only mixes up the
-                # walkers without changing the sampled distribution
-                continue
             if (lpostf[order[rt]] - lpostf[order[rt - 1]]) * rhoh > np.log(
                 rng.uniform()
             ):  # swap via the PT rule

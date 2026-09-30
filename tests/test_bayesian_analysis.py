@@ -202,6 +202,34 @@ def test_ptlmc(analysis):
     np.testing.assert_array_equal(first, analysis.chain)
 
 
+def test_ptlmc_chains_visit_all_modes():
+    # bimodal posterior: every temperature-1 chain must reach both modes,
+    # which requires the swaps between the temperature-1 chains
+    from gpbayestools import ptlmc
+
+    def log_post(X):
+        X = np.atleast_2d(X)
+        a = -0.5 * np.sum((X - 0.2) ** 2, axis=1) / 0.04**2
+        b = -0.5 * np.sum((X - 0.8) ** 2, axis=1) / 0.04**2
+        return np.logaddexp(a, b)
+
+    rng = np.random.default_rng(0)
+    result = ptlmc.sampler(
+        log_post,
+        lambda n: rng.uniform(0, 1, (n, 2)),
+        rng,
+        2,
+        numtemps=6,
+        numchain=8,
+        sampperchain=500,
+        maxtemp=1000,
+        nstartparameters=200,
+    )
+    in_second_mode = result["theta"][:, :, 0] > 0.5
+    fraction = in_second_mode.mean(axis=1)
+    assert np.all((fraction > 0.2) & (fraction < 0.8))
+
+
 def test_pocomc_and_log_likelihood_of_chain(analysis):
     analysis.run_pocomc(
         n_effective=512,

@@ -74,7 +74,6 @@ Bug fixes:
 - `generate_posterior_clusters.py` no longer overwrites its input file when the chain file name does not contain `.pkl`.
 - Unpickling or copying an untrained `EmulatorHetGP` no longer trains it.
 - The PTLMC sampler is updated from the surmise 0.2.1 code to surmise 1.0.0, keeping the modifications of this package. This fixes NaN perturbations of the starting points when the inverse Hessian of the optimizer is not positive definite, and the random numbers are drawn from a generator seeded with `seed`, without changing numpy's global random state.
-- PTLMC no longer swaps chains with the same temperature, which shuffled the temperature-1 walkers in every iteration, so that the saved walker traces are continuous. The sampled distribution is unchanged.
 - A continued emcee chain starts from the last walker positions of the previous run (saved as `last_position` in the chain file) instead of the last thinned sample.
 - Refitting a `PCASparseGPEmulator` uses the requested number or fraction of PCs again instead of the number found in the previous fit.
 - Importing the package no longer creates a `./cache` directory; it is only created for the Latin-hypercube designs.
