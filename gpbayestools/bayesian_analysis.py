@@ -9,7 +9,9 @@ The `BayesianAnalysis` class provides the following samplers:
 """
 
 import logging
+import os
 import pickle
+import tempfile
 from pathlib import Path
 
 import emcee
@@ -81,6 +83,22 @@ def mvn_loglike(y, cov):
         )
 
     return -0.5 * np.dot(y, alpha) - np.log(L.diagonal()).sum()
+
+
+def _write_pickle(path, data):
+    """
+    Write `data` to the pickle file `path` via a temporary file, so that an
+    interrupted write does not destroy an existing file.
+    """
+    path = Path(path)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            pickle.dump(data, f)
+        os.replace(tmp_path, path)
+    except BaseException:
+        os.remove(tmp_path)
+        raise
 
 
 class LoggingEnsembleSampler(emcee.EnsembleSampler):
@@ -760,8 +778,7 @@ class BayesianAnalysis:
             f"Writing the chain with {self.chain.shape[1]} samples per walker to "
             f"{chain_file}"
         )
-        with open(chain_file, "wb") as file:
-            pickle.dump(chain_data, file)
+        _write_pickle(chain_file, chain_data)
 
     def run_ptlmc(
         self,
@@ -832,8 +849,7 @@ class BayesianAnalysis:
         # Write the chain to file (n_walkers, n_steps, self.ndim)
         chain_data["chain"] = self.chain
         logger.info(f"Writing the PTLMC chains to {self.chain_path('ptlmc')}")
-        with open(self.chain_path("ptlmc"), "wb") as file:
-            pickle.dump(chain_data, file)
+        _write_pickle(self.chain_path("ptlmc"), chain_data)
 
     def compute_log_likelihood_for_chain(self, sampler=None, output_path=None):
         """
@@ -895,8 +911,7 @@ class BayesianAnalysis:
         # Write the log_likelihood to file
         logger.info(f"Writing the log-likelihood of the chain to {output_path}")
         likelihood_data = {"log_likelihood": likelihood}
-        with open(output_path, "wb") as file:
-            pickle.dump(likelihood_data, file)
+        _write_pickle(output_path, likelihood_data)
 
     def run_pocomc(
         self,
@@ -1050,5 +1065,4 @@ class BayesianAnalysis:
             "logz_err": logz_err,
         }
         logger.info(f"Writing the pocoMC samples to {self.chain_path('pocomc')}")
-        with open(self.chain_path("pocomc"), "wb") as file:
-            pickle.dump(chain_data, file)
+        _write_pickle(self.chain_path("pocomc"), chain_data)
