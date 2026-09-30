@@ -174,7 +174,10 @@ def test_emcee_seed(files):
             parameter_file=files["par"],
         )
         c.load_emulators(files["emus"])
+        state = np.random.get_state()
         c.run_emcee(n_steps=50, n_burn_steps=20, n_walkers=8, n_thin=1, seed=3)
+        # the global random state is not changed by the seed
+        np.testing.assert_array_equal(np.random.get_state()[1], state[1])
         chains.append(c.chain)
     np.testing.assert_array_equal(*chains)
 

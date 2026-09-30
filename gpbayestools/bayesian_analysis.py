@@ -606,8 +606,10 @@ class BayesianAnalysis:
             Passed to emcee. If True, do not check that the initial walker
             positions are linearly independent.
         seed : int or None, default=None
-            If given, numpy's global random number generator is seeded with it
-            before the run, which makes the chain reproducible.
+            Seed of the random numbers of the initial positions and of emcee,
+            which makes the chain reproducible. The state of numpy's global
+            random number generator, which emcee copies, is restored
+            afterwards. If None, the global random number generator is used.
 
         Raises
         ------
@@ -623,10 +625,6 @@ class BayesianAnalysis:
             raise ValueError(f"n_steps must be >= 1, got {n_steps}")
         if n_thin is not None and n_thin < 1:
             raise ValueError(f"n_thin must be >= 1, got {n_thin}")
-        if seed is not None:
-            # emcee initializes its random number generator from numpy's
-            # global state
-            np.random.seed(seed)
         chain_file = self.chain_path("emcee")
         chain_data = {}
         try:
@@ -696,6 +694,11 @@ class BayesianAnalysis:
                 f"Continuing the emcee chain in {chain_file} with {n_walkers} "
                 f"walkers for {n_steps} steps ..."
             )
+        if seed is not None:
+            # emcee initializes its random number generator from numpy's
+            # global state, which is restored after the sampler is created
+            global_random_state = np.random.get_state()
+            np.random.seed(seed)
         if burn_in:
             # drawn before the sampler is created, which copies the state of
             # numpy's global random number generator
@@ -703,6 +706,8 @@ class BayesianAnalysis:
         sampler = LoggingEnsembleSampler(
             n_walkers, self.ndim, self.log_posterior, vectorize=True
         )
+        if seed is not None:
+            np.random.set_state(global_random_state)
 
         if burn_in:
             logger.info("Starting the burn-in from random positions ...")
