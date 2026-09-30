@@ -104,6 +104,7 @@ Bug fixes:
 - A failed `fit` of `PCASparseGPEmulator` or `PCASparseGPEnsemble` restores the previous state. Before, a refit that failed, e.g. because of an invalid `Y_err` or a NaN loss, left a partly updated emulator, which could predict wrong values without an error (e.g. a PCA with more components than trained GPs, or the untrained initial parameters). `n_pc`, `steps`, `batch_size` and the shape of `Y_err` are checked before the fit.
 - In `PCASparseGPEmulator.predict`, the observation noise of the training data in the discarded PCA directions (truncation covariance) is included with `include_obs_noise`, like the noise in the retained directions, instead of with `include_noise`, which only controls the fitted nugget. `EmulatorSparseGP` is not affected, since `include_obs_noise` follows `include_noise` by default. The mean and covariance are always numpy arrays.
 - The chain files and the log-likelihood file of `BayesianAnalysis` are written via a temporary file, so that an interrupted write does not destroy an existing emcee chain, which contains all previous runs.
+- `run_pocomc(pool=1)` runs without a pool like `pool=None` instead of failing in pocoMC.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.

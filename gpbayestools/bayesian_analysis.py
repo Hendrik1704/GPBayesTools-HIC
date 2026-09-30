@@ -946,7 +946,8 @@ class BayesianAnalysis:
         n_effective : int, default=1000
             Effective sample size maintained during the run.
         n_active : int, default=250
-            Number of active particles. It must be smaller than `n_effective`.
+            Number of active particles. It should be smaller than
+            `n_effective`.
         n_prior : int, default=2000
             Number of prior samples to draw (pocoMC's own default is
             ``2*(n_effective//n_active)*n_active``).
@@ -979,7 +980,8 @@ class BayesianAnalysis:
             Parallelization of the likelihood evaluations. If None, the
             likelihood is evaluated for all particles at once (vectorized). If
             `pool` is an integer greater than 1, a ``multiprocess`` pool with
-            this number of processes is created and closed after the run; a
+            this number of processes is created and closed after the run (1
+            is the same as None); a
             pool object with a ``map`` method (e.g. of mpi4py) is used
             directly. With a pool, the likelihood is evaluated point by point
             in the processes of the pool.
@@ -1018,6 +1020,9 @@ class BayesianAnalysis:
                 )
 
         self._warn_overwrite("pocomc")
+        if isinstance(pool, int) and pool <= 1:
+            # pocoMC creates a pool only for more than one process
+            pool = None
         # pocoMC uses the pool only for a likelihood that is not vectorized
         vectorize = pool is None
         logger.info(
