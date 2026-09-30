@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # This function is taken from the surmise package (version 1.0.0) and
 # modified: the number of initial draws is set by nstartparameters, the
-# tuning phase is longer (fractunning = 2), progress is logged, the
+# tuning phase is longer (fractuning = 2), progress is logged, the
 # unflattened chains of the temperature-1 walkers are returned, and the
 # perturbation of the optimized starting points uses the inverse Hessian as
 # covariance and stops after a few step reductions.
@@ -37,6 +37,12 @@ def sampler(
     Before sampling, the starting points are optimized with L-BFGS-B and
     then moved slightly off the optima. The first ``2 * sampperchain``
     steps tune the step size and are discarded.
+
+    The variable names follow surmise: ``numtemps`` tempered and
+    ``numchain`` temperature-1 chains, ``sampperchain`` saved samples per
+    chain; ``thetac``/``thetap`` are the current/proposed points of all
+    chains, ``fval``/``fvalp`` their tempered log posteriors and
+    ``dfval``/``dfvalp`` the tempered gradients.
 
     Parameters
     ----------
@@ -90,9 +96,9 @@ def sampler(
     if theta0 is None or theta0.shape[0] < nmin:
         theta0 = draw_func(max(nstartparameters, nmin))
     # Setting up some default parameters
-    fractunning = 2.0  # samples spent tuning, relative to sampperchain
+    fractuning = 2.0  # samples spent tuning, relative to sampperchain
     # define the number of samples for tuning
-    samptunning = np.ceil(sampperchain * fractunning).astype("int")
+    samptuning = np.ceil(sampperchain * fractuning).astype("int")
     # defining the total number of chains
     totnumchain = numtemps + numchain
     # space out the temperature vector to go from maxtemp to 1, and then
@@ -256,10 +262,10 @@ def sampler(
     adjrho = rho * temps ** (1 / 3)  # this adjusts rho across different temperatures
     adjrhoc = adjrho[:, np.newaxis]
     numtimes = 0  # accumulated acceptance rate, reset after each tuning update
-    n_total = samptunning + sampperchain
+    n_total = samptuning + sampperchain
     log_every = max(n_total // 10, 1)
     logger.info(
-        f"Running {samptunning} tuning and {sampperchain} sampling steps of the "
+        f"Running {samptuning} tuning and {sampperchain} sampling steps of the "
         "PTLMC chains ..."
     )
     for k in range(0, n_total):  # loop over the tuning and sampling steps
@@ -306,14 +312,14 @@ def sampler(
             dfval = (1 / tempsc) * dfvaln[orderprop, :]
         # if we have to tune, move tau up or down, which gives bigger or
         # smaller jumps
-        if (k < samptunning) and (k % 10 == 0):  # if not done with tuning
+        if (k < samptuning) and (k % 10 == 0):  # if not done with tuning
             tau = tau + 1 / np.sqrt(1 + k / 10) * ((numtimes / 10) - taracc)
             rho = 2 * (1 + (np.exp(2 * tau) - 1) / (np.exp(2 * tau) + 1))
             adjrho = rho * (temps ** (1 / 3))  # adjusting rho across the chain
             adjrhoc = adjrho[:, np.newaxis]
             numtimes = 0
-        elif k >= samptunning:  # if done with tuning
-            thetasave[:, k - samptunning, :] = 1 * thetac[numtemps:,]
+        elif k >= samptuning:  # if done with tuning
+            thetasave[:, k - samptuning, :] = 1 * thetac[numtemps:,]
     logger.info("PTLMC sampling finished")
     # return the unflattened values of the temp=1 chains
     sampler_info = {"theta": thetasave}
