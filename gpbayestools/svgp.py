@@ -1112,7 +1112,7 @@ class PCASparseGPEmulator:
             W_ret``. This is exact under the linear PCA model (no PPCA
             isotropy assumption). With Y_err, the observation noise of the
             training data in the discarded directions is removed from it,
-            unless include_noise or include_obs_noise is True.
+            unless include_obs_noise is True.
         include_pca_sampling : bool
             Add the finite-training-data uncertainty of the PCA mean
             estimate, ``Var(pc_mean_i) = pc_std_i^2 / n_train_`` per component
@@ -1131,7 +1131,7 @@ class PCASparseGPEmulator:
         -------
         Y_pred : numpy.ndarray (N_test, P)
             Predictive mean in original Y units.
-        full_cov : jax.Array (N_test, P, P)
+        full_cov : numpy.ndarray (N_test, P, P)
             Predictive covariance of the outputs at each test point.
         var_decomp : dict
             Only returned if return_var_decomposition=True. Keys:
@@ -1142,9 +1142,8 @@ class PCASparseGPEmulator:
             - 'obs_noise' (1, P, P): Y_err noise projected to output space
               (zeros if include_obs_noise=False or Y_err was not provided).
             - 'pca_truncation' (1, P, P): PCA truncation covariance, without
-              the observation noise of the training data unless include_noise
-              or include_obs_noise is True (zeros if
-              include_truncation=False).
+              the observation noise of the training data unless
+              include_obs_noise is True (zeros if include_truncation=False).
             - 'pca_sampling' (1, P, P): PCA sampling covariance (zeros if
               include_pca_sampling=False).
 
@@ -1227,9 +1226,10 @@ class PCASparseGPEmulator:
         # a Linear Model of Coregionalization (LMC) with a joint variational
         # distribution over all (n_pc * M) inducing variables simultaneously,
         # which is a fundamental architectural change to the ELBO.
-        # (P, P), exact, PSD, set in fit(). Without noise, the observation
-        # noise of the training data in the discarded directions is removed.
-        if include_noise or include_obs_noise:
+        # (P, P), exact, PSD, set in fit(). Without the observation noise,
+        # the observation noise of the training data in the discarded
+        # directions is removed as well.
+        if include_obs_noise:
             trunc_cov_yn = self.trunc_cov_yn_
         else:
             trunc_cov_yn = self.trunc_cov_signal_yn_
@@ -1253,7 +1253,8 @@ class PCASparseGPEmulator:
             full_cov = full_cov + (obs_cov_yn * Ys_outer)[None, :, :]
 
         Y_pred = self.pca_.inverse_transform(np.array(means_pc))
-        Y_pred = Y_pred * self.Ys_ + self.Ym_
+        Y_pred = np.asarray(Y_pred * self.Ys_ + self.Ym_)
+        full_cov = np.asarray(full_cov)
 
         if return_var_decomposition:
             # GP posterior covariance in Y space
