@@ -109,6 +109,7 @@ Bug fixes:
 - `run_pocomc(pool=1)` runs without a pool like `pool=None` instead of failing in pocoMC.
 - `parse_model_parameter_file` also rejects empty parameter names and infinite ranges, and its docstring says that labels must not contain commas.
 - `compute_log_likelihood_for_chain` evaluates the log-likelihood in batches of 1000 points instead of point by point, which is much faster, since the emulators predict many points at once.
+- The members of a bootstrap ensemble of the sparse GP use the noise-free part of the truncation covariance of all training data, like the truncation covariance itself, instead of one computed from the errors of their bootstrap sample.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.

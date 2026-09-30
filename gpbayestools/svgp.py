@@ -738,9 +738,13 @@ class PCASparseGPEmulator:
         # The truncation covariance also contains the observation noise of the
         # training data in the discarded PCA directions. Its signal part, the
         # truncation covariance without this noise, is used for predictions
-        # of the model function (include_noise=False).
+        # without the observation noise (include_obs_noise=False). Ensemble
+        # members use the signal part of all training data, like the
+        # truncation covariance itself.
         self.trunc_cov_signal_yn_ = self.trunc_cov_yn_
-        if Y_err is not None:
+        if _fixed_pca_state is not None:
+            self.trunc_cov_signal_yn_ = _fixed_pca_state["trunc_cov_signal_yn"]
+        elif Y_err is not None:
             _noise_yn = _mean_C_Y / np.outer(_Ys_np, _Ys_np)
             self.trunc_cov_signal_yn_ = jnp.array(
                 truncation_signal(np.array(self.trunc_cov_yn_), _noise_yn)
@@ -1514,6 +1518,19 @@ class PCASparseGPEnsemble:
             _trunc_cov = jnp.array(_vecs @ (_vals[:, None] * _vecs.T))
         else:
             _trunc_cov = jnp.zeros((_P_out, _P_out))
+        # signal part of the truncation covariance without the observation
+        # noise of all training data (see PCASparseGPEmulator.fit)
+        _trunc_cov_signal = _trunc_cov
+        if Y_err is not None:
+            _yerr = np.asarray(Y_err, dtype=float)
+            _mean_C_Y = (
+                np.diag(np.mean(_yerr**2, axis=0))
+                if _yerr.ndim == 2
+                else np.mean(_yerr, axis=0)
+            )
+            _trunc_cov_signal = jnp.array(
+                truncation_signal(np.array(_trunc_cov), _mean_C_Y / np.outer(_Ys, _Ys))
+            )
         self.pca_state_ = {
             "Xm": _Xm,
             "Xs": _Xs,
@@ -1524,6 +1541,7 @@ class PCASparseGPEnsemble:
             "pc_mean": _pc_mean,
             "pc_std": _pc_std,
             "trunc_cov_yn": _trunc_cov,
+            "trunc_cov_signal_yn": _trunc_cov_signal,
         }
         if verbose:
             ev = float(np.sum(_pca.explained_variance_ratio_))
