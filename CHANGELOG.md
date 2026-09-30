@@ -114,11 +114,12 @@ Bug fixes:
 - The members of a bootstrap ensemble of the sparse GP use the noise-free part of the truncation covariance of all training data, like the truncation covariance itself, instead of one computed from the errors of their bootstrap sample.
 
 Documentation:
-- Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
+- Document in the user guide and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.
 - The `PlotMCMC` notebook reads the chain files of the samplers (`chain_<sampler>.pkl`), also handles the two-dimensional pocoMC samples and uses raw strings for the LaTeX labels. The `SensitivityAnalysis` notebook works with NumPy 2.
 - Fix the imports in the `EmulatorValidation` notebook and several docstrings of the sparse GP emulator (`patience`, `include_noise`).
 - Fix the chain loading and the error bars in the `ClosureTest` notebook, and the log-likelihood output in the `RunBayesianAnalysis` notebook.
 - New example `examples/full_workflow` of a complete Bayesian study with the HERA DIS fit of JHEP 04 (2026) 185: parameter design, training data, training and validation of all emulators (RMS error and honesty, with and without log transformation) and closure tests with pocoMC, with a README that shows the figures. The main README links to it.
+- The README gives a general overview with the installation, a citation section (Zenodo DOI of all versions) and links to the new user guide `gpbayestools/README.md`, which describes the modules, the input file formats, the emulators and their main options, the Bayesian analysis with recommended settings for a large heavy-ion analysis, the designs and the example scripts.
 
 Development:
 - The core sparse GP code (`PCASparseGPEmulator`, `PCASparseGPEnsemble`) is in `gpbayestools/svgp.py` (still importable from `emulator_sparse_gp`), and the PTLMC sampler from surmise in `gpbayestools/ptlmc.py`.
