@@ -57,3 +57,22 @@ def test_invalid_options(param_file, tmp_path):
     with pytest.raises(ValueError):
         Design(one_parameter)
     assert Design(one_parameter, n_points=5, seed=1, method="maximin").n_dim == 1
+
+
+def test_invalid_design_arguments(param_file):
+    # the arguments are inserted into the R code, so only integers are accepted
+    for kwargs in (
+        {"seed": "1); system('ls')"},
+        {"seed": 1.5},
+        {"n_points": "10"},
+        {"seed": True},
+    ):
+        with pytest.raises(TypeError):
+            Design(param_file, **{"n_points": 5, "seed": 1, **kwargs})
+    for kwargs in ({"n_points": 0}, {"seed": 2**31}):
+        with pytest.raises(ValueError):
+            Design(param_file, **{"n_points": 5, "seed": 1, **kwargs})
+    with pytest.raises(TypeError):
+        design.generate_maximin_lhs(10, 2, "1")
+    # numpy integers are integers
+    assert Design(param_file, n_points=np.int64(5), seed=np.int32(3)).seed == 3

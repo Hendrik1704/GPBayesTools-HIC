@@ -21,6 +21,7 @@ parameter file and writes the input files for the physics model, see
 """
 
 import logging
+import numbers
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +31,24 @@ import numpy as np
 from . import cachedir, parse_model_parameter_file
 
 logger = logging.getLogger(__name__)
+
+
+def _check_design_arguments(n_points, n_dim, seed):
+    """
+    Check that `n_points`, `n_dim` and `seed` are integers in the valid
+    ranges. They are inserted into the R code and the name of the cache file,
+    so other values must be rejected before the R code is generated.
+    """
+    for name, value in (("n_points", n_points), ("n_dim", n_dim), ("seed", seed)):
+        if not isinstance(value, numbers.Integral) or isinstance(value, bool):
+            raise TypeError(f"{name} must be an int, got {value!r}")
+    if n_points < 1:
+        raise ValueError(f"n_points must be >= 1, got {n_points}")
+    if n_dim < 1:
+        raise ValueError(f"n_dim must be >= 1, got {n_dim}")
+    # R's set.seed() takes a 32-bit integer
+    if abs(seed) > 2**31 - 1:
+        raise ValueError(f"seed must be a 32-bit integer, got {seed}")
 
 
 def _generate_with_r(method, r_code, n_points, n_dim, seed):
@@ -91,7 +110,16 @@ def generate_maximin_lhs(n_points, n_dim, seed):
     -------
     ndarray of shape (n_points, n_dim)
         The design points in [0, 1]^n_dim.
+
+    Raises
+    ------
+    TypeError
+        If `n_points`, `n_dim` or `seed` is not an int.
+    ValueError
+        If `n_points` or `n_dim` is smaller than 1, or if `seed` is not a
+        32-bit integer.
     """
+    _check_design_arguments(n_points, n_dim, seed)
     logger.debug(
         "Generating a maximin LHS: n_points = %d, n_dim = %d, seed = %d",
         n_points,
@@ -130,7 +158,16 @@ def generate_maxpro_lhs(n_points, n_dim, seed):
     -------
     ndarray of shape (n_points, n_dim)
         The design points in [0, 1]^n_dim.
+
+    Raises
+    ------
+    TypeError
+        If `n_points`, `n_dim` or `seed` is not an int.
+    ValueError
+        If `n_points` or `n_dim` is smaller than 1, or if `seed` is not a
+        32-bit integer.
     """
+    _check_design_arguments(n_points, n_dim, seed)
     logger.debug(
         "Generating a maximum projection LHS: n_points = %d, n_dim = %d, seed = %d",
         n_points,
@@ -207,9 +244,12 @@ class Design:
 
     Raises
     ------
+    TypeError
+        If `n_points` or `seed` is not an int.
     ValueError
-        If `method` is unknown, or if `method` is 'maxpro' and there is only
-        one parameter (MaxPro requires at least two).
+        If `method` is unknown, if `method` is 'maxpro' and there is only
+        one parameter (MaxPro requires at least two), if `n_points` is
+        smaller than 1, or if `seed` is not a 32-bit integer.
     RuntimeError
         If R fails to generate the design.
     """
@@ -237,17 +277,18 @@ class Design:
                 "MaxPro designs require at least two parameters, use method='maximin'"
             )
 
-        # use padded numbers for design point names
-        fmt = "parameter_{:0" + str(len(str(n_points - 1))) + "d}"
-        self.points = [fmt.format(i) for i in range(n_points)]
-
         # set default seeds
         if seed is None:
             # R's set.seed() requires an integer, positive 32-bit seeds are
             # used here
             seed = int(datetime.now().timestamp() * 1000) % (2**31 - 1)
             logger.info(f"No seed given, using the seed {seed}")
+        _check_design_arguments(n_points, self.n_dim, seed)
         self.seed = seed
+
+        # use padded numbers for design point names
+        fmt = "parameter_{:0" + str(len(str(n_points - 1))) + "d}"
+        self.points = [fmt.format(i) for i in range(n_points)]
 
         self.param_min = []
         self.param_max = []
