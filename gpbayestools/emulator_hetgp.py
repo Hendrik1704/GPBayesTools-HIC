@@ -48,6 +48,10 @@ class EmulatorHetGP(EmulatorBase):
         If True, predict() returns exp(mean) and a diagonal covariance in the
         original scale of the observables (see `EmulatorBase`). Requires
         ``log_trafo=True``.
+    errors_are_noise : bool, default=True
+        If False, the uncertainties of the training data are not statistical
+        noise of the simulations (e.g. an assigned model uncertainty of
+        noise-free simulations), see `EmulatorBase`.
     npc : int or float, default=0.99
         Number of PCs (int >= 1) or fraction of the explained variance (float
         in (0, 1)).
@@ -69,6 +73,7 @@ class EmulatorHetGP(EmulatorBase):
         log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
+        errors_are_noise=True,
         npc=0.99,
     ):
         super().__init__(
@@ -77,6 +82,7 @@ class EmulatorHetGP(EmulatorBase):
             log_trafo=log_trafo,
             max_rel_uncertainty_data=max_rel_uncertainty_data,
             exp_and_cov_diagonal=exp_and_cov_diagonal,
+            errors_are_noise=errors_are_noise,
         )
 
         # The outputs are standardized and transformed with a PCA in
@@ -121,7 +127,9 @@ class EmulatorHetGP(EmulatorBase):
         The truncation covariance also contains the statistical noise of the
         training data in the discarded PC directions. Its signal part without
         this noise, _cov_trunc_signal, is used for predictions of the model
-        function (include_noise=False).
+        function (include_noise=False). With ``errors_are_noise=False``, the
+        errors are not noise and _cov_trunc_signal is the full truncation
+        covariance.
         """
         standardized_outputs = self.scaler_.transform(data)
         residuals = standardized_outputs - self.pca_.inverse_transform(pcs)
@@ -129,6 +137,9 @@ class EmulatorHetGP(EmulatorBase):
         # covariances in standardized units
         trunc_cov_scaled = np.cov(residuals, rowvar=False)
         self._cov_trunc = trunc_cov_scaled * np.outer(scale, scale)
+        if not self.errors_are_noise:
+            self._cov_trunc_signal = self._cov_trunc
+            return
         noise_cov_scaled = np.diag(np.mean((data_err / scale) ** 2, axis=0))
         self._cov_trunc_signal = truncation_signal(
             trunc_cov_scaled, noise_cov_scaled

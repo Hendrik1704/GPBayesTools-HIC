@@ -56,6 +56,7 @@ class EmulatorSparseGP(EmulatorBase):
         log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
+        errors_are_noise=True,
         seed=None,
     ):
         """
@@ -98,6 +99,12 @@ class EmulatorSparseGP(EmulatorBase):
             covariance cov_ij * exp(mean_i) * exp(mean_j) (delta method).
             Unlike the other emulators, the correlations between the
             observables are kept (default False).
+        errors_are_noise : bool
+            If True (default), the uncertainties of the training data are
+            statistical noise and are passed to the sparse GP as Y_err. Set it
+            to False for noise-free simulations with e.g. an assigned model
+            uncertainty; the sparse GP is then trained without Y_err (see
+            `EmulatorBase`).
         seed : int or None
             Seed for the random numbers of the training (inducing points,
             mini-batches, ensemble members). None (default) uses fixed
@@ -128,6 +135,7 @@ class EmulatorSparseGP(EmulatorBase):
             log_trafo=log_trafo,
             max_rel_uncertainty_data=max_rel_uncertainty_data,
             exp_and_cov_diagonal=exp_and_cov_diagonal,
+            errors_are_noise=errors_are_noise,
         )
 
     # -------------------------
@@ -142,7 +150,8 @@ class EmulatorSparseGP(EmulatorBase):
         """
         Train the (ensemble) emulator on the masked subset of training data.
 
-        The statistical errors of the training data are passed as Y_err.
+        The statistical errors of the training data are passed as Y_err,
+        unless ``errors_are_noise=False``.
 
         Parameters
         ----------
@@ -161,7 +170,7 @@ class EmulatorSparseGP(EmulatorBase):
         event_mask = self._check_event_mask(event_mask)
         X = self.design_points[event_mask, :]
         Y = self.model_data[event_mask, :]
-        Y_err = self.model_data_err[event_mask, :]
+        Y_err = self.model_data_err[event_mask, :] if self.errors_are_noise else None
         npc = self.npc
 
         if self.n_ensemble <= 1:

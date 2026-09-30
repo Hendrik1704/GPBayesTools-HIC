@@ -66,6 +66,10 @@ class EmulatorBAND(EmulatorBase):
         If True, predict() returns exp(mean) and a diagonal covariance in the
         original scale of the observables (see `EmulatorBase`). Requires
         ``log_trafo=True``.
+    errors_are_noise : bool, default=True
+        Accepted for the same interface as the other emulators, but ignored:
+        PCGP does not use the uncertainties of the training data, PCSK always
+        models them as noise of the simulations.
     seed : int or None, default=None
         Seed of the random number generator that is set as the global RNG of
         surmise (>= 1.0.0) before each training, so that every training with
@@ -88,6 +92,7 @@ class EmulatorBAND(EmulatorBase):
         log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
+        errors_are_noise=True,
         seed=None,
     ):
         if method not in self._METHODS:
@@ -103,6 +108,7 @@ class EmulatorBAND(EmulatorBase):
             log_trafo=log_trafo,
             max_rel_uncertainty_data=max_rel_uncertainty_data,
             exp_and_cov_diagonal=exp_and_cov_diagonal,
+            errors_are_noise=errors_are_noise,
         )
 
     def train_emulator(self, event_mask):

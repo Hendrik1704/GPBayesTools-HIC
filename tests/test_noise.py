@@ -168,3 +168,40 @@ def test_sample_y_log_normal(noisy_training_file, param_file, test_points):
     mean = emu.predict(test_points)[0]
     np.testing.assert_allclose(np.median(samples, axis=1), mean, rtol=0.01)
     assert emu.exp_and_cov_diagonal
+
+
+@pytest.mark.parametrize("name", ["EmulatorSklearn", "hetGPy", "SparseGP"])
+def test_errors_are_not_noise(name, noisy_training_file, param_file, test_points):
+    # with errors_are_noise=False, the errors of the training data are not
+    # removed from the truncation covariance (and not used by the sparse GP)
+    make = {
+        "EmulatorSklearn": lambda **kw: EmulatorSklearn(
+            noisy_training_file, param_file, npc=2, **kw
+        ),
+        "hetGPy": lambda **kw: EmulatorHetGP(
+            noisy_training_file, param_file, npc=2, **kw
+        ),
+        "SparseGP": lambda **kw: EmulatorSparseGP(
+            noisy_training_file, param_file, npc=2, n_inducing=20, seed=1, **kw
+        ),
+    }[name]
+    train_kwargs = {"steps": 200, "verbose": False} if name == "SparseGP" else {}
+    emus = {}
+    for errors_are_noise in (True, False):
+        emu = make(errors_are_noise=errors_are_noise)
+        emu.train_emulator_auto_mask(**train_kwargs)
+        emus[errors_are_noise] = emu
+    if name == "SparseGP":
+        core = emus[False].emu_
+        np.testing.assert_array_equal(core.trunc_cov_signal_yn_, core.trunc_cov_yn_)
+        assert not np.allclose(
+            emus[True].emu_.trunc_cov_signal_yn_, emus[True].emu_.trunc_cov_yn_
+        )
+    else:
+        np.testing.assert_allclose(
+            emus[False]._cov_trunc_signal, emus[False]._cov_trunc
+        )
+        # the default removes the noise in the discarded directions
+        diag = np.diag(emus[True]._cov_trunc_signal)
+        assert np.all(diag <= np.diag(emus[True]._cov_trunc) + 1e-12)
+        assert np.sum(diag) < 0.9 * np.sum(np.diag(emus[True]._cov_trunc))

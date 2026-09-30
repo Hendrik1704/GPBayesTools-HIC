@@ -60,6 +60,10 @@ class EmulatorSklearn(EmulatorBase):
         If True, predict() returns exp(mean) and a diagonal covariance in the
         original scale of the observables (see `EmulatorBase`). Requires
         ``log_trafo=True``.
+    errors_are_noise : bool, default=True
+        If False, the uncertainties of the training data are not statistical
+        noise of the simulations (e.g. an assigned model uncertainty of
+        noise-free simulations), see `EmulatorBase`.
     perform_no_pca : bool, default=False
         If True, the PCA transformation is switched off and the raw
         (standardized) data are used for the Gaussian process emulation.
@@ -92,6 +96,7 @@ class EmulatorSklearn(EmulatorBase):
         log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
+        errors_are_noise=True,
         perform_no_pca=False,
         seed=None,
         alpha=1e-8,
@@ -102,6 +107,7 @@ class EmulatorSklearn(EmulatorBase):
             log_trafo=log_trafo,
             max_rel_uncertainty_data=max_rel_uncertainty_data,
             exp_and_cov_diagonal=exp_and_cov_diagonal,
+            errors_are_noise=errors_are_noise,
         )
         self.perform_no_pca = perform_no_pca
 
@@ -293,15 +299,19 @@ class EmulatorSklearn(EmulatorBase):
             # The truncation covariance also contains the statistical noise of
             # the training data in the discarded PC directions. Its signal
             # part is used for predictions of the model function
-            # (include_noise=False).
+            # (include_noise=False). With errors_are_noise=False, the errors
+            # are not noise and the full truncation covariance is used.
             scale = self.scaler_.scale_
             # covariances in standardized units
             err_scaled = self.model_data_err[event_mask, :] / scale
             noise_cov_scaled = np.diag(np.mean(err_scaled**2, axis=0))
             trunc_cov_scaled = self._cov_trunc / np.outer(scale, scale)
-            self._cov_trunc_signal = truncation_signal(
-                trunc_cov_scaled, noise_cov_scaled
-            ) * np.outer(scale, scale)
+            if self.errors_are_noise:
+                self._cov_trunc_signal = truncation_signal(
+                    trunc_cov_scaled, noise_cov_scaled
+                ) * np.outer(scale, scale)
+            else:
+                self._cov_trunc_signal = self._cov_trunc.copy()
 
             # Add small term to diagonal for numerical stability.
             self._cov_trunc.flat[:: self.n_obs + 1] += 1e-4 * self.scaler_.var_

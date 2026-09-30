@@ -148,6 +148,17 @@ class EmulatorBase:
         prediction, i.e. the median of the log-normal distribution, and the
         variance is the first-order (delta method) approximation
         exp(mean)^2 * var.
+    errors_are_noise : bool, default=True
+        If True, the uncertainties of the training data are statistical noise
+        of the simulations. They are then removed from the covariance of the
+        discarded principal components for predictions of the model function
+        (``include_noise=False``), and EmulatorSparseGP trains with them as
+        observation noise. Set it to False if the simulations are noise-free
+        and the uncertainties are e.g. an assigned model uncertainty: the
+        covariance of the discarded principal components is then used in
+        full, and EmulatorSparseGP trains without them. EmulatorBAND ignores
+        it (PCGP does not use the uncertainties, PCSK always models them as
+        noise).
 
     Raises
     ------
@@ -169,8 +180,10 @@ class EmulatorBase:
         log_trafo=False,
         max_rel_uncertainty_data=None,
         exp_and_cov_diagonal=False,
+        errors_are_noise=True,
     ):
         self.log_trafo = log_trafo
+        self.errors_are_noise = errors_are_noise
         self.max_rel_uncertainty_data = max_rel_uncertainty_data
         self.exp_and_cov_diagonal = exp_and_cov_diagonal
         if not self.log_trafo and self.exp_and_cov_diagonal:
