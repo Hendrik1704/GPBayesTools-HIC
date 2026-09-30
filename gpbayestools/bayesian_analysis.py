@@ -597,8 +597,8 @@ class BayesianAnalysis:
             If `n_steps` or `n_thin` is smaller than 1, if `n_burn_steps` or
             `n_walkers` is missing for a new chain, if `n_burn_steps` is
             smaller than 2, if the existing chain was not generated with
-            emcee, or if `n_walkers` or `n_thin` does not match the existing
-            chain.
+            emcee, or if `n_walkers`, `n_thin` or the number of parameters
+            does not match the existing chain.
         """
         # checked before the (long) sampling
         if n_steps < 1:
@@ -617,10 +617,7 @@ class BayesianAnalysis:
         except FileNotFoundError:
             pass
 
-        if "chain" not in chain_data:
-            burn_in = True
-        else:
-            burn_in = False
+        burn_in = "chain" not in chain_data
 
         if burn_in:
             if n_burn_steps is None or n_walkers is None:
@@ -640,6 +637,11 @@ class BayesianAnalysis:
                 raise ValueError(
                     f"The chain in {chain_file} was not generated with emcee and "
                     "cannot be continued, use a different mcmc_path"
+                )
+            if chain_data["chain"].shape[2] != self.ndim:
+                raise ValueError(
+                    f"The chain in {chain_file} has {chain_data['chain'].shape[2]} "
+                    f"parameters, but the parameter file has {self.ndim}"
                 )
             if n_walkers is None:
                 n_walkers = chain_data["chain"].shape[0]
@@ -676,6 +678,10 @@ class BayesianAnalysis:
                 f"Continuing the emcee chain in {chain_file} with {n_walkers} "
                 f"walkers for {n_steps} steps ..."
             )
+        if burn_in:
+            # drawn before the sampler is created, which copies the state of
+            # numpy's global random number generator
+            initial_state = self.random_pos(n_walkers)
         sampler = LoggingEnsembleSampler(
             n_walkers, self.ndim, self.log_posterior, vectorize=True
         )
@@ -684,10 +690,10 @@ class BayesianAnalysis:
             logger.info("Starting the burn-in from random positions ...")
 
             # Run first half of burn-in starting from random positions.
-            nburn0 = n_burn_steps // 2
+            n_burn_first = n_burn_steps // 2
             state = sampler.run_mcmc(
-                self.random_pos(n_walkers),
-                nburn0,
+                initial_state,
+                n_burn_first,
                 status=status,
                 skip_initial_state_check=skip_initial_state_check,
             )
@@ -698,23 +704,23 @@ class BayesianAnalysis:
             # Reposition walkers to the most likely points in the chain,
             # then run the second half of burn-in.  This significantly
             # accelerates burn-in and helps prevent stuck walkers.
-            lnprob = sampler.get_log_prob(flat=True)
+            log_prob = sampler.get_log_prob(flat=True)
             # indices of the distinct log-probabilities in ascending order
-            idx = np.unique(lnprob, return_index=True)[1]
-            idx = idx[np.isfinite(lnprob[idx])]
+            idx = np.unique(log_prob, return_index=True)[1]
+            idx = idx[np.isfinite(log_prob[idx])]
             if len(idx) >= n_walkers:
-                X0 = sampler.get_chain(flat=True)[idx[-n_walkers:]]
+                initial_state = sampler.get_chain(flat=True)[idx[-n_walkers:]]
             else:
                 logger.warning(
                     f"Only {len(idx)} distinct points with finite probability in the "
                     "first half of the burn-in, continuing from the current "
                     "walker positions"
                 )
-                X0 = state.coords
+                initial_state = state.coords
             sampler.reset()
-            X0 = sampler.run_mcmc(
-                X0,
-                n_burn_steps - nburn0,
+            initial_state = sampler.run_mcmc(
+                initial_state,
+                n_burn_steps - n_burn_first,
                 status=status,
                 skip_initial_state_check=skip_initial_state_check,
             )
@@ -723,10 +729,12 @@ class BayesianAnalysis:
         else:
             # the last walker positions of the previous run, or for chains
             # saved with older versions, the last thinned sample
-            X0 = chain_data.get("last_position", chain_data["chain"][:, -1, :])
+            initial_state = chain_data.get(
+                "last_position", chain_data["chain"][:, -1, :]
+            )
 
         state = sampler.run_mcmc(
-            X0,
+            initial_state,
             n_steps,
             status=status,
             skip_initial_state_check=skip_initial_state_check,
