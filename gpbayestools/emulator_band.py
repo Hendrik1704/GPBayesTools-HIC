@@ -63,7 +63,11 @@ class EmulatorBAND(EmulatorBase):
     _METHODS = ("PCGP", "PCSK", "PCGPwImpute", "PCGPwM")
 
     _legacy_attributes = [("method_", "method"), ("rng_", None), ("emu", "emu_")]
-    _legacy_defaults = {"seed": None}
+    _legacy_defaults = {
+        "seed": None,
+        # computed from all training data, the training mask is not stored
+        "_sim_noise_var": lambda state: np.mean(state["model_data_err"] ** 2, axis=0),
+    }
 
     def __init__(
         self,
@@ -116,6 +120,9 @@ class EmulatorBAND(EmulatorBase):
         if self.method == "PCSK":
             # PCSK uses the statistical errors of the training data
             args["simsd"] = self.model_data_err[event_mask, :].T
+        # the noise of the simulations, which PCSK models with the
+        # statistical errors, but does not include in the predictive variance
+        self._sim_noise_var = np.mean(self.model_data_err[event_mask, :] ** 2, axis=0)
 
         # surmise (>= 1.0.0) requires a global RNG to be set before the
         # training. A new generator is used for each training, so that the
@@ -169,7 +176,9 @@ class EmulatorBAND(EmulatorBase):
 
         By default, the covariance is the uncertainty of the emulated model
         function. With `include_noise`, the noise (nugget) of the GPs is
-        included, i.e. the uncertainty of a new noisy simulation.
+        included, i.e. the uncertainty of a new noisy simulation. PCSK models
+        the noise with the statistical errors of the training data, so their
+        mean variance is added to the diagonal instead.
 
         The variance of the discarded PCs is surmise's extravar, which is
         zero for PCSK and not corrected for the noise of the training data.
@@ -181,7 +190,9 @@ class EmulatorBAND(EmulatorBase):
         return_cov : bool, default=True
             If True, the covariance is returned as well.
         include_noise : bool, default=False
-            If True, the noise (nugget) of the GPs is included in the covariance.
+            If True, the noise of the simulations is included in the
+            covariance (the nugget of the GPs, for PCSK the mean variance of the
+            statistical errors of the training data).
 
         Returns
         -------
@@ -200,7 +211,10 @@ class EmulatorBAND(EmulatorBase):
             return np.exp(mean) if self.exp_and_cov_diagonal else mean
 
         cov = self._full_covariance(pred)
-        if not include_noise:
+        if include_noise and self.method == "PCSK":
+            idx = np.arange(self.nobs)
+            cov[:, idx, idx] += self._sim_noise_var
+        elif not include_noise:
             cov = cov - self._noise_covariance()[None, :, :]
             # round-off can make variances slightly negative
             idx = np.arange(self.nobs)

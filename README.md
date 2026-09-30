@@ -28,6 +28,8 @@ simulation. The validation functions `test_emulator_errors` and
 `test_emulator_errors_with_training_points` compare with such simulations and include the noise.
 For `EmulatorSparseGP`, `include_noise=True` also includes the statistical errors of the training
 data propagated through the PCA (`include_obs_noise`, which follows `include_noise` by default).
+The PCSK emulator of `EmulatorBAND` models the noise with the statistical errors of the training
+data, so `include_noise=True` adds their mean variance.
 
 The covariance also contains the variance of the principal components that are not emulated
 (truncation). With noisy training data, these components contain the statistical noise of the

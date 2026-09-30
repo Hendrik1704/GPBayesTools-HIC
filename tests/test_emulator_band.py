@@ -41,6 +41,9 @@ def test_covariance_contains_variance_of_discarded_pcs(
     _, cov = emu.predict(test_points, include_noise=True)
     x = np.arange(emu.nobs).reshape(-1, 1)
     var = emu.emu_.predict(x=x, theta=test_points).var().T
+    if method == "PCSK":
+        # the noise of the simulations, which surmise does not include
+        var = var + np.mean(emu.model_data_err**2, axis=0)
     np.testing.assert_allclose(np.diagonal(cov, axis1=1, axis2=2), var, rtol=1e-10)
 
 

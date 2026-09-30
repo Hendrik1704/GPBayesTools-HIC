@@ -65,8 +65,9 @@ def test_noise_covariance(trained, test_points):
     for n, c in zip(noise, cov_noise, strict=True):
         # the noise covariance is positive semi-definite
         assert np.linalg.eigvalsh(n).min() > -1e-8 * np.abs(c).max()
-    if name in ("EmulatorSklearn", "hetGPy", "PCGP"):
-        # these emulators fit a noise term to the noisy training data
+    if name in ("EmulatorSklearn", "hetGPy", "PCGP", "PCSK"):
+        # these emulators fit a noise term to the noisy training data (PCSK
+        # uses the statistical errors of the training data)
         assert np.all(np.diagonal(noise, axis1=1, axis2=2) > 0)
 
 
