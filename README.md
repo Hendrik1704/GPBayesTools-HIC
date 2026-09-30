@@ -18,6 +18,14 @@ The following wrappers for MC sampling are included:
 
 We recommend to use the `pocoMC` sampler.
 
+## Example: full Bayesian workflow
+
+[`examples/full_workflow`](examples/full_workflow/README.md) goes through a complete Bayesian study
+with the fit of HERA deep-inelastic scattering data with two parameters from
+[JHEP 04 (2026) 185](https://doi.org/10.1007/JHEP04(2026)185): parameter design, training data,
+training and validation of all emulators, and closure tests with pocoMC. It compares the
+accuracy and the calibration of the emulators and the posteriors they give.
+
 ## Emulator uncertainty
 
 The `predict` function of all emulators returns by default the uncertainty of the emulated

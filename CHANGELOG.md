@@ -118,6 +118,7 @@ Documentation:
 - The `PlotMCMC` notebook reads the chain files of the samplers (`chain_<sampler>.pkl`), also handles the two-dimensional pocoMC samples and uses raw strings for the LaTeX labels. The `SensitivityAnalysis` notebook works with NumPy 2.
 - Fix the imports in the `EmulatorValidation` notebook and several docstrings of the sparse GP emulator (`patience`, `include_noise`).
 - Fix the chain loading and the error bars in the `ClosureTest` notebook, and the log-likelihood output in the `RunBayesianAnalysis` notebook.
+- New example `examples/full_workflow` of a complete Bayesian study with the HERA DIS fit of JHEP 04 (2026) 185: parameter design, training data, training and validation of all emulators (RMS error and honesty, with and without log transformation) and closure tests with pocoMC, with a README that shows the figures. The main README links to it.
 
 Development:
 - The core sparse GP code (`PCASparseGPEmulator`, `PCASparseGPEnsemble`) is in `gpbayestools/svgp.py` (still importable from `emulator_sparse_gp`), and the PTLMC sampler from surmise in `gpbayestools/ptlmc.py`.
