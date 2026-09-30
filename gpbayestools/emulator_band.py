@@ -98,7 +98,13 @@ class EmulatorBAND(EmulatorBase):
         ----------
         event_mask : ndarray of bool of shape (nev,)
             Mask of the training points to use.
+
+        Raises
+        ------
+        ValueError
+            If `event_mask` is not a boolean array of shape (nev,).
         """
+        event_mask = self._check_event_mask(event_mask)
         nev, nobs = self.model_data[event_mask, :].shape
         logger.info(
             f"Training the surmise {self.method} emulator with {nev} training "
@@ -171,7 +177,7 @@ class EmulatorBAND(EmulatorBase):
         Parameters
         ----------
         X : array_like of shape (nsamples, nparameters)
-            Parameter points.
+            Parameter points. A 1D array is treated as a single point.
         return_cov : bool, default=True
             If True, the covariance is returned as well.
         include_noise : bool, default=False
@@ -185,6 +191,7 @@ class EmulatorBAND(EmulatorBase):
             Covariance between the observables. Only returned if `return_cov`
             is True.
         """
+        X = np.atleast_2d(np.asarray(X, dtype=float))
         x = np.arange(self.nobs).reshape(-1, 1)
         pred = self.emu_.predict(x=x, theta=X)
 

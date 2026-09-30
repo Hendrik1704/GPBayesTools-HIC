@@ -152,7 +152,13 @@ class EmulatorSparseGP(EmulatorBase):
             Forwarded to PCASparseGPEmulator.fit() or
             PCASparseGPEnsemble.fit(). verbose_members is dropped for a single
             emulator.
+
+        Raises
+        ------
+        ValueError
+            If `event_mask` is not a boolean array of shape (nev,).
         """
+        event_mask = self._check_event_mask(event_mask)
         X = self.design_points[event_mask, :]
         Y = self.model_data[event_mask, :]
         Y_err = self.model_data_err[event_mask, :]

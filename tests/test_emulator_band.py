@@ -103,6 +103,16 @@ def test_validation(training_file, param_file, test_points):
     )
 
 
+def test_predict_single_point(emulator, test_points):
+    mean, cov = emulator.predict(test_points)
+    for x in (test_points[0], list(test_points[0])):
+        mean_1, cov_1 = emulator.predict(x)
+        np.testing.assert_allclose(mean_1, mean[:1])
+        # the surmise variances of the noise-free test data are ill-conditioned
+        # and depend at the percent level on the other predicted points
+        np.testing.assert_allclose(cov_1, cov[:1], atol=0.02 * np.abs(cov).max())
+
+
 def test_training_keeps_warning_filters(training_file, param_file):
     import warnings
 

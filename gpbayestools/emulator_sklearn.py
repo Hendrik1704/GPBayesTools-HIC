@@ -182,13 +182,15 @@ class EmulatorSklearn(EmulatorBase):
         Raises
         ------
         ValueError
-            If `kernel_type` is unknown.
+            If `kernel_type` is unknown or if `event_mask` is not a boolean
+            array of shape (nev,).
         """
         # check before the trained emulator is modified
         if kernel_type not in ("RBF", "Matern"):
             raise ValueError(
                 f"Unknown kernel type {kernel_type!r}, expected 'RBF' or 'Matern'"
             )
+        event_mask = self._check_event_mask(event_mask)
         data_to_use = self.model_data[event_mask, :]
         # Standardize the input data. New scaler and PCA objects are used,
         # so that the previously trained ones are not modified.

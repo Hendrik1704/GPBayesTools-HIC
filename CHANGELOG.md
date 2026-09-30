@@ -98,6 +98,7 @@ Bug fixes:
 - The initial walker positions of `run_emcee` are drawn before the emcee sampler is created. Before, emcee copied the state of numpy's global random number generator first, so that its first random numbers were the ones of the initial positions. The chains differ from earlier versions for the same seed. Continuing a chain with a different number of parameters raises a clear error.
 - Emulators saved with versions 1.0.0 and 1.1.0, which did not have `exp_and_cov_diagonal`, can predict after loading (they failed with an `AttributeError`).
 - Training an `EmulatorBAND` keeps the warning filters of the process, which surmise resets with `warnings.resetwarnings()`.
+- The emulators check that the mask of `train_emulator` is a boolean array of shape (nev,). An integer array of 0 and 1 was used as indices of the training points by `EmulatorSklearn`, `EmulatorBAND` and `EmulatorSparseGP`. `EmulatorBAND.predict` accepts a single point as a 1D array or a list.
 
 Documentation:
 - Document in the README and the docstrings that emulators trained with `log_trafo=True` return predictions in log space by default, so the experimental data must be log-transformed by the user.

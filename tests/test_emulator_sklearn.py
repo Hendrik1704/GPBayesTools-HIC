@@ -39,6 +39,13 @@ def test_prediction_accuracy_and_shapes(emulator, test_points):
     np.testing.assert_array_equal(emulator.predict(test_points, return_cov=False), mean)
 
 
+def test_event_mask_must_be_boolean(emulator):
+    # an integer array would select the training points by index
+    for mask in (np.ones(emulator.nev, dtype=int), np.ones(5, dtype=bool)):
+        with pytest.raises(ValueError, match="event_mask"):
+            emulator.train_emulator(mask)
+
+
 def test_predict_single_point(emulator, test_points):
     # a 1D array or a list is a single parameter point
     mean, cov = emulator.predict(test_points)

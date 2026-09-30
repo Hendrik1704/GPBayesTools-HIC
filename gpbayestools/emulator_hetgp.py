@@ -166,11 +166,16 @@ class EmulatorHetGP(EmulatorBase):
 
         Parameters
         ----------
-        event_mask : array_like of bool of shape (nev,)
+        event_mask : ndarray of bool of shape (nev,)
             Mask of the training points to use.
+
+        Raises
+        ------
+        ValueError
+            If `event_mask` is not a boolean array of shape (nev,).
         """
         # Subselect training data
-        event_mask = np.asarray(event_mask, dtype=bool)
+        event_mask = self._check_event_mask(event_mask)
         design_points = self.design_points[event_mask, :]
         # fit the output PCA only to the training points
         self._fit_output_pca(

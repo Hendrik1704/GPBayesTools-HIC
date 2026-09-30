@@ -306,6 +306,20 @@ class EmulatorBase:
             f"({n_nonfinite} non-finite, {n_filtered} with too large errors)"
         )
 
+    def _check_event_mask(self, event_mask):
+        """
+        Return `event_mask` as an array after checking that it is a boolean
+        mask of shape (nev,). An integer array would be used as indices of
+        the training points.
+        """
+        mask = np.asarray(event_mask)
+        if mask.dtype != bool or mask.shape != (self.nev,):
+            raise ValueError(
+                f"event_mask must be a boolean array of shape ({self.nev},), got "
+                f"dtype {mask.dtype} and shape {mask.shape}"
+            )
+        return mask
+
     def train_emulator_auto_mask(self, **train_kwargs):
         """
         Train the emulator on all training points.
